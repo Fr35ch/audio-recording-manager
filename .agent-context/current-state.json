@@ -1,16 +1,17 @@
 {
   "project": {
-    "name": "${PROJECT_NAME}",
+    "name": "Audio Recording Manager",
     "version": "0.1.0",
-    "description": "Project description here",
-    "created": "${CREATED_DATE}",
-    "languages": []
+    "description": "Audio recording management application",
+    "created": "2025-11-28",
+    "languages": ["swift"]
   },
   "configuration": {
-    "serena_enabled": false,
-    "evaluator_enabled": false,
+    "serena_enabled": true,
+    "evaluator_enabled": true,
     "linear_enabled": false,
-    "task_prefix": "TASK"
+    "task_prefix": "ARM",
+    "precommit_hooks_enabled": true
   },
   "metrics": {
     "tasks_created": 0,
@@ -19,5 +20,9 @@
     "test_pass_rate": null,
     "coverage": null
   },
-  "recent_activity": []
+  "recent_activity": [],
+  "onboarding": {
+    "completed": true,
+    "date": "2025-11-28"
+  }
 }

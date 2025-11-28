@@ -42,9 +42,9 @@ After activation, use semantic navigation tools for 70-98% token savings. If act
 - Update `.agent-context/agent-handoffs.json` with progress
 
 ## Project Context
-- **Project**: Your Project - DaVinci Resolve automation for audio assembly
-- **Architecture**: Python CLI + Electron GUI + DaVinci Resolve API integration
-- **Testing**: pytest-based TDD workflow (mandatory pre-commit hooks)
+- **Project**: Audio Recording Manager - Secure macOS app for audio file management
+- **Architecture**: Swift/SwiftUI macOS app with network isolation
+- **Testing**: XCTest (Swift) + pytest (Python infrastructure), TDD workflow (mandatory pre-commit hooks)
 - **Documentation**: `.agent-context/` system for agent coordination
 
 ## Development Guidelines
@@ -68,9 +68,8 @@ After activation, use semantic navigation tools for 70-98% token savings. If act
 - `mcp__serena__get_symbols_overview(relative_path)` - File structure overview
 
 **When to use**:
-- ✅ Python code navigation (`your_project/`, `tests/`)
-- ✅ TypeScript/React code (`thematic-cuts-gui/src/`)
-- ✅ Swift code (if present)
+- ✅ Swift code navigation (`Sources/`, `tests/`)
+- ✅ Python code navigation (`scripts/`, `tests/`)
 - ✅ Finding references for refactoring/impact analysis
 
 **When NOT to use**:
@@ -85,8 +84,7 @@ After activation, use semantic navigation tools for 70-98% token savings. If act
 - **Pre-push**: Run `./scripts/ci-check.sh` before pushing (full test suite)
 - **Post-push**: Verify CI/CD passes (see CI Verification below)
 - **Manual**: `pytest tests/ -v` for local verification
-- **Coverage**: Maintain or improve coverage baseline (53%+)
-- **TypeScript**: `npm run type-check` in `thematic-cuts-gui/`
+- **Coverage**: Maintain or improve coverage baseline
 
 ## CI/CD Verification (MANDATORY)
 
@@ -251,7 +249,7 @@ For longer tasks requiring multiple agent sessions or handoffs:
 
 **Example**: After completing implementation phase, create task starter for powertest-runner to handle validation phase.
 
-See `.agent-context/THEMATIC-0102-HANDOFF-implementation-agent.md` for complete example.
+See `.agent-context/` for handoff file examples.
 
 ## Quick Reference Documentation
 
@@ -270,10 +268,10 @@ See `.agent-context/THEMATIC-0102-HANDOFF-implementation-agent.md` for complete 
 ## Allowed Operations
 You have full development permissions including:
 - Reading all project files
-- Modifying Python code in `your_project/`
-- Modifying TypeScript/React code in `thematic-cuts-gui/`
-- Running pytest, npm commands
-- Executing test scripts
+- Modifying Swift code in `Sources/`
+- Modifying Python code in `scripts/`
+- Running swift test, pytest commands
+- Executing build and test scripts
 - Using git for version control (following commit protocol)
 - Requesting evaluations for clarification
 

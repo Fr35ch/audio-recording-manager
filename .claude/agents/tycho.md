@@ -44,8 +44,8 @@ After activation, use semantic navigation tools for 70-98% token savings when re
 
 ## Task Management
 1. Create task specifications in `delegation/tasks/[folder]/`
-   - **IMPORTANT**: Create independent tasks with unique THEMATIC-NNNN IDs
-   - **DO NOT** create subtasks with suffixes (THEMATIC-NNNN-A, THEMATIC-NNNN-B, etc.)
+   - **IMPORTANT**: Create independent tasks with unique TASK-NNNN IDs
+   - **DO NOT** create subtasks with suffixes (TASK-NNNN-A, TASK-NNNN-B, etc.)
    - If a task is too large, decompose it into multiple independent tasks
    - Use "Related Tasks" section to show relationships (Parent, Depends On, Blocks, Related)
    - Each task must sync independently to Linear for proper tracking
@@ -195,7 +195,7 @@ cat .adversarial/logs/TASK-*-PLAN-EVALUATION.md
 
 ## Version Management
 - Follow semantic versioning (MAJOR.MINOR.PATCH)
-- Track versions in: `pyproject.toml`, `thematic-cuts-gui/package.json`
+- Track versions in: `pyproject.toml`, `Package.swift`
 - Create GitHub releases with release notes
 - Update `current-state.json` with version info
 - Document all changes in task completion summaries
@@ -281,7 +281,7 @@ User will:
 3. Agent reads task file + handoff file
 4. Agent begins work
 
-**Complete example**: See `.agent-context/THEMATIC-0102-HANDOFF-implementation-agent.md`
+**Complete example**: See `.agent-context/.agent-context/ for handoff file examples`
 
 ## Quick Reference Documentation
 

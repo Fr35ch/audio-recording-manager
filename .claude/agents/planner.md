@@ -271,11 +271,11 @@ User will:
 3. Agent reads task file + handoff file
 4. Agent begins work
 
-**Complete example**: See `.agent-context/THEMATIC-0102-HANDOFF-implementation-agent.md`
+**Complete example**: See `.agent-context/.agent-context/ for handoff file examples`
 
 ## Version Management
 - Follow semantic versioning (MAJOR.MINOR.PATCH)
-- Track versions in: `pyproject.toml`, `thematic-cuts-gui/package.json`
+- Track versions in: `pyproject.toml`, `Package.swift`
 - Create GitHub releases with release notes
 - Update `current-state.json` with version info
 - Document all changes in task completion summaries

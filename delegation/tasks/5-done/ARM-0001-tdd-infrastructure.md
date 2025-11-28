@@ -1,10 +1,11 @@
 # ARM-0001: CI/CD and TDD Infrastructure Setup
 
-**Status**: Todo
+**Status**: Done
 **Priority**: critical
 **Assigned To**: feature-developer
 **Estimated Effort**: 3-4 hours
 **Created**: 2025-11-28
+**Completed**: 2025-11-28
 **Phase**: 0 (Foundation - blocks all other work)
 
 ## Overview

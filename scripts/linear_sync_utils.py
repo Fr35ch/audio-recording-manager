@@ -18,8 +18,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, Optional, Any
-
+from typing import Any, Dict, Optional
 
 # =============================================================================
 # STATUS VALIDATION
@@ -86,6 +85,7 @@ def is_linear_native_status(status: str) -> bool:
 # STATUS DETERMINATION
 # =============================================================================
 
+
 def determine_status_from_path(task_file: Path) -> Optional[str]:
     """
     Extract status from folder path.
@@ -151,6 +151,7 @@ def determine_final_status(status_field: Optional[str], task_file: Path) -> str:
 # LEGACY STATUS MIGRATION
 # =============================================================================
 
+
 def migrate_legacy_status(task_file: Path, legacy_status: str) -> bool:
     """
     Migrate legacy status to Linear-native (update file).
@@ -212,6 +213,7 @@ def migrate_legacy_status(task_file: Path, legacy_status: str) -> bool:
 # SYNC EXCLUSION
 # =============================================================================
 
+
 def should_sync_task(task_file: Path) -> bool:
     """
     Determine if task should be synced (exclude archive/reference).
@@ -242,6 +244,7 @@ def should_sync_task(task_file: Path) -> bool:
 # =============================================================================
 # TASK PARSING
 # =============================================================================
+
 
 def parse_task_metadata(task_file: Path) -> Dict[str, Any]:
     """
@@ -329,6 +332,7 @@ def _extract_metadata_field(content: str, field: str) -> Optional[str]:
 # =============================================================================
 # GITHUB URL GENERATION
 # =============================================================================
+
 
 def get_github_file_url(task_file: Path) -> str:
     """

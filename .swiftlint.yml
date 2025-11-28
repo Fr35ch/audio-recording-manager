@@ -1,0 +1,62 @@
+# SwiftLint Configuration for Audio Recording Manager
+# https://github.com/realm/SwiftLint
+
+# Paths to include in linting
+included:
+  - Sources
+
+# Paths to exclude
+excluded:
+  - build
+  - .build
+  - Pods
+  - DerivedData
+  - Tests  # Exclude tests from strict linting initially
+
+# Disabled rules (too strict for initial setup)
+disabled_rules:
+  - trailing_whitespace      # Handled by pre-commit
+  - line_length              # Will enable with custom limit later
+  - type_body_length         # main.swift has large types during development
+  - file_length              # main.swift is large during development
+  - function_body_length     # Some complex functions during development
+  - cyclomatic_complexity    # Allow complex functions initially
+
+# Opt-in rules
+opt_in_rules:
+  - empty_count              # Prefer isEmpty over count == 0
+  - closure_end_indentation  # Closure brace alignment
+  - first_where              # Prefer first(where:) over filter().first
+  - overridden_super_call    # Ensure super calls in overrides
+  - redundant_nil_coalescing # Detect redundant ?? nil
+  - sorted_first_last        # Use min/max instead of sorted().first/last
+
+# Rule configurations
+identifier_name:
+  min_length:
+    warning: 2      # Allow short names like 'x', 'id'
+  max_length:
+    warning: 50
+  excluded:
+    - i
+    - id
+    - x
+    - y
+    - z
+    - to
+    - db
+
+type_name:
+  min_length: 3
+  max_length: 50
+
+nesting:
+  type_level: 3    # Allow nested types for SwiftUI
+  function_level: 3
+
+# Analyzer rules (require compilation, only in Xcode)
+# analyzer_rules:
+#   - explicit_self
+
+# Reporter type (xcode, json, csv, checkstyle, codeclimate, junit, html, emoji)
+reporter: "xcode"

@@ -104,11 +104,7 @@ def sample_data():
 
     Fixtures are reusable across tests.
     """
-    return {
-        "name": "test",
-        "value": 42,
-        "items": ["a", "b", "c"]
-    }
+    return {"name": "test", "value": 42, "items": ["a", "b", "c"]}
 
 
 class TestWithFixture:

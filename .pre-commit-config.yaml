@@ -4,6 +4,7 @@
 # Setup: pre-commit install
 # Run all: pre-commit run --all-files
 # Skip tests: SKIP_TESTS=1 git commit -m "WIP"
+# Skip SwiftLint: SKIP=swiftlint git commit -m "WIP"
 
 repos:
   # General file quality checks
@@ -65,3 +66,23 @@ repos:
         always_run: true
         stages: [pre-commit]
         verbose: true
+
+  # Swift/macOS specific hooks
+  # Note: Requires SwiftLint installed (brew install swiftlint)
+  - repo: local
+    hooks:
+      - id: swiftlint
+        name: SwiftLint
+        entry: bash -c 'if command -v swiftlint &> /dev/null; then swiftlint lint --quiet; else echo "SwiftLint not installed, skipping (brew install swiftlint)"; fi'
+        language: system
+        files: \.swift$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: swift-build
+        name: Swift build check
+        entry: bash -c 'if [ "$SKIP_SWIFT_BUILD" = "1" ]; then echo "Skipping Swift build (SKIP_SWIFT_BUILD=1)"; exit 0; fi; swift build 2>&1 || (echo "Swift build failed!"; exit 1)'
+        language: system
+        files: \.swift$
+        pass_filenames: false
+        stages: [pre-commit]

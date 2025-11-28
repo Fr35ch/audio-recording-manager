@@ -153,3 +153,11 @@ logs/
 
 # Serena config (generated from template)
 .serena/project.yml
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/

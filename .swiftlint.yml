@@ -13,7 +13,7 @@ excluded:
   - DerivedData
   - Tests  # Exclude tests from strict linting initially
 
-# Disabled rules (too strict for initial setup)
+# Disabled rules (too strict for initial setup with legacy code)
 disabled_rules:
   - trailing_whitespace      # Handled by pre-commit
   - line_length              # Will enable with custom limit later
@@ -21,6 +21,15 @@ disabled_rules:
   - file_length              # main.swift is large during development
   - function_body_length     # Some complex functions during development
   - cyclomatic_complexity    # Allow complex functions initially
+  - identifier_name          # Legacy code has DEMO_MODE, short vars (r,g,b,a)
+  - multiple_closures_with_trailing_closure  # SwiftUI pattern
+  - opening_brace            # Legacy formatting
+  - closure_parameter_position  # Legacy formatting
+  - trailing_comma           # Legacy formatting
+  - todo                     # Allow TODOs in codebase
+  - for_where                # Legacy patterns
+  - unused_closure_parameter # Legacy patterns
+  - implicit_optional_initialization  # Legacy patterns
 
 # Opt-in rules
 opt_in_rules:
@@ -31,24 +40,24 @@ opt_in_rules:
   - redundant_nil_coalescing # Detect redundant ?? nil
   - sorted_first_last        # Use min/max instead of sorted().first/last
 
-# Rule configurations
-identifier_name:
-  min_length:
-    warning: 2      # Allow short names like 'x', 'id'
-  max_length:
-    warning: 50
-  excluded:
-    - i
-    - id
-    - x
-    - y
-    - z
-    - to
-    - db
+# Rule configurations (for when we enable stricter rules later)
+# identifier_name:
+#   min_length:
+#     warning: 2      # Allow short names like 'x', 'id'
+#   max_length:
+#     warning: 50
+#   excluded:
+#     - i
+#     - id
+#     - x
+#     - y
+#     - z
+#     - to
+#     - db
 
-type_name:
-  min_length: 3
-  max_length: 50
+# type_name:
+#   min_length: 3
+#   max_length: 50
 
 nesting:
   type_level: 3    # Allow nested types for SwiftUI

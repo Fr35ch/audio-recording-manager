@@ -1,6 +1,6 @@
 # ASK-0005: Linear Sync Infrastructure
 
-**Status**: Todo
+**Status**: Done
 **Priority**: high
 **Assigned To**: feature-developer
 **Estimated Effort**: 4-6 hours

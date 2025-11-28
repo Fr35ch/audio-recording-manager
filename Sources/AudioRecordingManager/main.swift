@@ -2132,13 +2132,13 @@ struct RecordingView: View {
                 // Cancel verification timer
                 verificationTimer?.invalidate()
             }
-            .onChange(of: recorder.showSaveConfirmation) { showing in
+            .onChange(of: recorder.showSaveConfirmation) { _, showing in
                 if !showing {
                     // Reload recordings when save confirmation disappears
                     recordingsManager.loadRecordings()
                 }
             }
-            .onChange(of: recorder.frequencyBands) { _ in
+            .onChange(of: recorder.frequencyBands) { _, _ in
                 // Auto-verify when audio is detected
                 if !microphoneVerified {
                     let averageLevel =

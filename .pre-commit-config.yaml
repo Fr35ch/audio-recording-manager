@@ -19,7 +19,7 @@ repos:
         name: Check YAML syntax
       - id: check-added-large-files
         name: Check for large files
-        args: ['--maxkb=1000']
+        args: ['--maxkb=2000']  # Increased to 2MB for app icons
       - id: check-merge-conflict
         name: Check for merge conflicts
       - id: check-toml

@@ -281,7 +281,9 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var showSaveConfirmation = false
     @Published var frequencyBands: [Float] = Array(repeating: 0, count: 32)
     @Published var isMonitoring = false
+    @Published var waveformHistory: [Float] = []  // Stores average amplitude over time
 
+    private let maxHistoryLength = 300  // ~15 seconds at 20fps
     private var audioRecorder: AVAudioRecorder?
     private var recordingTimer: Timer?
     private var levelTimer: Timer?
@@ -334,6 +336,7 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Clear visualization
         frequencyBands = Array(repeating: 0, count: 32)
         audioLevel = 0
+        waveformHistory.removeAll()
 
         print("🛑 Stopped audio monitoring")
     }
@@ -372,6 +375,12 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 let smoothing: Float = 0.55
                 self.frequencyBands[i] =
                     self.frequencyBands[i] * smoothing + bandLevel * (1 - smoothing)
+            }
+
+            // Add current level to waveform history
+            self.waveformHistory.append(normalizedLevel)
+            if self.waveformHistory.count > self.maxHistoryLength {
+                self.waveformHistory.removeFirst()
             }
         }
     }
@@ -781,6 +790,61 @@ extension View {
                 CursorHostingView(cursor: cursor, frame: geometry.frame(in: .local))
             }
         )
+    }
+
+    func introspectSplitView(customize: @escaping (NSSplitView) -> Void) -> some View {
+        self.background(
+            SplitViewIntrospector(customize: customize)
+        )
+    }
+}
+
+// MARK: - SplitView Introspector
+struct SplitViewIntrospector: NSViewRepresentable {
+    let customize: (NSSplitView) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let splitView = self.findSplitView(in: view) {
+                self.customize(splitView)
+                // Set delegate to prevent resizing
+                splitView.delegate = context.coordinator
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    private func findSplitView(in view: NSView) -> NSSplitView? {
+        var current: NSView? = view
+        while let parent = current?.superview {
+            if let splitView = parent as? NSSplitView {
+                return splitView
+            }
+            current = parent
+        }
+        return nil
+    }
+
+    class Coordinator: NSObject, NSSplitViewDelegate {
+        func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+            return false
+        }
+
+        func splitView(_ splitView: NSSplitView, shouldHideDividerAt dividerIndex: Int) -> Bool {
+            return true
+        }
+
+        func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect, forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+            // Return zero rect to make divider non-interactive
+            return .zero
+        }
     }
 }
 
@@ -1700,30 +1764,19 @@ struct RecordingsSidebar: View {
     let recordings: [RecordingItem]
     @ObservedObject var audioPlayer: AudioPlayer
     @ObservedObject var recordingsManager: RecordingsManager
-    @StateObject private var folderManager: FolderManager
-    @State private var showNewFolderDialog = false
-    @State private var newFolderName = ""
+    @ObservedObject var folderManager: FolderManager
+    @ObservedObject var sdCardManager: SDCardManager
     @Binding var showAbout: Bool
+    @Binding var showImportSheet: Bool
     let openURL: (String) -> Void
-
-    init(
-        recordings: [RecordingItem], audioPlayer: AudioPlayer, recordingsManager: RecordingsManager,
-        showAbout: Binding<Bool>, openURL: @escaping (String) -> Void
-    ) {
-        self.recordings = recordings
-        self.audioPlayer = audioPlayer
-        self.recordingsManager = recordingsManager
-        self._showAbout = showAbout
-        self.openURL = openURL
-
-        // Initialize folder manager with lydfiler path
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let lydfilerPath = homeDir.appendingPathComponent("Desktop/lydfiler").path
-        _folderManager = StateObject(wrappedValue: FolderManager(basePath: lydfilerPath))
-    }
+    let uploadToTeams: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            // Spacer for toolbar area
+            Spacer()
+                .frame(height: 52)
+
             // Folder Tree & Recordings List
             if recordings.isEmpty && folderManager.folderStructure.isEmpty {
                 VStack(spacing: 12) {
@@ -1737,7 +1790,7 @@ struct RecordingsSidebar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    LazyVStack(spacing: 0, pinnedViews: []) {
                         // Show folders first
                         ForEach(folderManager.folderStructure) { folder in
                             FolderTreeView(
@@ -1769,25 +1822,8 @@ struct RecordingsSidebar: View {
 
             Divider()
 
-            // Footer with New Folder button and Storage stats
+            // Footer with Storage stats
             VStack(spacing: 0) {
-                // New Folder button
-                Button(action: { showNewFolderDialog = true }) {
-                    HStack {
-                        Image(systemName: "folder.badge.plus")
-                            .font(.system(size: 12))
-                        Text("New Folder")
-                            .font(.system(size: 12, weight: .regular))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(6)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-
                 // Storage stats
                 Text("Storage: \(folderManager.getTotalStorageUsed())")
                     .font(.system(size: 10, weight: .light))
@@ -1828,6 +1864,27 @@ struct RecordingsSidebar: View {
 
                 Divider()
 
+                // Action menu items
+                VStack(alignment: .leading, spacing: 0) {
+                    SidebarMenuItem(
+                        icon: "sdcard.fill",
+                        title: "Import from SD Card",
+                        action: {
+                            showImportSheet = true
+                        }
+                    )
+
+                    SidebarMenuItem(
+                        icon: "arrow.up.doc.fill",
+                        title: "Upload to Teams",
+                        action: {
+                            uploadToTeams()
+                        }
+                    )
+                }
+
+                Divider()
+
                 // Menu links
                 VStack(alignment: .leading, spacing: 0) {
                     SidebarMenuItem(
@@ -1853,7 +1910,7 @@ struct RecordingsSidebar: View {
 
                     SidebarMenuItem(
                         icon: "info.circle",
-                        title: "About Virgin Project",
+                        title: "About Audio Recording Manager",
                         action: {
                             showAbout = true
                         }
@@ -1862,11 +1919,11 @@ struct RecordingsSidebar: View {
 
                 // Version footer
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Virgin Project")
+                    Text("Audio Recording Manager (ARM)")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .foregroundColor(NAVColors.textDefault)
-                    Text("Version 0.2.0")
+                    Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                         .font(.caption2)
                         .foregroundColor(NAVColors.textSubtle)
                 }
@@ -1878,22 +1935,6 @@ struct RecordingsSidebar: View {
         .background(Color.white)
         .onAppear {
             folderManager.loadFolderStructure()
-        }
-        .sheet(isPresented: $showNewFolderDialog) {
-            NewFolderDialog(
-                folderName: $newFolderName,
-                onCreate: {
-                    if !newFolderName.isEmpty {
-                        folderManager.createFolder(name: newFolderName)
-                        newFolderName = ""
-                        showNewFolderDialog = false
-                    }
-                },
-                onCancel: {
-                    newFolderName = ""
-                    showNewFolderDialog = false
-                }
-            )
         }
     }
 
@@ -2097,11 +2138,58 @@ struct RecordingRowView: View {
     }
 }
 
+// MARK: - Scrolling Waveform View
+struct ScrollingWaveformView: View {
+    let waveformHistory: [Float]
+    let isRecording: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let barWidth: CGFloat = 3
+            let barSpacing: CGFloat = 1
+            let totalBarWidth = barWidth + barSpacing
+            let visibleBars = Int(geometry.size.width / totalBarWidth)
+            let height = geometry.size.height
+
+            HStack(alignment: .center, spacing: barSpacing) {
+                // Show empty bars if history is shorter than visible area
+                let emptyBars = max(0, visibleBars - waveformHistory.count)
+                ForEach(0..<emptyBars, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: barWidth, height: 4)
+                }
+
+                // Show waveform history (most recent on right)
+                let startIndex = max(0, waveformHistory.count - visibleBars)
+                let visibleHistory = Array(waveformHistory.suffix(visibleBars))
+
+                ForEach(Array(visibleHistory.enumerated()), id: \.offset) { index, level in
+                    let barHeight = max(4, CGFloat(level) * height * 0.9)
+                    let isRecent = index > visibleHistory.count - 10
+
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(barColor(level: level, isRecent: isRecent))
+                        .frame(width: barWidth, height: barHeight)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
+    }
+
+    private func barColor(level: Float, isRecent: Bool) -> Color {
+        // Grey color based on amplitude level
+        let opacity = Double(max(0.3, min(0.9, level + 0.3)))
+        return Color.gray.opacity(isRecent ? opacity : opacity * 0.8)
+    }
+}
+
 // MARK: - Recording View
 struct RecordingView: View {
     @ObservedObject var recorder: AudioRecorder
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
+    @StateObject private var networkManager = NetworkManager.shared
     @Binding var isShowing: Bool
     @State private var microphoneVerified = false
     @State private var verificationTimer: Timer?
@@ -2156,59 +2244,6 @@ struct RecordingView: View {
 
     var mainRecordingView: some View {
         VStack(spacing: 0) {
-            // Header with back button
-            HStack {
-                Button(action: {
-                    if recorder.isRecording {
-                        recorder.stopRecording()
-                    }
-                    isShowing = false
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chevron.left")
-                            .font(.title2)
-                        Text("Back")
-                            .font(.title3)
-                            .fontWeight(.medium)
-                    }
-                    .foregroundColor(.blue)
-                }
-                .buttonStyle(.plain)
-                .padding()
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active:
-                        DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                    case .ended:
-                        DispatchQueue.main.async { NSCursor.arrow.set() }
-                    }
-                }
-
-                Spacer()
-
-                Text("Voice Recorder")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                Spacer()
-
-                // Invisible button for balance
-                Button(action: {}) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chevron.left")
-                            .font(.title2)
-                        Text("Back")
-                            .font(.title3)
-                    }
-                }
-                .opacity(0)
-                .disabled(true)
-                .padding()
-            }
-            .background(Color(NSColor.windowBackgroundColor))
-
-            Divider()
-
             // Recording Interface
             ZStack {
                 // Main Content
@@ -2304,6 +2339,36 @@ struct RecordingView: View {
 
                     Spacer()
 
+                    // Scrolling Waveform Timeline - Only visible when recording
+                    if recorder.isRecording {
+                        VStack(spacing: 8) {
+                            ScrollingWaveformView(
+                                waveformHistory: recorder.waveformHistory,
+                                isRecording: recorder.isRecording
+                            )
+                            .frame(height: 80)
+                            .padding(.horizontal, 40)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.gray.opacity(0.05))
+                                    .padding(.horizontal, 35)
+                            )
+
+                            // Time markers
+                            HStack {
+                                Text("0:00")
+                                    .font(.system(size: 10, weight: .light))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(formatDuration(recorder.recordingDuration))
+                                    .font(.system(size: 10, weight: .light))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 40)
+                        }
+                        .padding(.bottom, 20)
+                    }
+
                     // Control Buttons - Minimalist
                     if !recorder.showSaveConfirmation {
                         HStack(spacing: 32) {
@@ -2374,7 +2439,7 @@ struct RecordingView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(Color.white)
         }
     }
 
@@ -2405,7 +2470,7 @@ struct AboutView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("About Virgin Project")
+                Text("About Audio Recording Manager")
                     .font(.title)
                     .fontWeight(.bold)
                 Spacer()
@@ -2422,7 +2487,7 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     // Version
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Version 0.2.0")
+                        Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                             .font(.headline)
                             .foregroundColor(.secondary)
                     }
@@ -2643,7 +2708,7 @@ struct SidebarPanelContent: View {
 
                 SidebarMenuItem(
                     icon: "info.circle",
-                    title: "About Virgin Project",
+                    title: "About Audio Recording Manager",
                     action: {
                         showSidebar = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -2657,11 +2722,11 @@ struct SidebarPanelContent: View {
 
             // Footer
             VStack(alignment: .leading, spacing: NAVSpacing.xs) {
-                Text("Virgin Project")
+                Text("Audio Recording Manager (ARM)")
                     .font(.caption)
                     .fontWeight(.semibold)
                     .foregroundColor(NAVColors.textDefault)
-                Text("Version 0.2.0")
+                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                     .font(.caption2)
                     .foregroundColor(NAVColors.textSubtle)
             }
@@ -2710,42 +2775,108 @@ struct MainView: View {
     @StateObject private var audioRecorder = AudioRecorder.shared
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
+    @StateObject private var folderManager: FolderManager = {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let lydfilerPath = homeDir.appendingPathComponent("Desktop/lydfiler").path
+        return FolderManager(basePath: lydfilerPath)
+    }()
     @State private var showSuccessMessage = false
     @State private var successMessage = ""
     @State private var showImportSheet = false
-    @State private var showRecordingView = false
     @State private var showAbout = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showSidebar: Bool = true
+    @State private var showNewFolderDialog = false
+    @State private var newFolderName = ""
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        HStack(spacing: 0) {
             // Sidebar
-            RecordingsSidebar(
-                recordings: recordingsManager.recordings,
-                audioPlayer: audioPlayer,
-                recordingsManager: recordingsManager,
-                showAbout: $showAbout,
-                openURL: openURL
-            )
-            .navigationTitle("All Recordings")
-            .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
-        } detail: {
-            // Main content
-            if showRecordingView {
-                RecordingView(recorder: audioRecorder, isShowing: $showRecordingView)
+            if showSidebar {
+                RecordingsSidebar(
+                    recordings: recordingsManager.recordings,
+                    audioPlayer: audioPlayer,
+                    recordingsManager: recordingsManager,
+                    folderManager: folderManager,
+                    sdCardManager: sdCardManager,
+                    showAbout: $showAbout,
+                    showImportSheet: $showImportSheet,
+                    openURL: openURL,
+                    uploadToTeams: uploadToTeams
+                )
+                .frame(width: 300)
+                .transition(.move(edge: .leading))
+
+                Divider()
+                    .frame(maxHeight: .infinity)
+            }
+
+            // Main content - Recording View is now the default
+            VStack(spacing: 0) {
+                // Spacer for toolbar area
+                Spacer()
+                    .frame(height: 52)
+
+                RecordingView(recorder: audioRecorder, isShowing: .constant(true))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color.white)
-                    .navigationTitle("")
-                    .toolbarBackground(.hidden, for: .windowToolbar)
-            } else {
-                mainContentView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white)
-                    .navigationTitle("")
-                    .toolbarBackground(.hidden, for: .windowToolbar)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .ignoresSafeArea(edges: .top)
+        .navigationTitle("")
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                if showSidebar {
+                    Button(action: {
+                        showNewFolderDialog = true
+                    }) {
+                        Image(systemName: "folder.badge.plus")
+                    }
+                    .help("New Folder")
+                }
+
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSidebar.toggle()
+                    }
+                }) {
+                    Image(systemName: "sidebar.leading")
+                }
+                .help("Toggle Sidebar")
+            }
+
+            // Network Status Indicators on right side (DEMO: shows OFF during recording)
+            ToolbarItemGroup(placement: .automatic) {
+                Spacer()
+
+                let wifiActive = networkManager.wifiEnabled && !audioRecorder.isRecording
+                HStack(spacing: 6) {
+                    Image(systemName: wifiActive ? "wifi" : "wifi.slash")
+                        .font(.system(size: 12))
+                        .foregroundColor(wifiActive ? .green : .red)
+                    Text("WiFi")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.secondary)
+                    Text(wifiActive ? "ON" : "OFF")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(wifiActive ? .green : .red)
+                }
+
+                let btActive = networkManager.bluetoothEnabled && !audioRecorder.isRecording
+                HStack(spacing: 6) {
+                    Image(systemName: "wave.3.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(btActive ? .green : .red)
+                    Text("Bluetooth")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.secondary)
+                    Text(btActive ? "ON" : "OFF")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(btActive ? .green : .red)
+                }
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 700, minHeight: 800)
         .sheet(isPresented: $showImportSheet) {
             SDCardImportView(sdCardManager: sdCardManager)
@@ -2753,9 +2884,26 @@ struct MainView: View {
         .sheet(isPresented: $showAbout) {
             AboutView()
         }
+        .sheet(isPresented: $showNewFolderDialog) {
+            NewFolderDialog(
+                folderName: $newFolderName,
+                onCreate: {
+                    if !newFolderName.isEmpty {
+                        folderManager.createFolder(name: newFolderName)
+                        newFolderName = ""
+                        showNewFolderDialog = false
+                    }
+                },
+                onCancel: {
+                    newFolderName = ""
+                    showNewFolderDialog = false
+                }
+            )
+        }
         .onAppear {
             networkManager.updateStatus()
             recordingsManager.loadRecordings()
+            folderManager.loadFolderStructure()
         }
     }
 
@@ -2997,8 +3145,8 @@ struct MainView: View {
     }
 
     func launchVoiceRecorder() {
-        // Show custom recording view
-        showRecordingView = true
+        // Recording view is now the default - this function kept for compatibility
+        // Could be used to reset/focus the recording view if needed
     }
 
     func importFromSDCard() {

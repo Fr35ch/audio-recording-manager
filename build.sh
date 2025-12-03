@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build script for Virgin Project macOS app
+# Build script for Audio Recording Manager (ARM) macOS app
 # This script compiles the Swift app and creates a proper .app bundle
 
 set -e  # Exit on error
@@ -8,12 +8,20 @@ set -e  # Exit on error
 APP_NAME="AudioRecordingManager"
 BUNDLE_ID="com.audiorecordingmanager.app"
 BUILD_DIR="build"
+
+# Read version from VERSION file
+VERSION_FILE="VERSION"
+if [ -f "$VERSION_FILE" ]; then
+    APP_VERSION=$(cat "$VERSION_FILE" | tr -d '\n')
+else
+    APP_VERSION="1.0.0"
+fi
 APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
 CONTENTS_DIR="$APP_BUNDLE/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
-echo "🔨 Building Audio Recording Manager..."
+echo "🔨 Building Audio Recording Manager v$APP_VERSION..."
 
 # Clean previous build
 if [ -d "$BUILD_DIR" ]; then

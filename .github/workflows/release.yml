@@ -1,0 +1,82 @@
+# Release Workflow for Audio Recording Manager
+# Triggers on version tags (v*) and creates GitHub releases with .app artifact
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on v1.0.0, v1.2.3, etc.
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: macos-14  # macOS Sonoma with Xcode 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Show environment
+        run: |
+          echo "macOS version:"
+          sw_vers
+          echo ""
+          echo "Xcode version:"
+          xcodebuild -version
+          echo ""
+          echo "Swift version:"
+          swift --version
+
+      - name: Run tests
+        run: swift test -v
+
+      - name: Build app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Create ZIP artifact
+        run: |
+          cd build
+          zip -r AudioRecordingManager-${{ steps.version.outputs.version }}.zip AudioRecordingManager.app
+          ls -la
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            NOTES=$(git log $LAST_TAG..HEAD --oneline --no-merges | head -20)
+          else
+            NOTES=$(git log --oneline --no-merges | head -20)
+          fi
+
+          # Write to file for multi-line support
+          echo "## What's Changed" > release_notes.md
+          echo "" >> release_notes.md
+          echo "$NOTES" | while read line; do
+            echo "- $line" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          echo "---" >> release_notes.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md" >> release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Audio Recording Manager v${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          files: build/AudioRecordingManager-${{ steps.version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

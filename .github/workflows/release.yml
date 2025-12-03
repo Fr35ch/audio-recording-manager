@@ -8,6 +8,9 @@ on:
     tags:
       - 'v*'  # Triggers on v1.0.0, v1.2.3, etc.
 
+permissions:
+  contents: write  # Required for creating releases
+
 jobs:
   build-and-release:
     name: Build and Release

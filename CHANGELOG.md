@@ -1,9 +1,63 @@
 # Changelog
 
-≈All notable changes to the Audio Recording Manager (ARM) will be documented in this file.
+All notable changes to the Audio Recording Manager (ARM) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.1.0] - 2025-12-03
+
+### Added
+- feat(release): Add automated versioning and CI/CD release workflow
+- docs(adr): Add 13 Architecture Decision Records for Agentive Starter Kit
+- feat(arm-0001): Set up TDD infrastructure for Swift macOS app
+- feat: Import Audio Recording Manager codebase from virgin-project
+- docs: Add comprehensive Linear sync onboarding checklist
+- feat(linear): Robust multi-team support with KEY resolution
+- feat(linear): Add Linear sync infrastructure (ASK-0005)
+- feat: Implement ASK-0001 through ASK-0004 from AL2 feedback
+- feat(tasks): Add ASK-0001 through ASK-0004 from AL2 feedback
+- feat(serena): Update agent files and add ADR-0002
+- feat: Enhance TDD seed task template v3.0 with AL2 improvements
+- docs: Add session handover for 2025-11-27
+- feat: Add TDD seed task to onboarding flow
+- docs: Add "Pulling Updates from Starter Kit" section to README
+- feat: Enable model specifications by default
+- feat: Add model recommendations for all agents
+- feat(onboarding): Add Phase 7 for GitHub repository setup
+- docs: Add detailed Linear Integration section to README
+- feat(onboarding): Suggest folder name as project name
+- feat: Improve onboarding flow with preflight checks and clearer docs
+- docs: Add session handover for rem continuity
+- feat(serena): Add Serena MCP installation and configuration
+- feat: Separate onboarding into dedicated agent, add ADR-0001
+- Revert "refactor: Move launcher to scripts/, add ADR-0001"
+- refactor: Move launcher to scripts/, add ADR-0001
+- feat(onboarding): Add first-run onboarding flow with context injection
+- feat: Initial release of Agentive Starter Kit v1.0.0
+
+### Changed
+- docs(pyproject): Improve tool.setuptools comment clarity
+- improve(pyproject): Incorporate AL2 adaptations
+- refactor: Replace 'Coordinator' with 'Planner' in adversarial docs
+- docs: Update session handover with seed task v2.0 changes
+- refactor: Document hardcoded arrays in launch script
+- refactor: Remove redundant coordinator agent
+- refactor: Rename rem agent to planner for clarity
+
+### Fixed
+- fix(swiftui): Update deprecated onChange to new macOS 14.0+ API
+- fix(linear-sync): Gracefully skip when API key not configured
+- fix(swiftlint): Disable rules incompatible with legacy code
+- fix(onboarding): Update agent files with project name for Serena activation
+- fix(serena): Use user scope for global MCP availability
+- fix: Correct model IDs in all agent files
+- fix: Strip YAML comments from model name in launcher
+- fix: Improve TDD seed task based on agentive-lotion-2 feedback
+- fix: Exclude TASK-STARTER-TEMPLATE.md from agent launcher
+- fix: Remove embedded YAML template from onboarding.md
+- fix(serena): Improve setup flow and handle browser popup issue
+---
 
 ## [Unreleased]
 

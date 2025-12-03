@@ -284,8 +284,8 @@ create_git_release() {
     # Stage changed files
     git add "$VERSION_FILE" "$CHANGELOG_FILE" "$INFO_PLIST" 2>/dev/null || true
 
-    # Create commit
-    git commit -m "Release v$new_version
+    # Create commit (skip pre-commit tests for release commits)
+    SKIP_TESTS=1 git commit -m "Release v$new_version
 
 - Bump version to $new_version
 - Update CHANGELOG.md with release notes

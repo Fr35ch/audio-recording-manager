@@ -5,6 +5,30 @@ All notable changes to the Audio Recording Manager (ARM) will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-12-15
+
+### Added
+- **Recording naming dialog**: Name recordings before saving with auto-timestamp appended
+  - Format: `[custom name]_YYYYMMDD_HHMMSS.m4a`
+  - Live filename preview
+  - Auto-focus text field, Enter to save
+  - Option to discard recording
+- **Audio duration display**: List items now show recording duration instead of file size
+  - Duration calculated from audio track metadata
+  - Format: `M:SS` (e.g., "2:34")
+
+### Changed
+- **Play button styling**: Now uses IconButton component (grey circle) matching other action buttons
+- **SD card detection**: Now only detects Olympus voice recorder SD cards
+  - Checks for RECORDER, DSS_FLDR, DICT, OLYMPUS folders
+  - Checks for .dss/.ds2 audio files (Olympus proprietary formats)
+  - Rejects USB flash drives, camera memory cards, iPods, iPhones, iPads
+
+### Fixed
+- Removed unused `startIndex` variable warning in ScrollingWaveformView
+
+---
+
 ## [1.1.0] - 2025-12-03
 
 ### Added

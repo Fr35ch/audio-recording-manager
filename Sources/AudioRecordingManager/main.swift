@@ -1,5 +1,6 @@
 import AVFAudio
 import AVFoundation
+import CoreMedia
 import CoreWLAN
 import DiskArbitration
 import Foundation
@@ -282,6 +283,8 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var frequencyBands: [Float] = Array(repeating: 0, count: 32)
     @Published var isMonitoring = false
     @Published var waveformHistory: [Float] = []  // Stores average amplitude over time
+    @Published var showNamingDialog = false  // Show dialog for naming recording
+    @Published var pendingRecordingURL: URL?  // Temp recording waiting to be named
 
     private let maxHistoryLength = 300  // ~15 seconds at 20fps
     private var audioRecorder: AVAudioRecorder?
@@ -465,23 +468,87 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isRecording = false
         isPaused = false
         stopRecordingTimer()
+        stopLevelMonitoring()
 
+        // Store the recording URL for naming
         if let url = currentRecordingURL {
-            lastSavedFile = url.lastPathComponent
-            showSaveConfirmation = true
-            print("✅ Recording saved: \(url.lastPathComponent)")
-
-            // Hide confirmation and reset timer after 3 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                self.showSaveConfirmation = false
-                self.recordingDuration = 0
-            }
+            pendingRecordingURL = url
+            showNamingDialog = true
+            print("⏸️ Recording stopped, waiting for filename...")
         }
 
         audioRecorder = nil
         currentRecordingURL = nil
+    }
+
+    /// Save the pending recording with a custom name + timestamp
+    func saveRecordingWithName(_ customName: String) {
+        guard let tempURL = pendingRecordingURL else {
+            print("❌ No pending recording to save")
+            return
+        }
+
+        // Generate timestamp
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = formatter.string(from: Date())
+
+        // Clean the custom name (remove invalid characters)
+        let cleanName = customName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+
+        // Build final filename: customName_timestamp.m4a
+        let finalName: String
+        if cleanName.isEmpty {
+            finalName = "lydfil_\(timestamp).m4a"
+        } else {
+            finalName = "\(cleanName)_\(timestamp).m4a"
+        }
+
+        let finalPath = (AudioFileManager.shared.audioFolderPath as NSString)
+            .appendingPathComponent(finalName)
+        let finalURL = URL(fileURLWithPath: finalPath)
+
+        do {
+            // Move/rename the temp file to the final name
+            try FileManager.default.moveItem(at: tempURL, to: finalURL)
+            lastSavedFile = finalName
+            showNamingDialog = false
+            showSaveConfirmation = true
+            print("✅ Recording saved: \(finalName)")
+
+            // Hide confirmation after 3 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                self.showSaveConfirmation = false
+                self.recordingDuration = 0
+            }
+        } catch {
+            print("❌ Error saving recording: \(error)")
+            // If move fails, the file stays at the temp location with original name
+            lastSavedFile = tempURL.lastPathComponent
+            showNamingDialog = false
+            showSaveConfirmation = true
+        }
+
+        pendingRecordingURL = nil
 
         // Restart monitoring to keep visualization active
+        startMonitoring()
+    }
+
+    /// Cancel/discard the pending recording
+    func cancelPendingRecording() {
+        if let url = pendingRecordingURL {
+            try? FileManager.default.removeItem(at: url)
+            print("🗑️ Pending recording discarded")
+        }
+        pendingRecordingURL = nil
+        showNamingDialog = false
+        recordingDuration = 0
+
+        // Restart monitoring
         startMonitoring()
     }
 
@@ -539,6 +606,7 @@ struct RecordingItem: Identifiable, Equatable {
     let path: String
     let date: Date
     let size: Int64
+    let duration: TimeInterval
 
     var formattedDate: String {
         let formatter = DateFormatter()
@@ -550,6 +618,12 @@ struct RecordingItem: Identifiable, Equatable {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         return formatter.string(fromByteCount: size)
+    }
+
+    var formattedDuration: String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
@@ -646,8 +720,64 @@ class RecordingsManager: ObservableObject {
 
     @Published var recordings: [RecordingItem] = []
 
+    private var fileDescriptor: Int32 = -1
+    private var dispatchSource: DispatchSourceFileSystemObject?
+    private var reloadWorkItem: DispatchWorkItem?
+
     private init() {
         loadRecordings()
+        startWatchingFolder()
+    }
+
+    deinit {
+        stopWatchingFolder()
+    }
+
+    /// Start monitoring the audio folder for changes (file added, renamed, deleted)
+    private func startWatchingFolder() {
+        let audioFolder = AudioFileManager.shared.audioFolderPath
+
+        fileDescriptor = open(audioFolder, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            print("⚠️ Could not open folder for monitoring: \(audioFolder)")
+            return
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
+            queue: DispatchQueue.main
+        )
+
+        source.setEventHandler { [weak self] in
+            // Debounce: cancel pending reload and schedule a new one
+            self?.reloadWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                print("📁 Folder changed, reloading recordings...")
+                self?.loadRecordings()
+            }
+            self?.reloadWorkItem = workItem
+            // Wait 300ms before reloading to let file operations complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+        }
+
+        source.setCancelHandler { [weak self] in
+            if let fd = self?.fileDescriptor, fd >= 0 {
+                close(fd)
+            }
+            self?.fileDescriptor = -1
+        }
+
+        dispatchSource = source
+        source.resume()
+        print("👁️ Watching folder for changes: \(audioFolder)")
+    }
+
+    /// Stop monitoring the folder
+    private func stopWatchingFolder() {
+        dispatchSource?.cancel()
+        dispatchSource = nil
+        reloadWorkItem?.cancel()
     }
 
     func loadRecordings() {
@@ -668,12 +798,20 @@ class RecordingsManager: ObservableObject {
                 if let fileSize = attributes[.size] as? Int64,
                     let modDate = attributes[.modificationDate] as? Date
                 {
+                    // Calculate audio duration synchronously for simplicity
+                    var audioDuration: TimeInterval = 0
+                    let asset = AVURLAsset(url: fileURL)
+                    if let track = asset.tracks(withMediaType: .audio).first {
+                        audioDuration = CMTimeGetSeconds(track.timeRange.duration)
+                    }
+
                     items.append(
                         RecordingItem(
                             filename: file,
                             path: filePath,
                             date: modDate,
-                            size: fileSize
+                            size: fileSize,
+                            duration: audioDuration.isNaN ? 0 : audioDuration
                         ))
                 }
             }
@@ -1008,9 +1146,7 @@ class SDCardManager: ObservableObject {
                         continue
                     }
 
-                    // Check if path is from a disk image using diskutil
-                    // Disk images typically mount without partition numbers (disk6, disk8)
-                    // Real SD cards have partitions (disk2s1, disk4s2)
+                    // Check if path is from a disk image or Apple device using diskutil
                     let diskutilTask = Process()
                     diskutilTask.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
                     diskutilTask.arguments = ["info", volumePath]
@@ -1022,21 +1158,43 @@ class SDCardManager: ObservableObject {
 
                     let data = pipe.fileHandleForReading.readDataToEndOfFile()
                     if let output = String(data: data, encoding: .utf8) {
+                        // Skip disk images
                         if output.contains("Disk Image: Yes")
                             || output.contains("Protocol: Disk Image")
                         {
                             print("📊 Skipping disk image detected by diskutil: \(volume)")
                             continue
                         }
+                        // Skip Apple devices (iPod, iPhone, iPad)
+                        let outputLower = output.lowercased()
+                        if outputLower.contains("ipod") || outputLower.contains("iphone")
+                            || outputLower.contains("ipad") || outputLower.contains("apple mobile")
+                        {
+                            print("📊 Skipping Apple device detected by diskutil: \(volume)")
+                            continue
+                        }
                     }
 
-                    // If we find a valid removable volume but our state says no SD card, update it
+                    // Check for iPod_Control folder (definitive iPod indicator)
+                    let ipodControlPath = (volumePath as NSString).appendingPathComponent("iPod_Control")
+                    if fileManager.fileExists(atPath: ipodControlPath) {
+                        print("📊 Skipping iPod (iPod_Control folder found): \(volume)")
+                        continue
+                    }
+
+                    // Verify this is an Olympus voice recorder SD card
+                    guard isOlympusRecorderMedia(at: volumePath) else {
+                        print("📊 Skipping non-Olympus media: \(volume)")
+                        continue
+                    }
+
+                    // If we find a valid Olympus SD card but our state says no SD card, update it
                     if !isSDCardInserted {
                         DispatchQueue.main.async {
                             self.sdCardPath = volumePath
                             self.sdCardVolumeName = volume
                             self.isSDCardInserted = true
-                            print("📊 Polling detected removable media: \(volume) at \(volumePath)")
+                            print("📊 Polling detected Olympus SD card: \(volume) at \(volumePath)")
                             self.scanForAudioFiles()
                             self.objectWillChange.send()  // Force UI update
                         }
@@ -1160,18 +1318,29 @@ class SDCardManager: ObservableObject {
         }
 
         if let path = volumePath {
-            // Success! We have the path
+            // Verify this is an Olympus voice recorder SD card
+            guard isOlympusRecorderMedia(at: path) else {
+                let volumeName = diskDescription[kDADiskDescriptionVolumeNameKey as String] as? String ?? "Unknown"
+                print("🔍 ======== NOT OLYMPUS MEDIA ========")
+                print("📍 Path: \(path)")
+                print("📛 Name: \(volumeName)")
+                print("🔍 No Olympus folders or DSS/DS2 files found")
+                print("====================================\n")
+                return
+            }
+
+            // Success! We have an Olympus recorder SD card
             DispatchQueue.main.async {
                 self.sdCardVolumeName =
                     diskDescription[kDADiskDescriptionVolumeNameKey as String] as? String
                 self.sdCardPath = path
                 self.isSDCardInserted = true
 
-                print("✅ ======== SD CARD DETECTED ========")
+                print("✅ ======== OLYMPUS SD CARD DETECTED ========")
                 print("📍 Path: \(path)")
                 print("📛 Name: \(self.sdCardVolumeName ?? "Unknown")")
                 print("🔍 Scanning for audio files...")
-                print("====================================\n")
+                print("=============================================\n")
 
                 self.scanForAudioFiles()
                 self.launchDSSPlayer()
@@ -1206,8 +1375,10 @@ class SDCardManager: ObservableObject {
     }
 
     // MARK: - SD Card Validation
+    /// Validates if the disk is an Olympus voice recorder SD card
+    /// Only accepts SD cards with Olympus recorder folder structure or audio files
     private func isValidSDCard(description: [String: Any]) -> Bool {
-        // Check if media is removable (USB drives, SD cards, etc.)
+        // Check if media is removable
         guard let removable = description[kDADiskDescriptionMediaRemovableKey as String] as? Bool,
             removable
         else {
@@ -1223,17 +1394,9 @@ class SDCardManager: ObservableObject {
                 print("🔍 Disk is a disk image or virtual device, skipping")
                 return false
             }
-        }
-
-        // Check BSD name - disk images are typically disk2+, while real SD cards are usually disk2s2 or similar
-        // Disk images: disk6, disk8, etc.
-        // Real media: disk2s1, disk4s2, etc. (with partition numbers)
-        if let bsdName = description[kDADiskDescriptionMediaBSDNameKey as String] as? String {
-            // Pattern: "diskN" without partition number is usually a disk image
-            // Real media has partition numbers: "diskNsM"
-            let diskImagePattern = "^disk[0-9]+$"
-            if bsdName.range(of: diskImagePattern, options: .regularExpression) != nil {
-                print("🔍 BSD name pattern suggests disk image (\(bsdName)), skipping")
+            // Exclude Apple File Conduit (AFC) - used by iPods/iPhones
+            if deviceProtocol == "Apple File Conduit" || deviceProtocol == "AFC" {
+                print("🔍 Disk is an Apple device (AFC protocol), skipping")
                 return false
             }
         }
@@ -1246,21 +1409,46 @@ class SDCardManager: ObservableObject {
             }
         }
 
-        // Check volume name to skip installers
-        if let volumeName = description[kDADiskDescriptionVolumeNameKey as String] as? String {
-            let installerKeywords = [
-                "installer", "dmg", "player", "setup", "install", "wacom", "driver", "pkg",
-            ]
-            let volumeLower = volumeName.lowercased()
-            if installerKeywords.contains(where: { volumeLower.contains($0) }) {
-                print("🔍 Volume name suggests disk image (\(volumeName)), skipping")
-                return false
+        // Note: Final validation for Olympus content happens in waitForVolumeMount
+        // after the volume path is available
+        print("🔍 Removable media detected, will verify Olympus content after mount...")
+        return true
+    }
+
+    /// Check if the mounted volume contains Olympus voice recorder content
+    private func isOlympusRecorderMedia(at path: String) -> Bool {
+        let fileManager = FileManager.default
+
+        // Check for Olympus-specific folder structures
+        let olympusFolders = [
+            "RECORDER",      // Common Olympus folder
+            "DSS_FLDR",      // DSS files folder
+            "DICT",          // Dictation folder
+            "MUSIC",         // Some Olympus recorders use this
+            "OLYMPUS",       // Olympus brand folder
+        ]
+
+        for folder in olympusFolders {
+            let folderPath = (path as NSString).appendingPathComponent(folder)
+            if fileManager.fileExists(atPath: folderPath) {
+                print("✅ Found Olympus folder: \(folder)")
+                return true
             }
         }
 
-        // Accept physical removable media only
-        print("✅ Valid removable media detected")
-        return true
+        // Check for DSS/DS2 audio files (Olympus proprietary formats)
+        if let enumerator = fileManager.enumerator(atPath: path) {
+            for case let file as String in enumerator {
+                let ext = (file as NSString).pathExtension.lowercased()
+                if ext == "dss" || ext == "ds2" {
+                    print("✅ Found Olympus audio file: \(file)")
+                    return true
+                }
+            }
+        }
+
+        print("🔍 No Olympus content found at: \(path)")
+        return false
     }
 
     // MARK: - Audio File Scanning
@@ -1551,15 +1739,104 @@ struct FolderItem: Identifiable {
 // MARK: - Folder Manager
 class FolderManager: ObservableObject {
     @Published var folderStructure: [FolderItem] = []
+    @Published var rootRecordings: [RecordingItem] = []
     private let baseURL: URL
+
+    // File system monitoring
+    private var fileDescriptors: [Int32] = []
+    private var dispatchSources: [DispatchSourceFileSystemObject] = []
+    private var reloadWorkItem: DispatchWorkItem?
 
     init(basePath: String) {
         self.baseURL = URL(fileURLWithPath: basePath)
         loadFolderStructure()
+        startWatchingFolders()
+    }
+
+    deinit {
+        stopWatchingFolders()
+    }
+
+    /// Start monitoring the base folder and all subfolders for changes
+    private func startWatchingFolders() {
+        // Watch the base folder
+        watchFolder(at: baseURL.path)
+
+        // Watch all subfolders
+        let fileManager = FileManager.default
+        if let items = try? fileManager.contentsOfDirectory(
+            at: baseURL, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles])
+        {
+            for item in items {
+                let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                if isDirectory {
+                    watchFolder(at: item.path)
+                }
+            }
+        }
+        print("👁️ Watching \(dispatchSources.count) folders for changes")
+    }
+
+    /// Watch a single folder for changes
+    private func watchFolder(at path: String) {
+        let fd = open(path, O_EVTONLY)
+        guard fd >= 0 else {
+            print("⚠️ Could not open folder for monitoring: \(path)")
+            return
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
+            queue: DispatchQueue.main
+        )
+
+        source.setEventHandler { [weak self] in
+            self?.scheduleReload()
+        }
+
+        source.setCancelHandler {
+            close(fd)
+        }
+
+        fileDescriptors.append(fd)
+        dispatchSources.append(source)
+        source.resume()
+    }
+
+    /// Debounced reload to handle rapid file system changes
+    private func scheduleReload() {
+        reloadWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            print("📁 Folder structure changed, reloading...")
+            self?.loadFolderStructure()
+            // Also reload the shared RecordingsManager
+            RecordingsManager.shared.loadRecordings()
+        }
+        reloadWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
+    }
+
+    /// Stop monitoring all folders
+    private func stopWatchingFolders() {
+        for source in dispatchSources {
+            source.cancel()
+        }
+        dispatchSources.removeAll()
+        fileDescriptors.removeAll()
+        reloadWorkItem?.cancel()
+    }
+
+    /// Refresh watchers when folder structure changes (e.g., new folder created)
+    private func refreshWatchers() {
+        stopWatchingFolders()
+        startWatchingFolders()
     }
 
     func loadFolderStructure() {
         let fileManager = FileManager.default
+        let previousFolderCount = folderStructure.count
 
         // Get all items in lydfiler folder
         guard
@@ -1571,7 +1848,7 @@ class FolderManager: ObservableObject {
         }
 
         var folders: [FolderItem] = []
-        var rootRecordings: [RecordingItem] = []
+        var newRootRecordings: [RecordingItem] = []
 
         for item in items {
             let isDirectory =
@@ -1589,17 +1866,26 @@ class FolderManager: ObservableObject {
                 || item.pathExtension == "wav"
             {
                 if let recording = createRecordingItem(from: item) {
-                    rootRecordings.append(recording)
+                    newRootRecordings.append(recording)
                 }
             }
         }
 
-        // Create root level structure
-        folderStructure = folders
+        // Sort folders alphabetically
+        folders.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
-        // If there are root-level recordings, add them to the structure
-        if !rootRecordings.isEmpty {
-            // We'll handle root recordings separately in the UI
+        // Sort root recordings by date, newest first
+        newRootRecordings.sort { $0.date > $1.date }
+
+        // Update published properties
+        folderStructure = folders
+        rootRecordings = newRootRecordings
+
+        print("📁 Loaded \(folders.count) folders, \(newRootRecordings.count) root recordings")
+
+        // If folder count changed, refresh watchers to include new folders
+        if folders.count != previousFolderCount {
+            refreshWatchers()
         }
     }
 
@@ -1629,11 +1915,19 @@ class FolderManager: ObservableObject {
         let size = attrs[.size] as? Int64 ?? 0
         let date = attrs[.modificationDate] as? Date ?? Date()
 
+        // Calculate audio duration synchronously for simplicity
+        var audioDuration: TimeInterval = 0
+        let asset = AVURLAsset(url: url)
+        if let track = asset.tracks(withMediaType: .audio).first {
+            audioDuration = CMTimeGetSeconds(track.timeRange.duration)
+        }
+
         return RecordingItem(
             filename: url.lastPathComponent,
             path: url.path,
             date: date,
-            size: size
+            size: size,
+            duration: audioDuration.isNaN ? 0 : audioDuration
         )
     }
 
@@ -1666,59 +1960,67 @@ class FolderManager: ObservableObject {
 
 // MARK: - Folder Tree View
 struct FolderTreeView: View {
-    @State var folder: FolderItem
+    let folderPath: String
     @ObservedObject var audioPlayer: AudioPlayer
     @ObservedObject var recordingsManager: RecordingsManager
     @ObservedObject var folderManager: FolderManager
     @State private var isHovering = false
+    @State private var isExpanded = false
+
+    // Get the current folder data from folderManager (always up-to-date)
+    private var folder: FolderItem? {
+        folderManager.folderStructure.first { $0.path == folderPath }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Folder row
-            HStack(spacing: 8) {
-                Button(action: { folder.isExpanded.toggle() }) {
-                    Image(systemName: folder.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+        if let folder = folder {
+            VStack(spacing: 0) {
+                // Folder row
+                HStack(spacing: 8) {
+                    Button(action: { isExpanded.toggle() }) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 16, height: 16)
+                    }
+                    .buttonStyle(.plain)
+
+                    Image(systemName: isExpanded ? "folder.fill" : "folder")
+                        .font(.system(size: 14))
+                        .foregroundColor(.blue)
+
+                    Text(folder.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isHovering ? .white : .primary)
+
+                    Spacer()
+
+                    Text("\(folder.recordings.count)")
+                        .font(.system(size: 10, weight: .light))
                         .foregroundColor(.secondary)
-                        .frame(width: 16, height: 16)
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(isHovering ? Color.blue.opacity(0.2) : Color.clear)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    isHovering = hovering
+                }
 
-                Image(systemName: folder.isExpanded ? "folder.fill" : "folder")
-                    .font(.system(size: 14))
-                    .foregroundColor(.blue)
+                // Expanded recordings
+                if isExpanded {
+                    ForEach(folder.recordings) { recording in
+                        HStack(spacing: 8) {
+                            Spacer()
+                                .frame(width: 28)  // Indent for nested items
 
-                Text(folder.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(isHovering ? .white : .primary)
-
-                Spacer()
-
-                Text("\(folder.recordings.count)")
-                    .font(.system(size: 10, weight: .light))
-                    .foregroundColor(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isHovering ? Color.blue.opacity(0.2) : Color.clear)
-            .contentShape(Rectangle())
-            .onHover { hovering in
-                isHovering = hovering
-            }
-
-            // Expanded recordings
-            if folder.isExpanded {
-                ForEach(folder.recordings) { recording in
-                    HStack(spacing: 8) {
-                        Spacer()
-                            .frame(width: 28)  // Indent for nested items
-
-                        RecordingRowView(
-                            recording: recording,
-                            isPlaying: audioPlayer.currentPlayingFile == recording.filename,
-                            audioPlayer: audioPlayer,
-                            recordingsManager: recordingsManager
-                        )
+                            RecordingRowView(
+                                recording: recording,
+                                isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                                audioPlayer: audioPlayer,
+                                recordingsManager: recordingsManager
+                            )
+                        }
                     }
                 }
             }
@@ -1739,7 +2041,7 @@ struct NewFolderDialog: View {
 
             TextField("Folder name", text: $folderName)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 300)
+                .frame(width: 315)
 
             HStack(spacing: 12) {
                 Button("Cancel") {
@@ -1794,7 +2096,7 @@ struct RecordingsSidebar: View {
                         // Show folders first
                         ForEach(folderManager.folderStructure) { folder in
                             FolderTreeView(
-                                folder: folder,
+                                folderPath: folder.path,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager,
                                 folderManager: folderManager
@@ -1991,80 +2293,79 @@ struct RecordingRowView: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Play button
-            Button(action: {
-                let url = URL(fileURLWithPath: recording.path)
-                if isPlaying {
-                    audioPlayer.togglePlayPause()
-                } else {
-                    audioPlayer.play(url: url)
-                }
-            }) {
-                Image(systemName: isPlaying && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 12, weight: .light))
-                    .foregroundColor(isHovering ? .white : (isPlaying ? .blue : .primary))
-                    .frame(width: 24, height: 24)
-            }
-            .buttonStyle(.plain)
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                case .ended:
-                    DispatchQueue.main.async { NSCursor.arrow.set() }
-                }
-            }
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                // Play button - using IconButton style
+                IconButton(
+                    action: {
+                        let url = URL(fileURLWithPath: recording.path)
+                        if isPlaying {
+                            audioPlayer.togglePlayPause()
+                        } else {
+                            audioPlayer.play(url: url)
+                        }
+                    },
+                    icon: isPlaying && audioPlayer.isPlaying ? "pause.fill" : "play.fill",
+                    color: isHovering ? .white : (isPlaying ? .blue : .primary)
+                )
 
-            // Recording info
-            VStack(alignment: .leading, spacing: 3) {
-                Text(recording.filename)
-                    .font(.system(size: 12, weight: .regular))
-                    .lineLimit(1)
-                    .foregroundColor(isHovering ? .white : (isPlaying ? .blue : .primary))
+                // Recording info - left side
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(recording.filename)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                        .foregroundColor(isHovering ? .white : (isPlaying ? .blue : .primary))
 
-                HStack(spacing: 6) {
                     Text(recording.formattedDate)
                         .font(.system(size: 10, weight: .light))
-                    Text("•")
-                        .font(.system(size: 8))
-                    Text(recording.formattedSize)
-                        .font(.system(size: 10, weight: .light))
+                        .foregroundColor(isHovering ? .white.opacity(0.8) : .secondary)
                 }
-                .foregroundColor(isHovering ? .white.opacity(0.8) : .secondary)
-            }
 
-            Spacer()
+                Spacer()
 
-            // Transcribe button
-            IconButton(
-                action: { openInJOJO() },
-                icon: "doc.text",
-                color: isHovering ? .white : .blue
-            )
+                // Right side - icons on top, duration below
+                VStack(alignment: .trailing, spacing: 4) {
+                    HStack(spacing: 8) {
+                        // Transcribe button
+                        IconButton(
+                            action: { openInJOJO() },
+                            icon: "doc.text",
+                            color: isHovering ? .white : .blue
+                        )
 
-            // Delete button
-            IconButton(
-                action: { showDeleteConfirm = true },
-                icon: "trash",
-                color: isHovering ? .white : .red.opacity(0.8)
-            )
-            .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    if isPlaying {
-                        audioPlayer.stop()
+                        // Delete button
+                        IconButton(
+                            action: { showDeleteConfirm = true },
+                            icon: "trash",
+                            color: isHovering ? .white : .red.opacity(0.8)
+                        )
                     }
-                    recordingsManager.deleteRecording(recording)
+
+                    Text(recording.formattedDuration)
+                        .font(.system(size: 10, weight: .light))
+                        .foregroundColor(isHovering ? .white.opacity(0.8) : .secondary)
                 }
-            } message: {
-                Text("Are you sure you want to delete \(recording.filename)?")
+                .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Delete", role: .destructive) {
+                        if isPlaying {
+                            audioPlayer.stop()
+                        }
+                        recordingsManager.deleteRecording(recording)
+                    }
+                } message: {
+                    Text("Are you sure you want to delete \(recording.filename)?")
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(isHovering ? Color.blue : (isPlaying ? Color.blue.opacity(0.05) : Color.clear))
+            .contentShape(Rectangle())
+
+            // Separator line
+            Divider()
+                .background(Color.gray.opacity(0.3))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(isHovering ? Color.blue : (isPlaying ? Color.blue.opacity(0.05) : Color.clear))
-        .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
         }
@@ -2161,7 +2462,6 @@ struct ScrollingWaveformView: View {
                 }
 
                 // Show waveform history (most recent on right)
-                let startIndex = max(0, waveformHistory.count - visibleBars)
                 let visibleHistory = Array(waveformHistory.suffix(visibleBars))
 
                 ForEach(Array(visibleHistory.enumerated()), id: \.offset) { index, level in
@@ -2184,6 +2484,110 @@ struct ScrollingWaveformView: View {
     }
 }
 
+// MARK: - Recording Name Dialog
+struct RecordingNameDialog: View {
+    @Binding var recordingName: String
+    let duration: TimeInterval
+    let onSave: () -> Void
+    let onDiscard: () -> Void
+    @FocusState private var isTextFieldFocused: Bool
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(spacing: 8) {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 48, weight: .light))
+                    .foregroundColor(NAVColors.blue)
+
+                Text("Name Your Recording")
+                    .font(.system(size: 20, weight: .semibold))
+
+                Text("Duration: \(formatDuration(duration))")
+                    .font(.system(size: 14, weight: .light))
+                    .foregroundColor(.secondary)
+            }
+
+            // Filename input
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Recording name")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+
+                TextField("e.g., Interview with participant", text: $recordingName)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 14))
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        onSave()
+                    }
+
+                Text("Timestamp will be added automatically")
+                    .font(.system(size: 11, weight: .light))
+                    .foregroundColor(.secondary)
+            }
+
+            // Preview
+            if !recordingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack {
+                    Text("Preview:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Text("\(recordingName.trimmingCharacters(in: .whitespacesAndNewlines))_\(previewTimestamp()).m4a")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundColor(.primary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(6)
+            }
+
+            // Buttons
+            HStack(spacing: 16) {
+                Button(action: onDiscard) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                        Text("Discard")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+
+                Button(action: onSave) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                        Text("Save")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(NAVColors.blue)
+            }
+        }
+        .padding(32)
+        .frame(width: 400)
+        .onAppear {
+            isTextFieldFocused = true
+        }
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func previewTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return formatter.string(from: Date())
+    }
+}
+
 // MARK: - Recording View
 struct RecordingView: View {
     @ObservedObject var recorder: AudioRecorder
@@ -2193,10 +2597,25 @@ struct RecordingView: View {
     @Binding var isShowing: Bool
     @State private var microphoneVerified = false
     @State private var verificationTimer: Timer?
+    @State private var recordingName = ""  // User-entered filename
 
     var body: some View {
         // Main recording area (sidebar is now global in MainView)
         mainRecordingView
+            .sheet(isPresented: $recorder.showNamingDialog) {
+                RecordingNameDialog(
+                    recordingName: $recordingName,
+                    duration: recorder.recordingDuration,
+                    onSave: {
+                        recorder.saveRecordingWithName(recordingName)
+                        recordingName = ""  // Reset for next recording
+                    },
+                    onDiscard: {
+                        recorder.cancelPendingRecording()
+                        recordingName = ""
+                    }
+                )
+            }
             .onAppear {
                 recordingsManager.loadRecordings()
                 // Start audio monitoring to show waveform visualization
@@ -2732,7 +3151,7 @@ struct SidebarPanelContent: View {
             }
             .padding()
         }
-        .frame(width: 300, alignment: .leading)
+        .frame(width: 315, alignment: .leading)
         .background(NAVColors.bgDefault)
     }
 }
@@ -2803,7 +3222,7 @@ struct MainView: View {
                     openURL: openURL,
                     uploadToTeams: uploadToTeams
                 )
-                .frame(width: 300)
+                .frame(width: 315)
                 .transition(.move(edge: .leading))
 
                 Divider()

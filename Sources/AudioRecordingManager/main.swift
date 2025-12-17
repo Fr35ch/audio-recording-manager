@@ -2909,6 +2909,28 @@ struct AboutView: View {
                         Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                             .font(.headline)
                             .foregroundColor(.secondary)
+
+                        Button(action: {
+                            if let url = URL(string: "https://github.com/Fr35ch/audio-recording-manager/releases") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.up.right.square")
+                                    .font(.system(size: 12))
+                                Text("View Release Notes")
+                                    .font(.system(size: 13))
+                            }
+                            .foregroundColor(NAVColors.blue)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hovering in
+                            if hovering {
+                                NSCursor.pointingHand.push()
+                            } else {
+                                NSCursor.pop()
+                            }
+                        }
                     }
 
                     Divider()

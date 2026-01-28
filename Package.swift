@@ -25,7 +25,8 @@ let package = Package(
         .target(
             name: "AudioRecordingManagerLib",
             dependencies: [],
-            path: "Sources/AudioRecordingManagerLib"
+            path: "Sources/AudioRecordingManagerLib",
+            exclude: ["DS2/README.md"]
         ),
         // Test target
         .testTarget(

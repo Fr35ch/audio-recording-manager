@@ -60,9 +60,10 @@ struct VirginProjectApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App delegate did finish launching")
-        // Simplify for now to avoid crashes
-        // createRequiredDesktopFolders()
-        // NetworkManager.shared.disableAllConnections()
+        // Auto-install no-transcribe in the background if not already present
+        Task {
+            await TranscriptionService.shared.setupIfNeeded()
+        }
     }
 
     private func createRequiredDesktopFolders() {
@@ -598,6 +599,7 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     @Published var isPlaying = false
     @Published var currentPlayingFile: String?
+    @Published var currentPlayingURL: URL?
     @Published var playbackProgress: Double = 0
     @Published var duration: TimeInterval = 0
 
@@ -622,6 +624,7 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 player.play()
                 isPlaying = true
                 currentPlayingFile = url.lastPathComponent
+                currentPlayingURL = url
                 startProgressTimer()
                 print("▶️ Playing: \(url.lastPathComponent)")
             }
@@ -635,6 +638,7 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
         audioPlayer = nil
         isPlaying = false
         currentPlayingFile = nil
+        currentPlayingURL = nil
         playbackProgress = 0
         stopProgressTimer()
     }
@@ -647,19 +651,37 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
             isPlaying = false
             stopProgressTimer()
         } else {
-            // Restart from the beginning
-            player.currentTime = 0
             player.play()
             isPlaying = true
-            playbackProgress = 0
+            startProgressTimer()
+        }
+    }
+
+    /// Seek to a specific position (0.0 – 1.0 progress fraction).
+    func seek(to progress: Double) {
+        guard let player = audioPlayer else { return }
+        let clamped = max(0, min(1, progress))
+        player.currentTime = clamped * player.duration
+        playbackProgress = clamped
+    }
+
+    /// Restart playback from the beginning.
+    func restart() {
+        guard let player = audioPlayer else { return }
+        player.currentTime = 0
+        playbackProgress = 0
+        if !player.isPlaying {
+            player.play()
+            isPlaying = true
             startProgressTimer()
         }
     }
 
     private func startProgressTimer() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) {
             [weak self] _ in
             guard let self = self, let player = self.audioPlayer else { return }
+            guard player.duration > 0 else { return }
             self.playbackProgress = player.currentTime / player.duration
         }
     }
@@ -674,6 +696,7 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         isPlaying = false
         currentPlayingFile = nil
+        currentPlayingURL = nil
         playbackProgress = 0
         stopProgressTimer()
     }
@@ -1821,7 +1844,7 @@ struct FolderTreeView: View {
 
                             RecordingRowView(
                                 recording: recording,
-                                isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager
                             )
@@ -2160,7 +2183,7 @@ struct RecordingsNativeView: View {
                         ForEach(folder.recordings) { recording in
                             RecordingListRow(
                                 recording: recording,
-                                isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager
                             )
@@ -2181,7 +2204,7 @@ struct RecordingsNativeView: View {
                     ForEach(rootRecordings) { recording in
                         RecordingListRow(
                             recording: recording,
-                            isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                            isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
                             audioPlayer: audioPlayer,
                             recordingsManager: recordingsManager
                         )
@@ -2222,7 +2245,6 @@ private struct RecordingListRow: View {
     @ObservedObject var audioPlayer: AudioPlayer
     @ObservedObject var recordingsManager: RecordingsManager
     @State private var showDeleteConfirm = false
-    @State private var showDetailView = false
     @State private var isHovering = false
 
     var body: some View {
@@ -2266,15 +2288,9 @@ private struct RecordingListRow: View {
             Divider()
 
             Button {
-                openInJOJO()
-            } label: {
-                Label("Open in JOJO Transcribe", systemImage: "doc.text")
-            }
-
-            Button {
                 NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
             } label: {
-                Label("Reveal in Finder", systemImage: "folder")
+                Label("Vis i Finder", systemImage: "folder")
             }
 
             Divider()
@@ -2282,43 +2298,18 @@ private struct RecordingListRow: View {
             Button(role: .destructive) {
                 showDeleteConfirm = true
             } label: {
-                Label("Delete", systemImage: "trash")
-            }
-
-            Button {
-                showDetailView = true
-            } label: {
-                Label("Transkripsjon og anonymisering", systemImage: "shield.lefthalf.filled")
+                Label("Slett", systemImage: "trash")
             }
         }
-        .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                if isPlaying {
-                    audioPlayer.stop()
-                }
+        .alert("Slett opptak?", isPresented: $showDeleteConfirm) {
+            Button("Avbryt", role: .cancel) {}
+            Button("Slett", role: .destructive) {
+                if isPlaying { audioPlayer.stop() }
                 recordingsManager.deleteRecording(recording)
             }
         } message: {
-            Text("Are you sure you want to delete \(recording.filename)?")
+            Text("Er du sikker på at du vil slette \(recording.filename)?")
         }
-        .sheet(isPresented: $showDetailView) {
-            RecordingDetailView(recording: recording, onDismiss: { showDetailView = false })
-        }
-    }
-
-    private func openInJOJO() {
-        guard FileManager.default.fileExists(atPath: recording.path) else { return }
-
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-a", "Jojo", recording.path]
-
-        try? task.run()
-        task.waitUntilExit()
-
-        let folderURL = URL(fileURLWithPath: recording.path).deletingLastPathComponent()
-        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: folderURL.path)
     }
 }
 
@@ -2328,24 +2319,33 @@ private struct RecordingPlayerNative: View {
     let recording: RecordingItem
     @ObservedObject var audioPlayer: AudioPlayer
 
+    // Transcription
+    @ObservedObject private var transcriptionService = TranscriptionService.shared
+    @State private var transcriptionTask: Task<Void, Never>?
+    @State private var transcriptionResult: TranscriptionResult?
+    @State private var transcriptionError: TranscriptionError?
+    @State private var isTranscribing = false
+    @State private var showTranscriptionResult = false
+    @AppStorage("transcription.defaultModel")    private var defaultModelRaw = TranscriptionModel.large.rawValue
+    @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
+    @AppStorage("transcription.verbatim")        private var verbatim = false
+    @AppStorage("transcription.language")        private var language = "no"
+
     private var isCurrentFile: Bool {
-        audioPlayer.currentPlayingFile == recording.filename
+        audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
     }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // Hero section with icon and controls
+                // Hero section
                 VStack(spacing: 32) {
-                    Spacer()
-                        .frame(height: 60)
+                    Spacer().frame(height: 60)
 
-                    // Large animated waveform icon
                     ZStack {
                         Circle()
                             .fill(.blue.opacity(0.1))
                             .frame(width: 160, height: 160)
-
                         Image(systemName: "waveform")
                             .font(.system(size: 64, weight: .light))
                             .symbolEffect(.variableColor.iterative.reversing, isActive: isCurrentFile && audioPlayer.isPlaying)
@@ -2364,7 +2364,7 @@ private struct RecordingPlayerNative: View {
                         HStack(spacing: 12) {
                             Image(systemName: isCurrentFile && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.title2)
-                            Text(isCurrentFile && audioPlayer.isPlaying ? "Pause" : "Play")
+                            Text(isCurrentFile && audioPlayer.isPlaying ? "Pause" : "Spill av")
                                 .font(.title3.weight(.semibold))
                         }
                         .frame(minWidth: 200)
@@ -2374,13 +2374,11 @@ private struct RecordingPlayerNative: View {
                     .controlSize(.large)
                     .tint(.blue)
 
-                    // Progress bar (only when this recording is active)
                     if isCurrentFile {
                         VStack(spacing: 12) {
                             ProgressView(value: audioPlayer.playbackProgress)
                                 .tint(.blue)
                                 .padding(.horizontal, 40)
-
                             HStack {
                                 Text(formattedTime(audioPlayer.playbackProgress * audioPlayer.duration))
                                     .font(.caption.monospacedDigit())
@@ -2395,16 +2393,13 @@ private struct RecordingPlayerNative: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
-                    Spacer()
-                        .frame(height: 40)
+                    Spacer().frame(height: 40)
                 }
                 .frame(maxWidth: .infinity)
                 .padding()
 
-                Divider()
-                    .padding(.horizontal)
+                Divider().padding(.horizontal)
 
-                // Info section
                 Form {
                     Section("Fil informasjon") {
                         LabeledContent("Filnavn") {
@@ -2412,32 +2407,20 @@ private struct RecordingPlayerNative: View {
                                 .font(.body.monospaced())
                                 .textSelection(.enabled)
                         }
-
-                        LabeledContent("Dato") {
-                            Text(recording.formattedDate)
-                        }
-
+                        LabeledContent("Dato") { Text(recording.formattedDate) }
                         LabeledContent("Varighet") {
-                            Text(recording.formattedDuration)
-                                .font(.body.monospacedDigit())
+                            Text(recording.formattedDuration).font(.body.monospacedDigit())
                         }
-
-                        LabeledContent("Størrelse") {
-                            Text(recording.formattedSize)
-                        }
+                        LabeledContent("Størrelse") { Text(recording.formattedSize) }
                     }
+
+                    transcriptionSection
 
                     Section("Handlinger") {
                         Button {
                             NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
                         } label: {
                             Label("Vis i Finder", systemImage: "folder")
-                        }
-
-                        Button {
-                            openInJOJO()
-                        } label: {
-                            Label("Åpne i JOJO Transcribe", systemImage: "doc.text")
                         }
                     }
                 }
@@ -2454,20 +2437,10 @@ private struct RecordingPlayerNative: View {
                     } label: {
                         Label("Vis i Finder", systemImage: "folder")
                     }
-
-                    Button {
-                        openInJOJO()
-                    } label: {
-                        Label("Åpne i JOJO Transcribe", systemImage: "doc.text")
-                    }
-
                     Divider()
-
                     Button {
-                        if let url = URL(string: recording.path) {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(url.path, forType: .string)
-                        }
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(recording.path, forType: .string)
                     } label: {
                         Label("Kopier filbane", systemImage: "doc.on.doc")
                     }
@@ -2476,25 +2449,179 @@ private struct RecordingPlayerNative: View {
                 }
             }
         }
+        .sheet(isPresented: $showTranscriptionResult) {
+            if let result = transcriptionResult {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Transkripsjon")
+                            .font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        Button("Lukk") { showTranscriptionResult = false }
+                            .keyboardShortcut(.cancelAction)
+                            .buttonStyle(.bordered)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    Divider()
+                    TranscriptionResultView(result: result)
+                }
+                .frame(width: 680, height: 560)
+                .background(.ultraThinMaterial)
+            }
+        }
+        .onDisappear {
+            transcriptionTask?.cancel()
+            TranscriptionService.shared.cancel()
+        }
+    }
+
+    // MARK: - Transcription section
+
+    @ViewBuilder
+    private var transcriptionSection: some View {
+        Section("Transkripsjon") {
+            if isTranscribing {
+                // In progress
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.75)
+                    Text(transcriptionService.stage.displayName.isEmpty
+                         ? "Forbereder..."
+                         : transcriptionService.stage.displayName)
+                        .font(.body)
+                        .animation(.default, value: transcriptionService.stage.displayName)
+                }
+                if transcriptionService.progress > 0 {
+                    ProgressView(value: transcriptionService.progress)
+                        .animation(.easeInOut(duration: 0.4), value: transcriptionService.progress)
+                }
+                Button("Avbryt", role: .destructive, action: cancelTranscription)
+            } else if let result = transcriptionResult {
+                // Completed
+                Label {
+                    Text("Ferdig — \(result.segments.count) segmenter, \(result.numSpeakers) taler\(result.numSpeakers == 1 ? "" : "e")")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+                Button {
+                    showTranscriptionResult = true
+                } label: {
+                    Label("Vis transkripsjon", systemImage: "list.bullet.rectangle")
+                }
+                Button {
+                    startTranscription()
+                } label: {
+                    Label("Transkriber på nytt", systemImage: "arrow.counterclockwise")
+                }
+            } else if let error = transcriptionError {
+                // Failed
+                Label {
+                    Text("Feil: \(error.errorDescription ?? "Ukjent feil")")
+                        .foregroundStyle(.red)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                }
+                Button("Prøv igjen", action: startTranscription)
+            } else {
+                // Not started
+                if transcriptionService.isInstalled {
+                    Button {
+                        startTranscription()
+                    } label: {
+                        Label("Transkriber med NB-Whisper", systemImage: "waveform.and.mic")
+                    }
+                    let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
+                    Text("Modell: \(model.displayName) · \(defaultSpeakers) taler\(defaultSpeakers == 1 ? "" : "e")")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if transcriptionService.isSettingUp {
+                    HStack(spacing: 8) {
+                        ProgressView().progressViewStyle(.circular).scaleEffect(0.75)
+                        Text("Setter opp transkripsjon…")
+                    }
+                    let stageDesc = transcriptionService.setupStageDescription
+                    Text(stageDesc.isEmpty
+                         ? "Første gangs installasjon tar 5–15 min (torch ~2 GB)."
+                         : stageDesc)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let err = transcriptionService.setupError {
+                    Label("Oppsett feilet", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Prøv igjen") {
+                        Task { await TranscriptionService.shared.setupIfNeeded() }
+                    }
+                } else {
+                    // setupIfNeeded() har ikke kjørt ennå (f.eks. første gang etter cold start)
+                    HStack(spacing: 8) {
+                        ProgressView().progressViewStyle(.circular).scaleEffect(0.75)
+                        Text("Setter opp transkripsjon…")
+                    }
+                    Text("Starter oppsett. Vennligst vent.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .onAppear {
+                            Task { await TranscriptionService.shared.setupIfNeeded() }
+                        }
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func startTranscription() {
+        let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
+        let audioURL = URL(fileURLWithPath: recording.path)
+
+        transcriptionTask?.cancel()
+        transcriptionError = nil
+        isTranscribing = true
+
+        transcriptionTask = Task { @MainActor in
+            do {
+                let result = try await TranscriptionService.shared.transcribe(
+                    audioFile: audioURL,
+                    speakers: defaultSpeakers,
+                    model: model,
+                    verbatim: verbatim,
+                    language: language
+                )
+                guard !Task.isCancelled else { return }
+                transcriptionResult = result
+                isTranscribing = false
+                // Persist plain-text transcript for anonymization
+                let plainText = result.segments
+                    .map { $0.text.trimmingCharacters(in: .whitespaces) }
+                    .joined(separator: "\n\n")
+                RecordingMetadataManager.shared.setOriginalTranscript(plainText, for: recording.path)
+            } catch let error as TranscriptionError {
+                guard !Task.isCancelled else { return }
+                transcriptionError = error
+                isTranscribing = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                transcriptionError = .processFailed(error.localizedDescription)
+                isTranscribing = false
+            }
+        }
+    }
+
+    private func cancelTranscription() {
+        transcriptionTask?.cancel()
+        TranscriptionService.shared.cancel()
+        isTranscribing = false
     }
 
     private func formattedTime(_ seconds: TimeInterval) -> String {
         let s = max(0, Int(seconds))
         return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    private func openInJOJO() {
-        guard FileManager.default.fileExists(atPath: recording.path) else { return }
-
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-a", "Jojo", recording.path]
-
-        try? task.run()
-        task.waitUntilExit()
-
-        let folderURL = URL(fileURLWithPath: recording.path).deletingLastPathComponent()
-        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: folderURL.path)
     }
 }
 
@@ -2544,7 +2671,7 @@ struct RecordingsSidebar: View {
                         ForEach(rootRecordings) { recording in
                             RecordingRowView(
                                 recording: recording,
-                                isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager,
                                 isSelected: selectedRecording?.id == recording.id,
@@ -2615,7 +2742,6 @@ struct RecordingRowView: View {
     var isSelected: Bool = false
     var onSelect: (() -> Void)? = nil
     @State private var showDeleteConfirm = false
-    @State private var showDetailView = false
     @State private var isHovering = false
 
     var body: some View {
@@ -2662,16 +2788,14 @@ struct RecordingRowView: View {
             case .ended: DispatchQueue.main.async { NSCursor.arrow.set() }
             }
         }
-        .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Delete", role: .destructive) {
-                if isPlaying {
-                    audioPlayer.stop()
-                }
+        .alert("Slett opptak?", isPresented: $showDeleteConfirm) {
+            Button("Avbryt", role: .cancel) {}
+            Button("Slett", role: .destructive) {
+                if isPlaying { audioPlayer.stop() }
                 recordingsManager.deleteRecording(recording)
             }
         } message: {
-            Text("Are you sure you want to delete \(recording.filename)?")
+            Text("Er du sikker på at du vil slette \(recording.filename)?")
         }
         .contextMenu {
             Button(action: {
@@ -2682,40 +2806,22 @@ struct RecordingRowView: View {
                     audioPlayer.play(url: url)
                 }
             }) {
-                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+                Label(isPlaying ? "Pause" : "Spill av", systemImage: isPlaying ? "pause.fill" : "play.fill")
             }
 
             Divider()
-
-            Button(action: {
-                openInJOJO()
-            }) {
-                Label("Open in JOJO Transcribe", systemImage: "doc.text")
-            }
 
             Button(action: {
                 NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
             }) {
-                Label("Reveal in Finder", systemImage: "folder")
+                Label("Vis i Finder", systemImage: "folder")
             }
 
             Divider()
 
-            Button(
-                role: .destructive,
-                action: {
-                    showDeleteConfirm = true
-                }
-            ) {
-                Label("Delete", systemImage: "trash")
+            Button(role: .destructive, action: { showDeleteConfirm = true }) {
+                Label("Slett", systemImage: "trash")
             }
-
-            Button(action: { showDetailView = true }) {
-                Label("Transkripsjon og anonymisering", systemImage: "shield.lefthalf.filled")
-            }
-        }
-        .sheet(isPresented: $showDetailView) {
-            RecordingDetailView(recording: recording, onDismiss: { showDetailView = false })
         }
     }
 
@@ -2730,41 +2836,6 @@ struct RecordingRowView: View {
     private var iconColor: Color {
         if isSelected { return .white }
         return isPlaying ? AppColors.accent : AppColors.accent.opacity(0.7)
-    }
-
-    // MARK: - Helper Functions
-    func openInJOJO() {
-        // Check if file exists
-        guard FileManager.default.fileExists(atPath: recording.path) else {
-            print("❌ File not found: \(recording.path)")
-            return
-        }
-
-        print("🔍 Preparing JOJO for transcription: \(recording.filename)")
-
-        // JOJO doesn't support programmatic file opening
-        // So we: 1) Launch JOJO with a file to get the main window
-        //        2) Open the lydfiler folder in Finder for easy access
-
-        // Launch JOJO with the file (gets us past welcome screen even if file doesn't open)
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-a", "Jojo", recording.path]
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            print("⚠️ Error launching JOJO: \(error.localizedDescription)")
-        }
-
-        // Open the lydfiler folder in Finder
-        let folderURL = URL(fileURLWithPath: recording.path).deletingLastPathComponent()
-        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: folderURL.path)
-
-        print(
-            "✅ Opened JOJO and lydfiler folder - drag \(recording.filename) into JOJO to transcribe"
-        )
     }
 }
 
@@ -3222,7 +3293,7 @@ struct RecordingPlayerPanel: View {
     @ObservedObject var audioPlayer: AudioPlayer
 
     private var isCurrentFile: Bool {
-        audioPlayer.currentPlayingFile == recording.filename
+        audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
     }
 
     var body: some View {
@@ -3410,10 +3481,10 @@ struct AboutView: View {
                             Text("   Insert SD card with DS2 files from Olympus DS-9500")
                                 .foregroundStyle(.secondary)
 
-                            Text("3. Transcribe")
+                            Text("3. Transkriber")
                                 .fontWeight(.semibold)
                                 .padding(.top, 4)
-                            Text("   Use VG JOJO Transcribe for transcription")
+                            Text("   Velg opptaket og klikk «Transkriber med NB-Whisper»")
                                 .foregroundStyle(.secondary)
 
                             Text("4. Upload to Teams")
@@ -3438,7 +3509,7 @@ struct AboutView: View {
                             Text("• DiskArbitration for SD card detection")
                             Text("• AVFoundation for audio recording")
                             Text("• DSS Player for encrypted DS2 files")
-                            Text("• VG JOJO Transcribe (NB-Whisper)")
+                            Text("• no-transcribe / NB-Whisper (Nasjonalbiblioteket)")
                         }
                         .font(.body)
                         .foregroundStyle(.secondary)
@@ -3473,7 +3544,7 @@ struct AboutView: View {
                                 .fontWeight(.semibold)
                             Text("• NAV Design System (Aksel)")
                             Text("• OM System / Olympus (DSS Player)")
-                            Text("• VG (JOJO Transcribe)")
+                            Text("• Nasjonalbiblioteket (NB-Whisper via no-transcribe)")
                             Text("• National Library of Norway (NB-Whisper)")
                             Text("• OpenAI (Whisper ASR)")
                         }

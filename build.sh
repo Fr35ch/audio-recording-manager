@@ -46,6 +46,14 @@ if [ -d "$XCODE_SDK" ]; then
         -o "$MACOS_DIR/$APP_NAME" \
         Sources/AudioRecordingManager/main.swift \
         Sources/AudioRecordingManager/SVGImageView.swift \
+        Sources/AudioRecordingManager/RecordingMetadata.swift \
+        Sources/AudioRecordingManager/RecordingMetadataManager.swift \
+        Sources/AudioRecordingManager/AnonymizationService.swift \
+        Sources/AudioRecordingManager/AuditLogger.swift \
+        Sources/AudioRecordingManager/RecordingDetailView.swift \
+        Sources/AudioRecordingManager/AnonymizationModal.swift \
+        Sources/AudioRecordingManager/TranscriptManager.swift \
+        Sources/AudioRecordingManager/TranscriptsView.swift \
         -parse-as-library \
         -target arm64-apple-macos15.0 \
         -framework SwiftUI \
@@ -61,6 +69,14 @@ else
         -o "$MACOS_DIR/$APP_NAME" \
         Sources/AudioRecordingManager/main.swift \
         Sources/AudioRecordingManager/SVGImageView.swift \
+        Sources/AudioRecordingManager/RecordingMetadata.swift \
+        Sources/AudioRecordingManager/RecordingMetadataManager.swift \
+        Sources/AudioRecordingManager/AnonymizationService.swift \
+        Sources/AudioRecordingManager/AuditLogger.swift \
+        Sources/AudioRecordingManager/RecordingDetailView.swift \
+        Sources/AudioRecordingManager/AnonymizationModal.swift \
+        Sources/AudioRecordingManager/TranscriptManager.swift \
+        Sources/AudioRecordingManager/TranscriptsView.swift \
         -parse-as-library \
         -target arm64-apple-macos15.0 \
         -framework SwiftUI \

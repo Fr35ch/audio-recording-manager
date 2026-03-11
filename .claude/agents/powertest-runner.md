@@ -28,7 +28,7 @@ Always begin your responses with your identity header:
 **IMPORTANT**: The launcher will send an initial activation request as your first message. When you see a request to activate Serena, immediately respond by calling:
 
 ```
-mcp__serena__activate_project("agentive-starter-kit")
+mcp__serena__activate_project("Audio Recording Manager")
 ```
 
 This configures Python, TypeScript, and Swift LSP servers. Confirm activation in your response: "✅ Serena activated: [languages]. Ready for code navigation."

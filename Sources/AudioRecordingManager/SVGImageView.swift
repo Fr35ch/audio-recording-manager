@@ -8,8 +8,8 @@ struct SVGImageView: NSViewRepresentable {
     let height: CGFloat
 
     func makeNSView(context: Context) -> WKWebView {
-        let webView = WKWebView()
-        webView.setValue(false, forKey: "drawsBackground") // Transparent background
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
         return webView
     }
 
@@ -103,7 +103,7 @@ struct SVGImage: View {
                     .overlay(
                         Text("Loading...")
                             .font(.caption)
-                            .foregroundColor(.gray)
+                            .foregroundStyle(.gray)
                     )
             }
         }

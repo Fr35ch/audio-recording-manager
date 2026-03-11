@@ -9,30 +9,21 @@ let package = Package(
         .macOS(.v14)  // macOS 14 (Sonoma) minimum, Sequoia compatible
     ],
     products: [
-        // Library target for testing (exposes testable types)
-        .library(
-            name: "AudioRecordingManagerLib",
-            targets: ["AudioRecordingManagerLib"]
+        // Executable app
+        .executable(
+            name: "AudioRecordingManager",
+            targets: ["AudioRecordingManager"]
         ),
     ],
     dependencies: [
         // Add dependencies here if needed
     ],
     targets: [
-        // Library target containing testable code
-        // Note: The main app uses build.sh with swiftc for full framework support
-        // This library contains business logic that can be tested independently
-        .target(
-            name: "AudioRecordingManagerLib",
+        // Executable app target (combines all sources)
+        .executableTarget(
+            name: "AudioRecordingManager",
             dependencies: [],
-            path: "Sources/AudioRecordingManagerLib",
-            exclude: ["DS2/README.md"]
-        ),
-        // Test target
-        .testTarget(
-            name: "AudioRecordingManagerTests",
-            dependencies: ["AudioRecordingManagerLib"],
-            path: "Tests/AudioRecordingManagerTests"
+            path: "Sources/AudioRecordingManager"
         ),
     ]
 )

@@ -5,6 +5,120 @@ All notable changes to the Audio Recording Manager (ARM) will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-03-11
+
+### Changed
+- **Upgraded no-anonymizer from v0.4.0 to v0.5.0** — NER backend replaced with HuggingFace BERT
+  - Removed SpaCy dependency (`nb_core_news_lg`) entirely; install is now `pip install "no-anonymizer[ner]"`
+  - BERT model is downloaded automatically from HuggingFace on first use — no separate download step
+  - Removed exit code 2 / `spaCyModelMissing` error path from bridge script and Swift service
+  - Updated error messages and UI to reflect new install instructions
+- **Migrated from NAV Design System to Liquid Glass design** ✅ IMPLEMENTED
+  - Removed NAV Aksel design system (NAVColors, NAVSpacing, NAVRadius)
+  - Introduced modern AppColors, AppSpacing, AppRadius using system colors
+  - All UI components now use native macOS materials (.regularMaterial, .ultraThinMaterial, .thinMaterial)
+  - System colors adapt automatically to light/dark mode
+
+- **Modal windows and dialogs upgraded with Liquid Glass effects** ✅ IMPLEMENTED
+  - NewFolderDialog: Added `.glassEffect(.regular)` with rounded corners
+  - AnonymizationReminderDialog: Glass background with `.ultraThinMaterial` checklist
+  - RecordingNameDialog: Glass effect with material-based preview section
+  - All dialogs use modern `.borderedProminent` and `.bordered` button styles
+
+- **Enhanced sheet presentations with presentation detents** ✅ IMPLEMENTED
+  - SD Card Import: `.presentationDetents([.medium, .large])` with drag indicator
+  - About View: `.presentationDetents([.large])`
+  - New Folder Dialog: `.presentationDetents([.height(250)])` for compact size
+  - Anonymization Dialog: `.presentationDetents([.height(400)])`
+
+- **Button styles modernized with interactive glass effects** ✅ IMPLEMENTED
+  - Replaced NAVPrimaryButtonStyle with GlassButtonStyle
+  - Interactive glass effects respond to hover states
+  - Smooth animations with `.thinMaterial` on hover/press
+  - All buttons use AppColors.accent for consistent theming
+
+- **UI components updated to system design language** ✅ IMPLEMENTED
+  - NavPanel: System colors with glass-effect selection states
+  - RecordingRowView: Modern selection highlighting with AppColors.accentSubtle
+  - RecordingPlayerPanel: Accent colors for play button and progress indicators
+  - SidebarMenuItem: Glass hover effects with `.ultraThinMaterial`
+  - SD Card Detection Banner: Success color (green) with glass-style backgrounds
+  - Recording buttons: Destructive color (red) for stop, glass effects for start
+
+### Added
+- **ContentView wrapper for proper app initialization** ✅ IMPLEMENTED
+  - Added ContentView as entry point wrapping MainView
+  - Window style changed to `.hiddenTitleBar` for modern macOS look
+  - Default window size set to 1200x900 with 700x800 minimum
+  - Full-screen content with `.ignoresSafeArea()`
+
+### Fixed
+- **App launch issue resolved** ✅ IMPLEMENTED
+  - Fixed missing ContentView causing app not to display
+  - Proper window configuration ensures visible launch
+  - Window sizing constraints prevent too-small windows
+
+### Design Philosophy
+- **Native macOS Integration**: Uses system materials, colors, and styles for automatic light/dark mode adaptation
+- **Liquid Glass Throughout**: Interactive glass effects provide depth, polish, and premium feel
+- **Accessibility First**: Better contrast with system colors, proper semantic colors (destructive, success, warning)
+- **Modern Presentation**: Smart sheet sizing with drag indicators and appropriate detents
+- **Interactive Feedback**: Hover states, glass effects, and smooth animations enhance user experience
+
+---
+
+## [1.3.1] - 2026-03-06
+
+### Added
+- **Anonymization confirmation modal** (`AnonymizationModal.swift`): A consent gate shown before every anonymization run
+  - Lists what is automatically identified (names, phone numbers, national ID numbers, email addresses)
+  - Lists what is NOT automatically caught (indirect identifiers, nicknames, small-community geography, incomplete data)
+  - Warning banner emphasising that automatic anonymization is not sufficient alone
+  - Checkbox acknowledgement: "Jeg forstår at teksten må kontrolleres manuelt"
+  - "Fortsett med anonymisering" button disabled until checkbox is ticked
+  - Applies to all three trigger points: initial run, re-run, and retry after error
+
+### Changed
+- **Anonymization section moved above transcript text** in both `RecordingDetailView` and `TranscriptsView` — buttons are now at the top of the panel
+
+---
+
+## [1.3.0] - 2026-03-04
+
+### Added
+- **Transkripsjoner tab**: New top-level tab alongside "Lydopptak" for browsing and managing transcript files
+  - Reads `.txt` files from `~/Desktop/tekstfiler/` (user-agnostic path, works for any user)
+  - Two-panel layout: file list on the left, transcript content + anonymization on the right
+  - Folder is created automatically on first launch
+  - File watching via DispatchSource (live updates when files are added/removed)
+- **Anonymization service** (`AnonymizationService.swift`): calls the `no-anonymizer` Python library via subprocess
+  - Locates `anonymize_bridge.py` in the app bundle Resources
+  - 30-second timeout with graceful cancellation
+  - Login-shell subprocess (`/bin/sh -lc`) so Homebrew/pyenv/conda `python3` is on PATH
+- **Anonymization UI** (states A–D) in both transcript detail and recording detail:
+  - State A: "Anonymiser transkripsjon" button with explanation of what is removed
+  - State B: progress indicator with cancel button
+  - State C: completion date, redaction stats, toggle between original / anonymised text
+  - State D: clear error message; SpaCy model missing shows exact install command
+- **Recording metadata persistence** (`RecordingMetadataManager.swift`): side-car `.metadata.json` files alongside audio/transcript files
+  - `originalTranscript` is immutable after first write (cannot be overwritten)
+  - `anonymizedTranscript`, `anonymizationDate`, `anonymizationStats` updated per anonymization run
+- **Audit log** (`AuditLogger.swift`): append-only JSONL at `~/Desktop/lydfiler/.audit_log.jsonl`
+  - Records timestamp, recording/transcript ID, redaction counts per category, processing time, outcome
+  - Never logs actual text content — counts and metadata only
+- **Filename-based linking**: transcript files auto-linked to recordings with matching stem
+  - e.g. `intervju_20260304.txt` ↔ `intervju_20260304.m4a`
+  - Linked recording shown in transcript detail with "Åpne lydopptak" button
+- **`anonymize_bridge.py`** bundled in `Resources/`: Python bridge script with structured exit codes
+  - Exit 0: success; 2: SpaCy model missing; 3: library not installed
+
+### Changed
+- **MainView** now has a tab bar ("Lydopptak" / "Transkripsjoner") below the native toolbar
+- Toolbar sidebar/folder buttons only visible on the Lydopptak tab
+- `~/Desktop/tekstfiler/` path uses `FileManager.default.urls(for: .desktopDirectory)` — no hardcoded username
+
+---
+
 ## [1.2.0] - 2025-12-15
 
 ### Added

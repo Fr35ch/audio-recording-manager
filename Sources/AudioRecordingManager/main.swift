@@ -8,33 +8,25 @@ import IOBluetooth
 import SwiftUI
 
 // MARK: - Configuration
-/// Set to true for demo/testing, false for production
-let DEMO_MODE = true  // TODO: Set to false when deploying to production
-
-// MARK: - NAV Aksel Design System
-/// NAV Design Tokens - Colors, spacing, and typography based on Aksel design system
-struct NAVColors {
-    // Primary Colors
-    static let blue = Color(hex: "0067C5")  // Primary action color
-    static let blueHover = Color(hex: "0056B4")  // Blue hover state
-    static let navRed = Color(hex: "C30000")  // NAV brand red / Danger
-    static let green = Color(hex: "06893A")  // Success
-    static let orange = Color(hex: "FF9100")  // Warning
-
-    // Backgrounds
-    static let bgDefault = Color.white
-    static let bgSubtle = Color(hex: "ECEEF0")  // Gray-100
-
-    // Text
-    static let textDefault = Color(hex: "23262A")  // Gray-900
-    static let textSubtle = Color(hex: "010B18").opacity(0.68)  // GrayAlpha-700
-
-    // Surface
-    static let surfaceAction = blue
-    static let surfaceActionHover = blueHover
+struct AppConfig {
+    /// Set to true for demo/testing, false for production
+    static let DEMO_MODE = true  // TODO: Set to false when deploying to production
 }
 
-struct NAVSpacing {
+// MARK: - Design System
+/// Modern Liquid Glass design with system colors and spacing
+struct AppColors {
+    // Brand accent color
+    static let accent = Color.blue
+    static let accentSubtle = Color.blue.opacity(0.2)
+
+    // Status colors
+    static let destructive = Color.red
+    static let success = Color.green
+    static let warning = Color.orange
+}
+
+struct AppSpacing {
     static let xs: CGFloat = 4
     static let sm: CGFloat = 8
     static let md: CGFloat = 12
@@ -43,54 +35,14 @@ struct NAVSpacing {
     static let xxl: CGFloat = 32
 }
 
-struct NAVRadius {
-    static let small: CGFloat = 2
-    static let medium: CGFloat = 4
-    static let large: CGFloat = 8
-    static let xlarge: CGFloat = 12
-    static let full: CGFloat = 9999
+struct AppRadius {
+    static let small: CGFloat = 8
+    static let medium: CGFloat = 12
+    static let large: CGFloat = 16
+    static let xlarge: CGFloat = 20
 }
-
-// Helper for hex colors
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a: UInt64
-        let r: UInt64
-        let g: UInt64
-        let b: UInt64
-        switch hex.count {
-        case 3:  // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:  // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:  // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            opacity: Double(a) / 255
-        )
-    }
-}
-
-// MARK: - NAV Design System Note
-// The Aksel design system is built for React/web and cannot be directly used in native Swift.
-// Instead, we use:
-// - NAV color palette (defined in NAVColors)
-// - NAV spacing scale (defined in NAVSpacing)
-// - NAV border radius (defined in NAVRadius)
-// - SF Symbols (Apple's native icons) styled with NAV colors
 
 // MARK: - App Entry Point
-@main
 struct VirginProjectApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
@@ -98,7 +50,6 @@ struct VirginProjectApp: App {
         WindowGroup {
             MainView()
         }
-        .windowStyle(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
@@ -108,12 +59,26 @@ struct VirginProjectApp: App {
 // MARK: - App Delegate for Launch Configuration
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if DEMO_MODE {
-            print("⚠️  DEMO MODE ACTIVE - Network will NOT be disabled on launch")
-            print("⚠️  Set DEMO_MODE = false for production deployment")
-        } else {
-            // Disable network and Bluetooth on launch (production mode)
-            NetworkManager.shared.disableAllConnections()
+        print("✅ App delegate did finish launching")
+        // Simplify for now to avoid crashes
+        // createRequiredDesktopFolders()
+        // NetworkManager.shared.disableAllConnections()
+    }
+
+    private func createRequiredDesktopFolders() {
+        do {
+            let desktop = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Desktop")
+            let folders = ["Lydfiler", "Tekstfiler"]
+            for folder in folders {
+                let url = desktop.appendingPathComponent(folder)
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                    print("✅ Created folder: \(folder)")
+                }
+            }
+        } catch {
+            print("⚠️  Error creating folders: \(error)")
         }
     }
 
@@ -600,7 +565,7 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 }
 
 // MARK: - Recording Item Model
-struct RecordingItem: Identifiable, Equatable {
+struct RecordingItem: Identifiable, Equatable, Hashable {
     let id = UUID()
     let filename: String
     let path: String
@@ -798,12 +763,10 @@ class RecordingsManager: ObservableObject {
                 if let fileSize = attributes[.size] as? Int64,
                     let modDate = attributes[.modificationDate] as? Date
                 {
-                    // Calculate audio duration synchronously for simplicity
-                    var audioDuration: TimeInterval = 0
-                    let asset = AVURLAsset(url: fileURL)
-                    if let track = asset.tracks(withMediaType: .audio).first {
-                        audioDuration = CMTimeGetSeconds(track.timeRange.duration)
-                    }
+                    let audioFile = try? AVAudioFile(forReading: fileURL)
+                    let audioDuration = audioFile.map {
+                        Double($0.length) / $0.processingFormat.sampleRate
+                    } ?? 0
 
                     items.append(
                         RecordingItem(
@@ -835,22 +798,49 @@ class RecordingsManager: ObservableObject {
     }
 }
 
-// MARK: - NAV Button Styles
+// MARK: - Glass Effect Helpers
 
-struct NAVPrimaryButtonStyle: ButtonStyle {
+extension View {
+    @ViewBuilder
+    func glassEffectIfAvailable(in shape: RoundedRectangle) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Liquid Glass Button Styles
+
+struct GlassButtonStyle: ButtonStyle {
     @State private var isHovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(.horizontal, NAVSpacing.xl)
-            .padding(.vertical, NAVSpacing.lg)
-            .background(
-                configuration.isPressed
-                    ? NAVColors.blueHover.opacity(0.9)
-                    : (isHovering ? NAVColors.blueHover : NAVColors.blue)
-            )
-            .foregroundColor(.white)
-            .cornerRadius(NAVRadius.large)
+            .padding(.horizontal, AppSpacing.xl)
+            .padding(.vertical, AppSpacing.lg)
+            .background {
+                if isHovering || configuration.isPressed {
+                    if #available(macOS 26.0, *) {
+                        RoundedRectangle(cornerRadius: AppRadius.medium)
+                            .fill(.thinMaterial)
+                            .glassEffect(.regular.tint(.blue).interactive(), in: .rect(cornerRadius: AppRadius.medium))
+                    } else {
+                        RoundedRectangle(cornerRadius: AppRadius.medium)
+                            .fill(.thinMaterial)
+                    }
+                } else {
+                    if #available(macOS 26.0, *) {
+                        RoundedRectangle(cornerRadius: AppRadius.medium)
+                            .fill(.ultraThinMaterial)
+                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppRadius.medium))
+                    } else {
+                        RoundedRectangle(cornerRadius: AppRadius.medium)
+                            .fill(.ultraThinMaterial)
+                    }
+                }
+            }
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .animation(.easeInOut(duration: 0.15), value: isHovering)
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
@@ -867,46 +857,18 @@ struct NAVPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-struct NAVSecondaryButtonStyle: ButtonStyle {
-    let backgroundColor: Color
-    let hoverColor: Color
-
-    @State private var isHovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, NAVSpacing.xl)
-            .padding(.vertical, NAVSpacing.lg)
-            .background(
-                configuration.isPressed
-                    ? hoverColor.opacity(0.9) : (isHovering ? hoverColor : backgroundColor)
-            )
-            .foregroundColor(.white)
-            .cornerRadius(NAVRadius.large)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovering)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    isHovering = true
-                    DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                case .ended:
-                    isHovering = false
-                    DispatchQueue.main.async { NSCursor.arrow.set() }
-                }
-            }
-    }
-}
-
-// Hover button style with light gray background on hover
+// Hover button style with subtle glass effect on hover
 struct HoverButtonStyle: ButtonStyle {
     @State private var isHovering = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(isHovering ? Color.secondary.opacity(0.1) : Color.clear)
-            .cornerRadius(4)
+            .background {
+                if isHovering {
+                    RoundedRectangle(cornerRadius: AppRadius.small)
+                        .fill(.ultraThinMaterial)
+                }
+            }
             .onContinuousHover { phase in
                 switch phase {
                 case .active:
@@ -1058,15 +1020,12 @@ class SDCardManager: ObservableObject {
     @Published var isScanning = false
 
     private var session: DASession?
-    private var pollingTimer: Timer?
 
     private init() {
         setupDiskArbitration()
-        startPolling()
     }
 
     deinit {
-        pollingTimer?.invalidate()
         if let session = session {
             DASessionUnscheduleFromRunLoop(
                 session, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
@@ -1074,154 +1033,6 @@ class SDCardManager: ObservableObject {
     }
 
     // MARK: - Polling Mechanism (Fallback)
-    private func startPolling() {
-        // Poll every 2 seconds to check for SD cards as a fallback
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.checkForSDCard()
-        }
-    }
-
-    private func checkForSDCard() {
-        let fileManager = FileManager.default
-        guard let volumes = try? fileManager.contentsOfDirectory(atPath: "/Volumes") else { return }
-
-        // List of system/internal volumes to ignore
-        let systemVolumes = [
-            "Macintosh HD", ".", "..", "Preboot", "Recovery", "VM", "Update", "Data",
-        ]
-
-        // Check if we have a removable volume that's not currently detected
-        for volume in volumes {
-            let volumePath = "/Volumes/\(volume)"
-
-            // Skip system volumes and hidden volumes
-            if systemVolumes.contains(volume) || volume.hasPrefix(".") {
-                continue
-            }
-
-            // Skip volumes that start with "Macintosh" (various forms of system volumes)
-            if volume.hasPrefix("Macintosh") {
-                continue
-            }
-
-            // Check if this volume is actually removable media
-            // We do this by checking volume characteristics via URL
-            let volumeURL = URL(fileURLWithPath: volumePath)
-            do {
-                let resourceValues = try volumeURL.resourceValues(forKeys: [
-                    .volumeIsRemovableKey,
-                    .volumeIsEjectableKey,
-                    .volumeIsLocalKey,
-                    .volumeIsInternalKey,
-                    .volumeIsReadOnlyKey,
-                ])
-
-                // Exclude disk images and network volumes - accept physical drives
-                // A valid SD card must be:
-                // 1. Removable OR ejectable (physical media can be removed)
-                // 2. Local (not network)
-                // 3. Writable (not read-only like PKG/DMG installers)
-                // Note: Don't check isInternal - built-in SD card readers are marked as internal
-                if let isRemovable = resourceValues.volumeIsRemovable,
-                    let isEjectable = resourceValues.volumeIsEjectable,
-                    let isLocal = resourceValues.volumeIsLocal,
-                    let isReadOnly = resourceValues.volumeIsReadOnly,
-                    isRemovable || isEjectable,
-                    isLocal
-                {
-
-                    // Skip read-only volumes (installers, disk images)
-                    if isReadOnly {
-                        print("📊 Skipping read-only volume (likely installer): \(volume)")
-                        continue
-                    }
-
-                    // Additional check: skip disk images by checking if volume name suggests it's an installer
-                    let installerKeywords = [
-                        "installer", "dmg", "player", "setup", "install", "wacom", "driver", "pkg",
-                    ]
-                    let volumeLower = volume.lowercased()
-                    if installerKeywords.contains(where: { volumeLower.contains($0) }) {
-                        print("📊 Skipping potential disk image: \(volume)")
-                        continue
-                    }
-
-                    // Check if path is from a disk image or Apple device using diskutil
-                    let diskutilTask = Process()
-                    diskutilTask.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
-                    diskutilTask.arguments = ["info", volumePath]
-                    let pipe = Pipe()
-                    diskutilTask.standardOutput = pipe
-
-                    try? diskutilTask.run()
-                    diskutilTask.waitUntilExit()
-
-                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                    if let output = String(data: data, encoding: .utf8) {
-                        // Skip disk images
-                        if output.contains("Disk Image: Yes")
-                            || output.contains("Protocol: Disk Image")
-                        {
-                            print("📊 Skipping disk image detected by diskutil: \(volume)")
-                            continue
-                        }
-                        // Skip Apple devices (iPod, iPhone, iPad)
-                        let outputLower = output.lowercased()
-                        if outputLower.contains("ipod") || outputLower.contains("iphone")
-                            || outputLower.contains("ipad") || outputLower.contains("apple mobile")
-                        {
-                            print("📊 Skipping Apple device detected by diskutil: \(volume)")
-                            continue
-                        }
-                    }
-
-                    // Check for iPod_Control folder (definitive iPod indicator)
-                    let ipodControlPath = (volumePath as NSString).appendingPathComponent("iPod_Control")
-                    if fileManager.fileExists(atPath: ipodControlPath) {
-                        print("📊 Skipping iPod (iPod_Control folder found): \(volume)")
-                        continue
-                    }
-
-                    // Verify this is an Olympus voice recorder SD card
-                    guard isOlympusRecorderMedia(at: volumePath) else {
-                        print("📊 Skipping non-Olympus media: \(volume)")
-                        continue
-                    }
-
-                    // If we find a valid Olympus SD card but our state says no SD card, update it
-                    if !isSDCardInserted {
-                        DispatchQueue.main.async {
-                            self.sdCardPath = volumePath
-                            self.sdCardVolumeName = volume
-                            self.isSDCardInserted = true
-                            print("📊 Polling detected Olympus SD card: \(volume) at \(volumePath)")
-                            self.scanForAudioFiles()
-                            self.objectWillChange.send()  // Force UI update
-                        }
-                        return
-                    }
-                }
-            } catch {
-                // If we can't get resource values, skip this volume
-                continue
-            }
-        }
-
-        // Check if SD card was removed
-        if isSDCardInserted, let path = sdCardPath {
-            if !fileManager.fileExists(atPath: path) {
-                DispatchQueue.main.async {
-                    self.isSDCardInserted = false
-                    self.sdCardPath = nil
-                    self.sdCardVolumeName = nil
-                    self.audioFiles = []
-                    print("📊 Polling detected SD card removal")
-                    self.objectWillChange.send()  // Force UI update
-                }
-            }
-        }
-    }
-
     // MARK: - Disk Arbitration Setup
     private func setupDiskArbitration() {
         print("🔧 Setting up DiskArbitration...")
@@ -1587,28 +1398,28 @@ struct RecordButton: View {
             // Main Record/Stop Button
             Button(action: action) {
                 if isRecording {
-                    // Stop button - NAV styled
-                    VStack(spacing: NAVSpacing.sm) {
+                    // Stop button with Liquid Glass styling
+                    VStack(spacing: AppSpacing.sm) {
                         Rectangle()
-                            .fill(NAVColors.navRed)
+                            .fill(AppColors.destructive)
                             .frame(width: 56, height: 56)
-                            .cornerRadius(NAVRadius.small)
+                            .cornerRadius(AppRadius.small)
                         Text("Stop")
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(NAVColors.navRed)
+                            .foregroundStyle(AppColors.destructive)
                             .textCase(.uppercase)
                             .tracking(1)
                     }
                 } else if isVerified {
-                    // Start Recording button - NAV styled (enabled)
+                    // Start Recording button with glass effect
                     Text("Start Recording")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .tracking(0.5)
-                        .padding(.horizontal, NAVSpacing.xxl + NAVSpacing.sm)
-                        .padding(.vertical, NAVSpacing.lg + 2)
-                        .background(isHovering ? NAVColors.navRed.opacity(0.85) : NAVColors.navRed)
-                        .cornerRadius(NAVRadius.large)
+                        .padding(.horizontal, AppSpacing.xxl + AppSpacing.sm)
+                        .padding(.vertical, AppSpacing.lg + 2)
+                        .background(isHovering ? AppColors.destructive.opacity(0.85) : AppColors.destructive)
+                        .cornerRadius(AppRadius.large)
                         .animation(.easeInOut(duration: 0.15), value: isHovering)
                 } else {
                     // Verifying state - grey/disabled
@@ -1618,13 +1429,13 @@ struct RecordButton: View {
                             .colorScheme(.dark)
                         Text("Verifying Microphone")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundStyle(.white.opacity(0.7))
                             .tracking(0.5)
                     }
-                    .padding(.horizontal, NAVSpacing.xxl + NAVSpacing.sm)
-                    .padding(.vertical, NAVSpacing.lg + 2)
+                    .padding(.horizontal, AppSpacing.xxl + AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.lg + 2)
                     .background(Color.gray.opacity(0.5))
-                    .cornerRadius(NAVRadius.large)
+                    .cornerRadius(AppRadius.large)
                 }
             }
             .buttonStyle(.plain)
@@ -1649,10 +1460,10 @@ struct RecordButton: View {
                 }) {
                     Image(systemName: "gearshape")
                         .font(.system(size: 16, weight: .light))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
                         .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(NAVRadius.medium)
+                        .cornerRadius(AppRadius.medium)
                 }
                 .buttonStyle(.plain)
                 .help("Audio Input Settings")
@@ -1694,7 +1505,7 @@ struct AudioSourceSelector: View {
                             Spacer()
                             if selectedDevice == device {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
+                                    .foregroundStyle(.blue)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -1710,7 +1521,7 @@ struct AudioSourceSelector: View {
 
             Text("Change audio input device")
                 .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
@@ -1915,12 +1726,10 @@ class FolderManager: ObservableObject {
         let size = attrs[.size] as? Int64 ?? 0
         let date = attrs[.modificationDate] as? Date ?? Date()
 
-        // Calculate audio duration synchronously for simplicity
-        var audioDuration: TimeInterval = 0
-        let asset = AVURLAsset(url: url)
-        if let track = asset.tracks(withMediaType: .audio).first {
-            audioDuration = CMTimeGetSeconds(track.timeRange.duration)
-        }
+        let audioFile = try? AVAudioFile(forReading: url)
+        let audioDuration = audioFile.map {
+            Double($0.length) / $0.processingFormat.sampleRate
+        } ?? 0
 
         return RecordingItem(
             filename: url.lastPathComponent,
@@ -1980,24 +1789,20 @@ struct FolderTreeView: View {
                     Button(action: { isExpanded.toggle() }) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                             .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain)
 
                     Image(systemName: isExpanded ? "folder.fill" : "folder")
                         .font(.system(size: 14))
-                        .foregroundColor(.blue)
+                        .foregroundStyle(.blue)
 
                     Text(folder.name)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(isHovering ? .white : .primary)
+                        .foregroundStyle(isHovering ? .white : .primary)
 
                     Spacer()
-
-                    Text("\(folder.recordings.count)")
-                        .font(.system(size: 10, weight: .light))
-                        .foregroundColor(.secondary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -2047,47 +1852,673 @@ struct NewFolderDialog: View {
                 Button("Cancel") {
                     onCancel()
                 }
+                .buttonStyle(.bordered)
                 .keyboardShortcut(.cancelAction)
 
                 Button("Create") {
                     onCreate()
                 }
+                .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(folderName.isEmpty)
             }
         }
         .padding(24)
         .frame(width: 400)
+        .background {
+            RoundedRectangle(cornerRadius: AppRadius.xlarge)
+                .fill(.regularMaterial)
+        }
+        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+    }
+}
+
+// MARK: - Anonymization Reminder Dialog
+struct AnonymizationReminderDialog: View {
+    let onContinue: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 48, weight: .light))
+                    .foregroundStyle(AppColors.warning)
+
+                Text("Before uploading")
+                    .font(.system(size: 20, weight: .semibold))
+
+                Text("Check that the text is anonymized")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.secondary)
+            }
+
+            // Checklist
+            VStack(alignment: .leading, spacing: 12) {
+                ChecklistItem(text: "Remove names, contact info, and ID numbers")
+                ChecklistItem(text: "Remove names of family, friends, and NAV employees")
+                ChecklistItem(text: "Remove health information that could identify the participant")
+                ChecklistItem(text: "Use codes like P1, P2, etc. instead of names")
+            }
+            .padding(16)
+            .background {
+                RoundedRectangle(cornerRadius: AppRadius.medium)
+                    .fill(.ultraThinMaterial)
+            }
+
+            // Buttons
+            HStack(spacing: 16) {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: onContinue) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.doc.fill")
+                        Text("Continue to Teams")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(32)
+        .frame(width: 450)
+        .background {
+            RoundedRectangle(cornerRadius: AppRadius.xlarge)
+                .fill(.regularMaterial)
+        }
+        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+    }
+}
+
+// Helper view for checklist items
+struct ChecklistItem: View {
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 16))
+                .foregroundStyle(AppColors.success)
+            Text(text)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
 // MARK: - Recordings Sidebar
+// MARK: - Audio Waveform Icon (Custom SVG)
+struct AudioWaveformIcon: View {
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        Canvas { context, size in
+            let fillColor = colorScheme == .dark ? Color.white : Color(red: 32/255, green: 39/255, blue: 51/255)
+
+            // Scale factor to fit 431.77x233.48 viewBox into the given size
+            let scale = min(size.width / 431.77, size.height / 233.48)
+            let xOffset = (size.width - 431.77 * scale) / 2
+            let yOffset = (size.height - 233.48 * scale) / 2
+
+            context.translateBy(x: xOffset, y: yOffset)
+            context.scaleBy(x: scale, y: scale)
+
+            // Bar 1: Medium height (left)
+            context.fill(
+                Path(roundedRect: CGRect(x: 0, y: 50.61, width: 31.11, height: 182.88), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 2: Short height
+            context.fill(
+                Path(roundedRect: CGRect(x: 50.11, y: 0, width: 31.11, height: 152.59), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 3: Medium height
+            context.fill(
+                Path(roundedRect: CGRect(x: 100.22, y: 50.61, width: 31.11, height: 182.88), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 4: Full height (tallest)
+            context.fill(
+                Path(roundedRect: CGRect(x: 150.72, y: 0, width: 31.11, height: 233.48), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 5: Short height (center)
+            context.fill(
+                Path(roundedRect: CGRect(x: 200.83, y: 0, width: 31.11, height: 152.59), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 6: Medium height
+            context.fill(
+                Path(roundedRect: CGRect(x: 250.94, y: 50.6, width: 31.11, height: 182.88), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 7: Full height (tallest)
+            context.fill(
+                Path(roundedRect: CGRect(x: 300.44, y: 0, width: 31.11, height: 233.48), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 8: Very short height
+            context.fill(
+                Path(roundedRect: CGRect(x: 350.55, y: 50.6, width: 31.11, height: 101.99), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+
+            // Bar 9: Full height (tallest, right)
+            context.fill(
+                Path(roundedRect: CGRect(x: 400.66, y: 0, width: 31.11, height: 233.48), cornerRadius: 15),
+                with: .color(fillColor)
+            )
+        }
+        .aspectRatio(431.77/233.48, contentMode: .fit)
+    }
+}
+
+// MARK: - Navigation Panel (left-most narrow column)
+struct NavPanel: View {
+    @Binding var selectedTab: AppTab
+    @Binding var showAbout: Bool
+    @State private var isDarkMode: Bool = NSApp.effectiveAppearance.name == .darkAqua
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Logo area at the top
+            VStack(spacing: 8) {
+                // Audio waveform icon from SVG
+                AudioWaveformIcon()
+                    .frame(width: 48, height: 48)
+
+                Text("ARM")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                Text("Audio Recording Manager")
+                    .font(.system(size: 8, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 20)
+            .padding(.horizontal, 12)
+
+            Divider()
+
+            VStack(spacing: 2) {
+                navItem(tab: .record, label: "Ta opp lyd", icon: "mic.fill")
+                navItem(tab: .recordings, label: "Lydopptak", icon: "waveform")
+                navItem(tab: .transcripts, label: "Transkripsjoner", icon: "doc.text.fill")
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+
+            Spacer()
+
+            Divider()
+
+            Button(action: toggleAppearance) {
+                HStack(spacing: 8) {
+                    Image(systemName: isDarkMode ? "sun.max" : "moon")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppColors.accent)
+                        .frame(width: 16)
+                    Text(isDarkMode ? "Light mode" : "Dark mode")
+                        .font(.system(size: 12))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: { showAbout = true }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(AppColors.accent)
+                        .frame(width: 16)
+                    Text("About")
+                        .font(.system(size: 12))
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 10)
+        }
+    }
+
+    private func toggleAppearance() {
+        isDarkMode.toggle()
+        NSApp.appearance = isDarkMode
+            ? NSAppearance(named: .darkAqua)
+            : NSAppearance(named: .aqua)
+    }
+
+    @ViewBuilder
+    private func navItem(tab: AppTab, label: String, icon: String) -> some View {
+        Button(action: { selectedTab = tab }) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .frame(width: 16)
+                Text(label)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background {
+                if selectedTab == tab {
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(AppColors.accentSubtle)
+                }
+            }
+            .foregroundStyle(selectedTab == tab ? AppColors.accent : .primary)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Recordings Native View (macOS Glass Design)
+
+struct RecordingsNativeView: View {
+    @ObservedObject var recordingsManager: RecordingsManager
+    @ObservedObject var folderManager: FolderManager
+    @ObservedObject var audioPlayer: AudioPlayer
+    @Binding var selectedRecording: RecordingItem?
+
+    var body: some View {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            // Sidebar: recordings list
+            List(selection: $selectedRecording) {
+                ForEach(folderManager.folderStructure) { folder in
+                    Section(folder.name) {
+                        ForEach(folder.recordings) { recording in
+                            RecordingListRow(
+                                recording: recording,
+                                isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                                audioPlayer: audioPlayer,
+                                recordingsManager: recordingsManager
+                            )
+                            .tag(recording)
+                            .listRowSeparator(.visible)
+                        }
+                    }
+                }
+
+                // Root-level recordings (not in folders) - no section header
+                let rootRecordings = recordingsManager.recordings.filter { recording in
+                    !folderManager.folderStructure.contains { folder in
+                        folder.recordings.contains { $0.path == recording.path }
+                    }
+                }
+
+                if !rootRecordings.isEmpty {
+                    ForEach(rootRecordings) { recording in
+                        RecordingListRow(
+                            recording: recording,
+                            isPlaying: audioPlayer.currentPlayingFile == recording.filename,
+                            audioPlayer: audioPlayer,
+                            recordingsManager: recordingsManager
+                        )
+                        .tag(recording)
+                        .listRowSeparator(.visible)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .navigationTitle("Lydopptak")
+            .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+            .toolbar(removing: .sidebarToggle)
+        } detail: {
+            // Detail: player or empty state
+            if let recording = selectedRecording {
+                RecordingPlayerNative(
+                    recording: recording,
+                    audioPlayer: audioPlayer
+                )
+                .id(recording.path)
+            } else {
+                ContentUnavailableView(
+                    "Velg et opptak",
+                    systemImage: "waveform",
+                    description: Text("Klikk på et lydopptak til venstre for å spille av.")
+                )
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+}
+
+// MARK: - Recording List Row (Native)
+
+private struct RecordingListRow: View {
+    let recording: RecordingItem
+    let isPlaying: Bool
+    @ObservedObject var audioPlayer: AudioPlayer
+    @ObservedObject var recordingsManager: RecordingsManager
+    @State private var showDeleteConfirm = false
+    @State private var showDetailView = false
+    @State private var isHovering = false
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recording.filename)
+                    .font(.body)
+                HStack(spacing: 4) {
+                    Text(recording.formattedDate)
+                    Text("·")
+                    Text(recording.formattedDuration)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        } icon: {
+            Image(systemName: isPlaying ? "waveform" : "waveform.circle")
+                .font(.title3)
+                .foregroundStyle(isPlaying ? .blue : .secondary)
+                .symbolEffect(.variableColor.iterative, isActive: isPlaying)
+        }
+        .listRowBackground(
+            isHovering ? Color(nsColor: .controlAccentColor).opacity(0.1) : Color.clear
+        )
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .contextMenu {
+            Button {
+                let url = URL(fileURLWithPath: recording.path)
+                if isPlaying {
+                    audioPlayer.togglePlayPause()
+                } else {
+                    audioPlayer.play(url: url)
+                }
+            } label: {
+                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+            }
+
+            Divider()
+
+            Button {
+                openInJOJO()
+            } label: {
+                Label("Open in JOJO Transcribe", systemImage: "doc.text")
+            }
+
+            Button {
+                NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
+            } label: {
+                Label("Reveal in Finder", systemImage: "folder")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+
+            Button {
+                showDetailView = true
+            } label: {
+                Label("Transkripsjon og anonymisering", systemImage: "shield.lefthalf.filled")
+            }
+        }
+        .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if isPlaying {
+                    audioPlayer.stop()
+                }
+                recordingsManager.deleteRecording(recording)
+            }
+        } message: {
+            Text("Are you sure you want to delete \(recording.filename)?")
+        }
+        .sheet(isPresented: $showDetailView) {
+            RecordingDetailView(recording: recording, onDismiss: { showDetailView = false })
+        }
+    }
+
+    private func openInJOJO() {
+        guard FileManager.default.fileExists(atPath: recording.path) else { return }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-a", "Jojo", recording.path]
+
+        try? task.run()
+        task.waitUntilExit()
+
+        let folderURL = URL(fileURLWithPath: recording.path).deletingLastPathComponent()
+        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: folderURL.path)
+    }
+}
+
+// MARK: - Recording Player (Native)
+
+private struct RecordingPlayerNative: View {
+    let recording: RecordingItem
+    @ObservedObject var audioPlayer: AudioPlayer
+
+    private var isCurrentFile: Bool {
+        audioPlayer.currentPlayingFile == recording.filename
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Hero section with icon and controls
+                VStack(spacing: 32) {
+                    Spacer()
+                        .frame(height: 60)
+
+                    // Large animated waveform icon
+                    ZStack {
+                        Circle()
+                            .fill(.blue.opacity(0.1))
+                            .frame(width: 160, height: 160)
+
+                        Image(systemName: "waveform")
+                            .font(.system(size: 64, weight: .light))
+                            .symbolEffect(.variableColor.iterative.reversing, isActive: isCurrentFile && audioPlayer.isPlaying)
+                            .foregroundStyle(isCurrentFile && audioPlayer.isPlaying ? .blue : .secondary)
+                    }
+
+                    // Play/pause button
+                    Button {
+                        let url = URL(fileURLWithPath: recording.path)
+                        if isCurrentFile {
+                            audioPlayer.togglePlayPause()
+                        } else {
+                            audioPlayer.play(url: url)
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: isCurrentFile && audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.title2)
+                            Text(isCurrentFile && audioPlayer.isPlaying ? "Pause" : "Play")
+                                .font(.title3.weight(.semibold))
+                        }
+                        .frame(minWidth: 200)
+                        .padding(.vertical, 16)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .tint(.blue)
+
+                    // Progress bar (only when this recording is active)
+                    if isCurrentFile {
+                        VStack(spacing: 12) {
+                            ProgressView(value: audioPlayer.playbackProgress)
+                                .tint(.blue)
+                                .padding(.horizontal, 40)
+
+                            HStack {
+                                Text(formattedTime(audioPlayer.playbackProgress * audioPlayer.duration))
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(recording.formattedDuration)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 40)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
+                    Spacer()
+                        .frame(height: 40)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+
+                Divider()
+                    .padding(.horizontal)
+
+                // Info section
+                Form {
+                    Section("Fil informasjon") {
+                        LabeledContent("Filnavn") {
+                            Text(recording.filename)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                        }
+
+                        LabeledContent("Dato") {
+                            Text(recording.formattedDate)
+                        }
+
+                        LabeledContent("Varighet") {
+                            Text(recording.formattedDuration)
+                                .font(.body.monospacedDigit())
+                        }
+
+                        LabeledContent("Størrelse") {
+                            Text(recording.formattedSize)
+                        }
+                    }
+
+                    Section("Handlinger") {
+                        Button {
+                            NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
+                        } label: {
+                            Label("Vis i Finder", systemImage: "folder")
+                        }
+
+                        Button {
+                            openInJOJO()
+                        } label: {
+                            Label("Åpne i JOJO Transcribe", systemImage: "doc.text")
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+            }
+        }
+        .navigationTitle(recording.filename)
+        .navigationSubtitle("\(recording.formattedDate) · \(recording.formattedDuration)")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
+                    } label: {
+                        Label("Vis i Finder", systemImage: "folder")
+                    }
+
+                    Button {
+                        openInJOJO()
+                    } label: {
+                        Label("Åpne i JOJO Transcribe", systemImage: "doc.text")
+                    }
+
+                    Divider()
+
+                    Button {
+                        if let url = URL(string: recording.path) {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(url.path, forType: .string)
+                        }
+                    } label: {
+                        Label("Kopier filbane", systemImage: "doc.on.doc")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+    }
+
+    private func formattedTime(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    private func openInJOJO() {
+        guard FileManager.default.fileExists(atPath: recording.path) else { return }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-a", "Jojo", recording.path]
+
+        try? task.run()
+        task.waitUntilExit()
+
+        let folderURL = URL(fileURLWithPath: recording.path).deletingLastPathComponent()
+        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: folderURL.path)
+    }
+}
+
+// MARK: - Recordings list panel (second column when Lydopptak is active)
 struct RecordingsSidebar: View {
     let recordings: [RecordingItem]
     @ObservedObject var audioPlayer: AudioPlayer
     @ObservedObject var recordingsManager: RecordingsManager
     @ObservedObject var folderManager: FolderManager
     @ObservedObject var sdCardManager: SDCardManager
-    @Binding var showAbout: Bool
     @Binding var showImportSheet: Bool
-    let openURL: (String) -> Void
-    let uploadToTeams: () -> Void
+    @Binding var selectedRecording: RecordingItem?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Spacer for toolbar area
-            Spacer()
-                .frame(height: 52)
-
             // Folder Tree & Recordings List
             if recordings.isEmpty && folderManager.folderStructure.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "waveform")
                         .font(.system(size: 40, weight: .ultraLight))
-                        .foregroundColor(.secondary.opacity(0.4))
+                        .foregroundStyle(.secondary.opacity(0.4))
                     Text("No recordings yet")
                         .font(.system(size: 13, weight: .light))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -2115,7 +2546,9 @@ struct RecordingsSidebar: View {
                                 recording: recording,
                                 isPlaying: audioPlayer.currentPlayingFile == recording.filename,
                                 audioPlayer: audioPlayer,
-                                recordingsManager: recordingsManager
+                                recordingsManager: recordingsManager,
+                                isSelected: selectedRecording?.id == recording.id,
+                                onSelect: { selectedRecording = recording }
                             )
                         }
                     }
@@ -2124,131 +2557,21 @@ struct RecordingsSidebar: View {
 
             Divider()
 
-            // Footer with Storage stats
+            // Footer
             VStack(spacing: 0) {
-                // Storage stats
                 Text("Storage: \(folderManager.getTotalStorageUsed())")
                     .font(.system(size: 10, weight: .light))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
-
-                Divider()
-
-                // VG JOJO Transcribe launcher
-                Button(action: {
-                    launchVGJOJOTranscribe()
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "waveform.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(NAVColors.blue)
-                        Text("VG JOJO Transcribe")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(NAVColors.textDefault)
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(NAVColors.blue.opacity(0.05))
-                }
-                .buttonStyle(.plain)
-                .onContinuousHover { phase in
-                    switch phase {
-                    case .active:
-                        DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                    case .ended:
-                        DispatchQueue.main.async { NSCursor.arrow.set() }
-                    }
-                }
-
-                Divider()
-
-                // Action menu items
-                VStack(alignment: .leading, spacing: 0) {
-                    SidebarMenuItem(
-                        icon: "sdcard.fill",
-                        title: "Import from SD Card",
-                        action: {
-                            showImportSheet = true
-                        }
-                    )
-
-                    SidebarMenuItem(
-                        icon: "arrow.up.doc.fill",
-                        title: "Upload to Teams",
-                        action: {
-                            uploadToTeams()
-                        }
-                    )
-                }
-
-                Divider()
-
-                // Menu links
-                VStack(alignment: .leading, spacing: 0) {
-                    SidebarMenuItem(
-                        icon: "link",
-                        title: "Brukerinnsikt på Navet",
-                        action: {
-                            openURL(
-                                "https://navno.sharepoint.com/sites/intranett-utvikling/SitePages/Brukerinnsikt.aspx"
-                            )
-                        }
-                    )
-
-                    SidebarMenuItem(
-                        icon: "link",
-                        title: "Brukerinnsikt på Aksel",
-                        action: {
-                            openURL("https://aksel.nav.no/god-praksis/brukerinnsikt")
-                        }
-                    )
-
-                    Divider()
-                        .padding(.vertical, 4)
-
-                    SidebarMenuItem(
-                        icon: "info.circle",
-                        title: "About Audio Recording Manager",
-                        action: {
-                            showAbout = true
-                        }
-                    )
-                }
-
-                // Version footer
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Audio Recording Manager (ARM)")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(NAVColors.textDefault)
-                    Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
-                        .font(.caption2)
-                        .foregroundColor(NAVColors.textSubtle)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                SidebarMenuItem(
+                    icon: "sdcard.fill",
+                    title: "Import from SD Card",
+                    action: { showImportSheet = true }
+                )
             }
-            .background(Color.white)
         }
-        .background(Color.white)
         .onAppear {
             folderManager.loadFolderStructure()
-        }
-    }
-
-    // VG JOJO Transcribe launcher function
-    func launchVGJOJOTranscribe() {
-        let workspace = NSWorkspace.shared
-        let jojoPath = "/Applications/JOJO - Transcribe.app"
-
-        if FileManager.default.fileExists(atPath: jojoPath) {
-            workspace.open(URL(fileURLWithPath: jojoPath))
-        } else {
-            print("⚠️  VG JOJO Transcribe not found at: \(jojoPath)")
         }
     }
 }
@@ -2262,12 +2585,12 @@ struct IconButton: View {
     var body: some View {
         Button(action: action) {
             Circle()
-                .fill(Color(hex: "#E0E0E0"))  // Light grey circle
+                .fill(Color(nsColor: NSColor.controlColor))
                 .frame(width: 28, height: 28)
                 .overlay(
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Color(hex: "#424242"))  // Dark grey icon
+                        .foregroundStyle(Color(nsColor: NSColor.labelColor))
                 )
         }
         .buttonStyle(.plain)
@@ -2289,95 +2612,81 @@ struct RecordingRowView: View {
     let isPlaying: Bool
     @ObservedObject var audioPlayer: AudioPlayer
     @ObservedObject var recordingsManager: RecordingsManager
+    var isSelected: Bool = false
+    var onSelect: (() -> Void)? = nil
     @State private var showDeleteConfirm = false
+    @State private var showDetailView = false
     @State private var isHovering = false
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                // Play button - using IconButton style
-                IconButton(
-                    action: {
-                        let url = URL(fileURLWithPath: recording.path)
-                        if isPlaying {
-                            audioPlayer.togglePlayPause()
-                        } else {
-                            audioPlayer.play(url: url)
-                        }
-                    },
-                    icon: isPlaying && audioPlayer.isPlaying ? "pause.fill" : "play.fill",
-                    color: isHovering ? .white : (isPlaying ? .blue : .primary)
-                )
+                Image(systemName: isPlaying ? "waveform" : "waveform.circle")
+                    .font(.system(size: 15, weight: .light))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 20)
 
-                // Recording info - left side
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(recording.filename)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(1)
-                        .foregroundColor(isHovering ? .white : (isPlaying ? .blue : .primary))
+                        .foregroundStyle(contentColor)
 
-                    Text(recording.formattedDate)
-                        .font(.system(size: 10, weight: .light))
-                        .foregroundColor(isHovering ? .white.opacity(0.8) : .secondary)
+                    HStack(spacing: 4) {
+                        Text(recording.formattedDate)
+                        Text("·")
+                        Text(recording.formattedDuration)
+                    }
+                    .font(.system(size: 10, weight: .light))
+                    .foregroundStyle(subtleColor)
                 }
 
                 Spacer()
 
-                // Right side - icons on top, duration below
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(spacing: 8) {
-                        // Transcribe button
-                        IconButton(
-                            action: { openInJOJO() },
-                            icon: "doc.text",
-                            color: isHovering ? .white : .blue
-                        )
-
-                        // Delete button
-                        IconButton(
-                            action: { showDeleteConfirm = true },
-                            icon: "trash",
-                            color: isHovering ? .white : .red.opacity(0.8)
-                        )
-                    }
-
-                    Text(recording.formattedDuration)
-                        .font(.system(size: 10, weight: .light))
-                        .foregroundColor(isHovering ? .white.opacity(0.8) : .secondary)
-                }
-                .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
-                    Button("Cancel", role: .cancel) {}
-                    Button("Delete", role: .destructive) {
-                        if isPlaying {
-                            audioPlayer.stop()
-                        }
-                        recordingsManager.deleteRecording(recording)
-                    }
-                } message: {
-                    Text("Are you sure you want to delete \(recording.filename)?")
-                }
+                Text(recording.formattedSize)
+                    .font(.system(size: 10, weight: .light))
+                    .foregroundStyle(subtleColor)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(isHovering ? Color.blue : (isPlaying ? Color.blue.opacity(0.05) : Color.clear))
+            .padding(.vertical, 11)
+            .background(rowBackground)
             .contentShape(Rectangle())
+            .onTapGesture { onSelect?() }
 
-            // Separator line
-            Divider()
-                .background(Color.gray.opacity(0.3))
+            Divider().background(Color.gray.opacity(0.25))
         }
-        .onHover { hovering in
-            isHovering = hovering
-        }
+        .onHover { isHovering = $0 }
         .onContinuousHover { phase in
             switch phase {
-            case .active:
-                DispatchQueue.main.async { NSCursor.pointingHand.set() }
-            case .ended:
-                DispatchQueue.main.async { NSCursor.arrow.set() }
+            case .active: DispatchQueue.main.async { NSCursor.pointingHand.set() }
+            case .ended: DispatchQueue.main.async { NSCursor.arrow.set() }
             }
         }
+        .alert("Delete Recording?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                if isPlaying {
+                    audioPlayer.stop()
+                }
+                recordingsManager.deleteRecording(recording)
+            }
+        } message: {
+            Text("Are you sure you want to delete \(recording.filename)?")
+        }
         .contextMenu {
+            Button(action: {
+                let url = URL(fileURLWithPath: recording.path)
+                if isPlaying {
+                    audioPlayer.togglePlayPause()
+                } else {
+                    audioPlayer.play(url: url)
+                }
+            }) {
+                Label(isPlaying ? "Pause" : "Play", systemImage: isPlaying ? "pause.fill" : "play.fill")
+            }
+
+            Divider()
+
             Button(action: {
                 openInJOJO()
             }) {
@@ -2400,7 +2709,27 @@ struct RecordingRowView: View {
             ) {
                 Label("Delete", systemImage: "trash")
             }
+
+            Button(action: { showDetailView = true }) {
+                Label("Transkripsjon og anonymisering", systemImage: "shield.lefthalf.filled")
+            }
         }
+        .sheet(isPresented: $showDetailView) {
+            RecordingDetailView(recording: recording, onDismiss: { showDetailView = false })
+        }
+    }
+
+    private var rowBackground: Color {
+        if isSelected { return AppColors.accent }
+        if isHovering { return Color.gray.opacity(0.08) }
+        return Color.clear
+    }
+
+    private var contentColor: Color { isSelected ? .white : .primary }
+    private var subtleColor: Color { isSelected ? .white.opacity(0.75) : .secondary }
+    private var iconColor: Color {
+        if isSelected { return .white }
+        return isPlaying ? AppColors.accent : AppColors.accent.opacity(0.7)
     }
 
     // MARK: - Helper Functions
@@ -2498,21 +2827,21 @@ struct RecordingNameDialog: View {
             VStack(spacing: 8) {
                 Image(systemName: "waveform.circle.fill")
                     .font(.system(size: 48, weight: .light))
-                    .foregroundColor(NAVColors.blue)
+                    .foregroundStyle(AppColors.accent)
 
                 Text("Name Your Recording")
                     .font(.system(size: 20, weight: .semibold))
 
                 Text("Duration: \(formatDuration(duration))")
                     .font(.system(size: 14, weight: .light))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             // Filename input
             VStack(alignment: .leading, spacing: 8) {
                 Text("Recording name")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 TextField("e.g., Interview with participant", text: $recordingName)
                     .textFieldStyle(.roundedBorder)
@@ -2524,7 +2853,7 @@ struct RecordingNameDialog: View {
 
                 Text("Timestamp will be added automatically")
                     .font(.system(size: 11, weight: .light))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             // Preview
@@ -2532,15 +2861,17 @@ struct RecordingNameDialog: View {
                 HStack {
                     Text("Preview:")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Text("\(recordingName.trimmingCharacters(in: .whitespacesAndNewlines))_\(previewTimestamp()).m4a")
                         .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(6)
+                .background {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.ultraThinMaterial)
+                }
             }
 
             // Buttons
@@ -2565,11 +2896,15 @@ struct RecordingNameDialog: View {
                     .padding(.vertical, 12)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(NAVColors.blue)
             }
         }
         .padding(32)
         .frame(width: 400)
+        .background {
+            RoundedRectangle(cornerRadius: AppRadius.xlarge)
+                .fill(.regularMaterial)
+        }
+        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
         .onAppear {
             isTextFieldFocused = true
         }
@@ -2674,13 +3009,13 @@ struct RecordingView: View {
                         VStack(spacing: 16) {
                             Image(systemName: "checkmark.circle")
                                 .font(.system(size: 64, weight: .ultraLight))
-                                .foregroundColor(.green)
+                                .foregroundStyle(.green)
                             Text("Recording Saved")
                                 .font(.system(size: 24, weight: .light))
                             if let filename = recorder.lastSavedFile {
                                 Text(filename)
                                     .font(.system(size: 13, weight: .regular))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                         .padding(48)
@@ -2704,7 +3039,7 @@ struct RecordingView: View {
                                     ? "mic.fill" : "mic"
                             )
                             .font(.system(size: 72, weight: .ultraLight))
-                            .foregroundColor(
+                            .foregroundStyle(
                                 recorder.isRecording && !recorder.isPaused ? .red : .primary
                             )
                             .shadow(
@@ -2729,7 +3064,7 @@ struct RecordingView: View {
                             if recorder.isRecording || recorder.recordingDuration > 0 {
                                 Text(formatDuration(recorder.recordingDuration))
                                     .font(.system(size: 64, weight: .thin, design: .default))
-                                    .foregroundColor(recorder.isPaused ? .orange : .primary)
+                                    .foregroundStyle(recorder.isPaused ? .orange : .primary)
                                     .tracking(2)
                                     .monospacedDigit()
                             }
@@ -2738,7 +3073,7 @@ struct RecordingView: View {
                             if recorder.isPaused {
                                 Text("Paused")
                                     .font(.system(size: 14, weight: .light))
-                                    .foregroundColor(.orange)
+                                    .foregroundStyle(.orange)
                                     .textCase(.uppercase)
                                     .tracking(2)
                             } else if recorder.isRecording {
@@ -2748,7 +3083,7 @@ struct RecordingView: View {
                                         .frame(width: 6, height: 6)
                                     Text("Recording")
                                         .font(.system(size: 14, weight: .light))
-                                        .foregroundColor(.red)
+                                        .foregroundStyle(.red)
                                         .textCase(.uppercase)
                                         .tracking(2)
                                 }
@@ -2777,11 +3112,11 @@ struct RecordingView: View {
                             HStack {
                                 Text("0:00")
                                     .font(.system(size: 10, weight: .light))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                                 Spacer()
                                 Text(formatDuration(recorder.recordingDuration))
                                     .font(.system(size: 10, weight: .light))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 40)
                         }
@@ -2800,13 +3135,13 @@ struct RecordingView: View {
                                     VStack(spacing: 10) {
                                         Image(systemName: "trash")
                                             .font(.system(size: 24, weight: .ultraLight))
-                                            .foregroundColor(.red.opacity(0.8))
+                                            .foregroundStyle(.red.opacity(0.8))
                                             .frame(width: 56, height: 56)
                                             .background(Color.red.opacity(0.08))
                                             .cornerRadius(2)
                                         Text("Delete")
                                             .font(.system(size: 11, weight: .light))
-                                            .foregroundColor(.red.opacity(0.8))
+                                            .foregroundStyle(.red.opacity(0.8))
                                             .textCase(.uppercase)
                                             .tracking(1)
                                     }
@@ -2839,13 +3174,13 @@ struct RecordingView: View {
                                     VStack(spacing: 10) {
                                         Image(systemName: recorder.isPaused ? "play" : "pause")
                                             .font(.system(size: 24, weight: .ultraLight))
-                                            .foregroundColor(.orange.opacity(0.8))
+                                            .foregroundStyle(.orange.opacity(0.8))
                                             .frame(width: 56, height: 56)
                                             .background(Color.orange.opacity(0.08))
                                             .cornerRadius(2)
                                         Text(recorder.isPaused ? "Resume" : "Pause")
                                             .font(.system(size: 11, weight: .light))
-                                            .foregroundColor(.orange.opacity(0.8))
+                                            .foregroundStyle(.orange.opacity(0.8))
                                             .textCase(.uppercase)
                                             .tracking(1)
                                     }
@@ -2858,7 +3193,6 @@ struct RecordingView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.white)
         }
     }
 
@@ -2881,6 +3215,77 @@ struct RecordingView: View {
     }
 }
 
+// MARK: - Recording Player Panel (right panel for Lydopptak tab)
+
+struct RecordingPlayerPanel: View {
+    let recording: RecordingItem
+    @ObservedObject var audioPlayer: AudioPlayer
+
+    private var isCurrentFile: Bool {
+        audioPlayer.currentPlayingFile == recording.filename
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 40) {
+                Spacer().frame(height: 20)
+
+                // Icon
+                Image(systemName: "waveform")
+                    .font(.system(size: 56, weight: .ultraLight))
+                    .foregroundStyle(isCurrentFile && audioPlayer.isPlaying ? AppColors.accent : .secondary.opacity(0.5))
+                    .animation(.easeInOut(duration: 0.2), value: audioPlayer.isPlaying)
+
+                // Play/pause button
+                Button(action: {
+                    let url = URL(fileURLWithPath: recording.path)
+                    if isCurrentFile {
+                        audioPlayer.togglePlayPause()
+                    } else {
+                        audioPlayer.play(url: url)
+                    }
+                }) {
+                    Image(systemName: isCurrentFile && audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 72, weight: .thin))
+                        .foregroundStyle(AppColors.accent)
+                }
+                .buttonStyle(.plain)
+
+                // Progress bar (only when this recording is active)
+                if isCurrentFile {
+                    VStack(spacing: 6) {
+                        ProgressView(value: audioPlayer.playbackProgress)
+                            .tint(AppColors.accent)
+                            .padding(.horizontal, 60)
+
+                        HStack {
+                            Text(formattedTime(audioPlayer.playbackProgress * audioPlayer.duration))
+                            Spacer()
+                            Text(recording.formattedDuration)
+                        }
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 60)
+                    }
+                    .transition(.opacity)
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(recording.filename)
+        .navigationSubtitle("\(recording.formattedDate) · \(recording.formattedDuration) · \(recording.formattedSize)")
+        .animation(.easeInOut(duration: 0.2), value: isCurrentFile)
+    }
+
+    private func formattedTime(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
 // MARK: - About View
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
@@ -2896,7 +3301,7 @@ struct AboutView: View {
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -2908,7 +3313,7 @@ struct AboutView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                             .font(.headline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
 
                         Button(action: {
                             if let url = URL(string: "https://github.com/Fr35ch/audio-recording-manager/releases") {
@@ -2921,7 +3326,7 @@ struct AboutView: View {
                                 Text("View Release Notes")
                                     .font(.system(size: 13))
                             }
-                            .foregroundColor(NAVColors.blue)
+                            .foregroundStyle(AppColors.accent)
                         }
                         .buttonStyle(.plain)
                         .onHover { hovering in
@@ -2943,7 +3348,7 @@ struct AboutView: View {
                             "Secure audio recording management for researchers conducting audio recordings on dedicated zero-trust Mac computers."
                         )
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     }
 
                     Divider()
@@ -2983,7 +3388,7 @@ struct AboutView: View {
                             Text("• All file operations work offline")
                         }
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     }
 
                     Divider()
@@ -2997,25 +3402,25 @@ struct AboutView: View {
                             Text("1. Record Audio")
                                 .fontWeight(.semibold)
                             Text("   Click 'Record with Voice Recorder' to start")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
 
                             Text("2. Import from SD Card")
                                 .fontWeight(.semibold)
                                 .padding(.top, 4)
                             Text("   Insert SD card with DS2 files from Olympus DS-9500")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
 
                             Text("3. Transcribe")
                                 .fontWeight(.semibold)
                                 .padding(.top, 4)
                             Text("   Use VG JOJO Transcribe for transcription")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
 
                             Text("4. Upload to Teams")
                                 .fontWeight(.semibold)
                                 .padding(.top, 4)
                             Text("   Enable network temporarily for secure upload")
-                                .foregroundColor(.secondary)
+                                .foregroundStyle(.secondary)
                         }
                         .font(.body)
                     }
@@ -3036,7 +3441,7 @@ struct AboutView: View {
                             Text("• VG JOJO Transcribe (NB-Whisper)")
                         }
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     }
 
                     Divider()
@@ -3053,7 +3458,7 @@ struct AboutView: View {
                             Text("• Review CHANGELOG.md for recent updates")
                         }
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     }
 
                     Divider()
@@ -3073,13 +3478,13 @@ struct AboutView: View {
                             Text("• OpenAI (Whisper ASR)")
                         }
                         .font(.body)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     }
 
                     // Footer
                     Text("Copyright © 2025. All rights reserved.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 16)
                 }
@@ -3090,19 +3495,19 @@ struct AboutView: View {
     }
 }
 
-// Helper view for feature rows with NAV styling
+// Helper view for feature rows
 struct FeatureRow: View {
     let icon: String
     let text: String
 
     var body: some View {
-        HStack(spacing: NAVSpacing.sm) {
+        HStack(spacing: AppSpacing.sm) {
             Image(systemName: icon)
-                .foregroundColor(NAVColors.blue)
+                .foregroundStyle(AppColors.accent)
                 .frame(width: 20)
             Text(text)
                 .font(.body)
-                .foregroundColor(NAVColors.textSubtle)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -3119,7 +3524,6 @@ struct SidebarPanelContent: View {
             Text("Menu")
                 .font(.title2)
                 .fontWeight(.semibold)
-                .foregroundColor(NAVColors.textDefault)
                 .padding()
 
             Divider()
@@ -3145,7 +3549,7 @@ struct SidebarPanelContent: View {
                 )
 
                 Divider()
-                    .padding(.vertical, NAVSpacing.sm)
+                    .padding(.vertical, AppSpacing.sm)
 
                 SidebarMenuItem(
                     icon: "info.circle",
@@ -3162,19 +3566,17 @@ struct SidebarPanelContent: View {
             Spacer()
 
             // Footer
-            VStack(alignment: .leading, spacing: NAVSpacing.xs) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text("Audio Recording Manager (ARM)")
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(NAVColors.textDefault)
                 Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                     .font(.caption2)
-                    .foregroundColor(NAVColors.textSubtle)
+                    .foregroundStyle(.secondary)
             }
             .padding()
         }
         .frame(width: 315, alignment: .leading)
-        .background(NAVColors.bgDefault)
     }
 }
 
@@ -3187,19 +3589,23 @@ struct SidebarMenuItem: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: NAVSpacing.md) {
+            HStack(spacing: AppSpacing.md) {
                 Image(systemName: icon)
                     .font(.system(size: 16))
-                    .foregroundColor(NAVColors.blue)
+                    .foregroundStyle(AppColors.accent)
                     .frame(width: 20)
                 Text(title)
                     .font(.body)
-                    .foregroundColor(NAVColors.textDefault)
                 Spacer()
             }
-            .padding(.horizontal, NAVSpacing.lg)
-            .padding(.vertical, NAVSpacing.md)
-            .background(isHovered ? NAVColors.bgSubtle : Color.clear)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.md)
+            .background {
+                if isHovered {
+                    RoundedRectangle(cornerRadius: AppRadius.small)
+                        .fill(.ultraThinMaterial)
+                }
+            }
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -3207,6 +3613,7 @@ struct SidebarMenuItem: View {
         }
     }
 }
+
 
 // MARK: - Main View
 struct MainView: View {
@@ -3228,38 +3635,45 @@ struct MainView: View {
     @State private var showSidebar: Bool = true
     @State private var showNewFolderDialog = false
     @State private var newFolderName = ""
+    @StateObject private var transcriptManager = TranscriptManager.shared
+    @State private var selectedTab: AppTab = .record
+    @State private var selectedRecording: RecordingItem? = nil
+    @State private var showAnonymizationDialog = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Sidebar
-            if showSidebar {
-                RecordingsSidebar(
-                    recordings: recordingsManager.recordings,
-                    audioPlayer: audioPlayer,
-                    recordingsManager: recordingsManager,
-                    folderManager: folderManager,
-                    sdCardManager: sdCardManager,
-                    showAbout: $showAbout,
-                    showImportSheet: $showImportSheet,
-                    openURL: openURL,
-                    uploadToTeams: uploadToTeams
-                )
-                .frame(width: 315)
-                .transition(.move(edge: .leading))
+        VStack(spacing: 0) {
+            Spacer().frame(height: 52)
+
+            HStack(spacing: 0) {
+                // Panel 1: Navigation (always visible)
+                NavPanel(selectedTab: $selectedTab, showAbout: $showAbout)
+                    .frame(width: 200)
 
                 Divider()
                     .frame(maxHeight: .infinity)
-            }
 
-            // Main content - Recording View is now the default
-            VStack(spacing: 0) {
-                // Spacer for toolbar area
-                Spacer()
-                    .frame(height: 52)
+                // Panels 2 + 3: content based on selected tab
+                if selectedTab == .record {
+                    RecordingView(recorder: audioRecorder, isShowing: .constant(true))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                RecordingView(recorder: audioRecorder, isShowing: .constant(true))
+                } else if selectedTab == .recordings {
+                    // Native macOS recordings view
+                    RecordingsNativeView(
+                        recordingsManager: recordingsManager,
+                        folderManager: folderManager,
+                        audioPlayer: audioPlayer,
+                        selectedRecording: $selectedRecording
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.white)
+
+                } else {
+                    TranscriptsView(
+                        transcriptManager: transcriptManager,
+                        selectedTab: $selectedTab
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -3267,26 +3681,6 @@ struct MainView: View {
         .navigationTitle("")
         .toolbarBackground(.hidden, for: .windowToolbar)
         .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                if showSidebar {
-                    Button(action: {
-                        showNewFolderDialog = true
-                    }) {
-                        Image(systemName: "folder.badge.plus")
-                    }
-                    .help("New Folder")
-                }
-
-                Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showSidebar.toggle()
-                    }
-                }) {
-                    Image(systemName: "sidebar.leading")
-                }
-                .help("Toggle Sidebar")
-            }
-
             // Network Status Indicators on right side (DEMO: shows OFF during recording)
             ToolbarItemGroup(placement: .automatic) {
                 Spacer()
@@ -3295,35 +3689,38 @@ struct MainView: View {
                 HStack(spacing: 6) {
                     Image(systemName: wifiActive ? "wifi" : "wifi.slash")
                         .font(.system(size: 12))
-                        .foregroundColor(wifiActive ? .green : .red)
+                        .foregroundStyle(wifiActive ? .green : .red)
                     Text("WiFi")
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Text(wifiActive ? "ON" : "OFF")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(wifiActive ? .green : .red)
+                        .foregroundStyle(wifiActive ? .green : .red)
                 }
 
                 let btActive = networkManager.bluetoothEnabled && !audioRecorder.isRecording
                 HStack(spacing: 6) {
                     Image(systemName: "wave.3.right")
                         .font(.system(size: 12))
-                        .foregroundColor(btActive ? .green : .red)
+                        .foregroundStyle(btActive ? .green : .red)
                     Text("Bluetooth")
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Text(btActive ? "ON" : "OFF")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(btActive ? .green : .red)
+                        .foregroundStyle(btActive ? .green : .red)
                 }
             }
         }
         .frame(minWidth: 700, minHeight: 800)
         .sheet(isPresented: $showImportSheet) {
             SDCardImportView(sdCardManager: sdCardManager)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showAbout) {
             AboutView()
+                .presentationDetents([.large])
         }
         .sheet(isPresented: $showNewFolderDialog) {
             NewFolderDialog(
@@ -3340,6 +3737,19 @@ struct MainView: View {
                     showNewFolderDialog = false
                 }
             )
+            .presentationDetents([.height(250)])
+        }
+        .sheet(isPresented: $showAnonymizationDialog) {
+            AnonymizationReminderDialog(
+                onContinue: {
+                    showAnonymizationDialog = false
+                    uploadToTeams()
+                },
+                onCancel: {
+                    showAnonymizationDialog = false
+                }
+            )
+            .presentationDetents([.height(400)])
         }
         .onAppear {
             networkManager.updateStatus()
@@ -3347,6 +3757,7 @@ struct MainView: View {
             folderManager.loadFolderStructure()
         }
     }
+
 
     var mainContentView: some View {
         VStack(spacing: 20) {
@@ -3358,48 +3769,48 @@ struct MainView: View {
 
             // SD Card Detection Banner
             if sdCardManager.isSDCardInserted {
-                HStack(spacing: NAVSpacing.md) {
+                HStack(spacing: AppSpacing.md) {
                     Image(systemName: "sdcard.fill")
                         .font(.title2)
-                        .foregroundColor(NAVColors.green)
+                        .foregroundStyle(AppColors.success)
 
-                    VStack(alignment: .leading, spacing: NAVSpacing.xs) {
+                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
                         Text("SD CARD DETECTED")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(NAVColors.green)
+                            .foregroundStyle(AppColors.success)
                         if let volumeName = sdCardManager.sdCardVolumeName {
                             Text("Volume: \(volumeName)")
                                 .font(.system(size: 11, weight: .regular))
-                                .foregroundColor(NAVColors.textSubtle)
+                                .foregroundStyle(.secondary)
                         }
                         if let path = sdCardManager.sdCardPath {
                             Text("Path: \(path)")
                                 .font(.system(size: 10, weight: .light))
-                                .foregroundColor(NAVColors.textSubtle)
+                                .foregroundStyle(.secondary)
                         }
                     }
 
                     Spacer()
 
-                    VStack(alignment: .trailing, spacing: NAVSpacing.xs) {
+                    VStack(alignment: .trailing, spacing: AppSpacing.xs) {
                         Text("\(sdCardManager.audioFiles.count) audio files")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(NAVColors.green)
+                            .foregroundStyle(AppColors.success)
 
                         Button(action: {
                             sdCardManager.ejectSDCard()
                         }) {
-                            HStack(spacing: NAVSpacing.xs) {
+                            HStack(spacing: AppSpacing.xs) {
                                 Image(systemName: "eject")
                                     .font(.system(size: 10))
                                 Text("Eject")
                                     .font(.system(size: 11, weight: .medium))
                             }
-                            .padding(.horizontal, NAVSpacing.md)
-                            .padding(.vertical, NAVSpacing.xs + 1)
-                            .background(NAVColors.green)
-                            .foregroundColor(.white)
-                            .cornerRadius(NAVRadius.medium)
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.vertical, AppSpacing.xs + 1)
+                            .background(AppColors.success)
+                            .foregroundStyle(.white)
+                            .cornerRadius(AppRadius.medium)
                         }
                         .buttonStyle(.plain)
                         .onContinuousHover { phase in
@@ -3412,12 +3823,14 @@ struct MainView: View {
                         }
                     }
                 }
-                .padding(NAVSpacing.lg)
-                .background(NAVColors.green.opacity(0.1))
-                .cornerRadius(NAVRadius.large)
+                .padding(AppSpacing.lg)
+                .background {
+                    RoundedRectangle(cornerRadius: AppRadius.large)
+                        .fill(AppColors.success.opacity(0.1))
+                }
                 .overlay(
-                    RoundedRectangle(cornerRadius: NAVRadius.large)
-                        .stroke(NAVColors.green, lineWidth: 2)
+                    RoundedRectangle(cornerRadius: AppRadius.large)
+                        .stroke(AppColors.success, lineWidth: 2)
                 )
             }
 
@@ -3442,33 +3855,33 @@ struct MainView: View {
             if showSuccessMessage {
                 Text(successMessage)
                     .font(.title2)
-                    .foregroundColor(.green)
+                    .foregroundStyle(.green)
                     .padding()
                     .background(Color.green.opacity(0.1))
                     .cornerRadius(8)
             }
 
             // Main Action Buttons
-            VStack(spacing: NAVSpacing.lg) {
+            VStack(spacing: AppSpacing.lg) {
                 Button(action: {
                     launchVoiceRecorder()
                 }) {
-                    HStack(spacing: NAVSpacing.md) {
+                    HStack(spacing: AppSpacing.md) {
                         Image(systemName: "mic.fill")
                             .font(.title)
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                         Text("Record with Voice Recorder")
                             .font(.title2)
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(NAVPrimaryButtonStyle())
+                .buttonStyle(GlassButtonStyle())
 
                 Button(action: {
                     importFromSDCard()
                 }) {
-                    HStack(spacing: NAVSpacing.md) {
+                    HStack(spacing: AppSpacing.md) {
                         Image(systemName: "sdcard.fill")
                             .font(.title)
                         Text("Import Audio from SD Card")
@@ -3477,9 +3890,9 @@ struct MainView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(NAVPrimaryButtonStyle())
+                .buttonStyle(GlassButtonStyle())
             }
-            .padding(.vertical, NAVSpacing.xl)
+            .padding(.vertical, AppSpacing.xl)
 
             Divider()
 
@@ -3488,9 +3901,9 @@ struct MainView: View {
                 Button(action: {
                     uploadToTeams()
                 }) {
-                    HStack(spacing: NAVSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
                         Image(systemName: "arrow.up.doc.fill")
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                         Text("Upload to Teams")
                             .fontWeight(.medium)
                     }
@@ -3515,15 +3928,15 @@ struct MainView: View {
                     toggleNetworkOverride()
                 }) {
                     HStack {
-                        if DEMO_MODE {
+                        if AppConfig.DEMO_MODE {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
+                                .foregroundStyle(.orange)
                         }
                         Image(
                             systemName: networkManager.isNetworkOverrideActive
                                 ? "wifi.slash" : "wifi")
                         Text(
-                            DEMO_MODE
+                            AppConfig.DEMO_MODE
                                 ? "DEMO MODE"
                                 : (networkManager.isNetworkOverrideActive
                                     ? "Disable Network" : "Enable Network (Override)")
@@ -3535,11 +3948,11 @@ struct MainView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(
-                    DEMO_MODE ? .orange : (networkManager.isNetworkOverrideActive ? .red : .orange)
+                    AppConfig.DEMO_MODE ? .orange : (networkManager.isNetworkOverrideActive ? .red : .orange)
                 )
-                .disabled(DEMO_MODE)
+                .disabled(AppConfig.DEMO_MODE)
                 .onContinuousHover { phase in
-                    if !DEMO_MODE {
+                    if !AppConfig.DEMO_MODE {
                         switch phase {
                         case .active:
                             DispatchQueue.main.async {
@@ -3687,7 +4100,7 @@ struct SDCardImportView: View {
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -3697,7 +4110,7 @@ struct SDCardImportView: View {
             if sdCardManager.isSDCardInserted {
                 HStack {
                     Image(systemName: "sdcard.fill")
-                        .foregroundColor(.green)
+                        .foregroundStyle(.green)
                         .font(.title2)
 
                     VStack(alignment: .leading) {
@@ -3705,7 +4118,7 @@ struct SDCardImportView: View {
                             .font(.headline)
                         Text("\(sdCardManager.audioFiles.count) audio files found")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()
@@ -3742,7 +4155,7 @@ struct SDCardImportView: View {
             } else {
                 HStack {
                     Image(systemName: "sdcard")
-                        .foregroundColor(.orange)
+                        .foregroundStyle(.orange)
                         .font(.title2)
                     Text("No SD Card detected. Please insert an Olympus SD card.")
                         .font(.headline)
@@ -3770,7 +4183,7 @@ struct SDCardImportView: View {
                     Spacer()
 
                     Text("\(selectedFiles.count) of \(sdCardManager.audioFiles.count) selected")
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal)
 
@@ -3794,7 +4207,7 @@ struct SDCardImportView: View {
                         ProgressView(value: importProgress, total: Double(selectedFiles.count))
                         Text("Importing \(importedCount) of \(selectedFiles.count) files...")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding()
                 }
@@ -3878,7 +4291,7 @@ struct FileRowView: View {
     var body: some View {
         HStack {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(isSelected ? .blue : .gray)
+                .foregroundStyle(isSelected ? .blue : .gray)
                 .font(.title3)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -3890,7 +4303,7 @@ struct FileRowView: View {
                     Text(file.formattedDate)
                 }
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -3916,7 +4329,7 @@ struct NetworkStatusBadge: View {
             Text(isEnabled ? "ON" : "OFF")
                 .font(.caption)
                 .fontWeight(.bold)
-                .foregroundColor(isEnabled ? .green : .red)
+                .foregroundStyle(isEnabled ? .green : .red)
         }
         .padding(.horizontal, 15)
         .padding(.vertical, 8)
@@ -3924,3 +4337,6 @@ struct NetworkStatusBadge: View {
         .cornerRadius(20)
     }
 }
+
+// MARK: - Entry Point
+VirginProjectApp.main()

@@ -2319,6 +2319,10 @@ private struct RecordingPlayerNative: View {
     let recording: RecordingItem
     @ObservedObject var audioPlayer: AudioPlayer
 
+    // Scrubber state
+    @State private var isDraggingScrubber: Bool = false
+    @State private var scrubberDragValue: Double = 0
+
     // Transcription
     @ObservedObject private var transcriptionService = TranscriptionService.shared
     @State private var transcriptionTask: Task<Void, Never>?
@@ -2375,16 +2379,49 @@ private struct RecordingPlayerNative: View {
                     .tint(.blue)
 
                     if isCurrentFile {
-                        VStack(spacing: 12) {
-                            ProgressView(value: audioPlayer.playbackProgress)
-                                .tint(.blue)
-                                .padding(.horizontal, 40)
+                        VStack(spacing: 8) {
+                            HStack(spacing: 12) {
+                                Button {
+                                    audioPlayer.restart()
+                                } label: {
+                                    Image(systemName: "backward.end.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Restart")
+
+                                Slider(
+                                    value: isDraggingScrubber
+                                        ? $scrubberDragValue
+                                        : Binding(
+                                            get: { audioPlayer.playbackProgress },
+                                            set: { _ in }
+                                        ),
+                                    in: 0...1,
+                                    onEditingChanged: { dragging in
+                                        if dragging {
+                                            isDraggingScrubber = true
+                                            scrubberDragValue = audioPlayer.playbackProgress
+                                        } else {
+                                            audioPlayer.seek(to: scrubberDragValue)
+                                            isDraggingScrubber = false
+                                        }
+                                    }
+                                )
+                                .accentColor(Color(red: 200/255, green: 16/255, blue: 46/255))
+                            }
+                            .padding(.horizontal, 40)
+
                             HStack {
-                                Text(formattedTime(audioPlayer.playbackProgress * audioPlayer.duration))
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
+                                Text(formattedTime(
+                                    (isDraggingScrubber ? scrubberDragValue : audioPlayer.playbackProgress)
+                                    * audioPlayer.duration
+                                ))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
                                 Spacer()
-                                Text(recording.formattedDuration)
+                                Text(formattedTime(audioPlayer.duration))
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -2401,6 +2438,16 @@ private struct RecordingPlayerNative: View {
                 Divider().padding(.horizontal)
 
                 Form {
+                    transcriptionSection
+
+                    Section("Handlinger") {
+                        Button {
+                            NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
+                        } label: {
+                            Label("Vis i Finder", systemImage: "folder")
+                        }
+                    }
+
                     Section("Fil informasjon") {
                         LabeledContent("Filnavn") {
                             Text(recording.filename)
@@ -2412,16 +2459,6 @@ private struct RecordingPlayerNative: View {
                             Text(recording.formattedDuration).font(.body.monospacedDigit())
                         }
                         LabeledContent("Størrelse") { Text(recording.formattedSize) }
-                    }
-
-                    transcriptionSection
-
-                    Section("Handlinger") {
-                        Button {
-                            NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
-                        } label: {
-                            Label("Vis i Finder", systemImage: "folder")
-                        }
                     }
                 }
                 .formStyle(.grouped)

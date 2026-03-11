@@ -2469,9 +2469,68 @@ private struct RecordingPlayerNative: View {
                 .background(.ultraThinMaterial)
             }
         }
+        .onAppear {
+            restoreTranscriptionStateIfNeeded()
+        }
         .onDisappear {
             transcriptionTask?.cancel()
             TranscriptionService.shared.cancel()
+        }
+    }
+
+    // MARK: - Transcription state restoration
+
+    /// Restores a cached TranscriptionResult for this file (in-memory cache first,
+    /// then disk fallback: if ~/Desktop/tekstfiler/<stem>.txt exists, we know a
+    /// transcription was completed and mark the state accordingly with a sentinel result).
+    private func restoreTranscriptionStateIfNeeded() {
+        guard transcriptionResult == nil, !isTranscribing else { return }
+
+        // 1. In-memory cache hit (same app session)
+        if let cached = TranscriptionCache.shared.result(for: recording.path) {
+            transcriptionResult = cached
+            return
+        }
+
+        // 2. Disk fallback: check ~/Desktop/tekstfiler/<stem>.txt (written on previous transcription)
+        let audioURL = URL(fileURLWithPath: recording.path)
+        let stem = audioURL.deletingPathExtension().lastPathComponent
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        let txtURL = desktop.appendingPathComponent("tekstfiler/\(stem).txt")
+
+        if FileManager.default.fileExists(atPath: txtURL.path),
+           let text = try? String(contentsOf: txtURL, encoding: .utf8),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Build a minimal TranscriptionResult from the plain-text so the UI
+            // can show the "Ferdig" state and "Vis transkripsjon" button.
+            let segment = TranscriptionSegment(
+                id: 0,
+                start: 0,
+                end: 0,
+                text: text,
+                speaker: "SPEAKER_00",
+                confidence: 1.0,
+                words: []
+            )
+            let meta = TranscriptionResultMetadata(
+                inputFile: recording.path,
+                processingTimeSeconds: 0,
+                modelVariant: "ukjent",
+                computeType: "ukjent",
+                device: "ukjent"
+            )
+            let result = TranscriptionResult(
+                version: "1.0",
+                model: "ukjent",
+                language: "no",
+                durationSeconds: 0,
+                numSpeakers: 1,
+                segments: [segment],
+                metadata: meta
+            )
+            transcriptionResult = result
+            // Also populate the cache so future navigations skip disk I/O
+            TranscriptionCache.shared.store(result, for: recording.path)
         }
     }
 
@@ -2596,11 +2655,18 @@ private struct RecordingPlayerNative: View {
                 guard !Task.isCancelled else { return }
                 transcriptionResult = result
                 isTranscribing = false
+
+                // Store in the in-memory cache so the result survives file navigation
+                TranscriptionCache.shared.store(result, for: recording.path)
+
                 // Persist plain-text transcript for anonymization
                 let plainText = result.segments
                     .map { $0.text.trimmingCharacters(in: .whitespaces) }
                     .joined(separator: "\n\n")
                 RecordingMetadataManager.shared.setOriginalTranscript(plainText, for: recording.path)
+
+                // Save .txt file to ~/Desktop/tekstfiler/ as disk fallback
+                savePlainTextTranscript(plainText, audioURL: audioURL)
             } catch let error as TranscriptionError {
                 guard !Task.isCancelled else { return }
                 transcriptionError = error
@@ -2617,6 +2683,23 @@ private struct RecordingPlayerNative: View {
         transcriptionTask?.cancel()
         TranscriptionService.shared.cancel()
         isTranscribing = false
+    }
+
+    /// Saves plain-text transcript to ~/Desktop/tekstfiler/<stem>.txt.
+    /// This file acts as a disk-based fallback for restoring transcription state after app restart.
+    private func savePlainTextTranscript(_ text: String, audioURL: URL) {
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        let tekstfilerURL = desktop.appendingPathComponent("tekstfiler")
+        do {
+            if !FileManager.default.fileExists(atPath: tekstfilerURL.path) {
+                try FileManager.default.createDirectory(at: tekstfilerURL, withIntermediateDirectories: true)
+            }
+            let stem = audioURL.deletingPathExtension().lastPathComponent
+            let txtURL = tekstfilerURL.appendingPathComponent("\(stem).txt")
+            try text.write(to: txtURL, atomically: true, encoding: .utf8)
+        } catch {
+            print("⚠️ Could not save transcript to tekstfiler: \(error)")
+        }
     }
 
     private func formattedTime(_ seconds: TimeInterval) -> String {
@@ -2744,6 +2827,17 @@ struct RecordingRowView: View {
     @State private var showDeleteConfirm = false
     @State private var isHovering = false
 
+    /// True when this recording has a transcription result — either in the session cache
+    /// or as a saved .txt file on disk (~/Desktop/tekstfiler/<stem>.txt).
+    private var hasTranscription: Bool {
+        if TranscriptionCache.shared.hasResult(for: recording.path) { return true }
+        let audioURL = URL(fileURLWithPath: recording.path)
+        let stem = audioURL.deletingPathExtension().lastPathComponent
+        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        let txtURL = desktop.appendingPathComponent("tekstfiler/\(stem).txt")
+        return FileManager.default.fileExists(atPath: txtURL.path)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -2768,6 +2862,13 @@ struct RecordingRowView: View {
                 }
 
                 Spacer()
+
+                if hasTranscription {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(Color(red: 200 / 255, green: 16 / 255, blue: 46 / 255).opacity(0.8))
+                        .help("Transkribert")
+                }
 
                 Text(recording.formattedSize)
                     .font(.system(size: 10, weight: .light))

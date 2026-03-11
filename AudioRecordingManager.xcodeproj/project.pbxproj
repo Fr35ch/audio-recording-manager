@@ -7,7 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		E8D7C6B5A4F3E2D1C0B9A8F7 /* anonymize_bridge.py in Resources */ = {isa = PBXBuildFile; fileRef = F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */; };
 		1735D4D03E55F22857571523 /* TranscriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BA5316465B5EE74C44F4E0 /* TranscriptManager.swift */; };
+		A1B2C3D4E5F600010203A401 /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */; };
+		C3D4E5F6000102030405C603 /* TranscriptionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F600010203040506D704 /* TranscriptionModel.swift */; };
+		E5F60001020304050607E805 /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6000102030405060708F906 /* TranscriptionService.swift */; };
+		07081920212223240607FA07 /* TranscriptionProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18192021222324250708FB08 /* TranscriptionProgressView.swift */; };
+		292A2B2C2D2E2F30090AFF09 /* TranscriptionResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */; };
+		4B4C4D4E4F5051420B0C010B /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */; };
 		2EBA562109053A8CE0AEB214 /* TranscriptsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A921016BFF96E7C034AA10B7 /* TranscriptsView.swift */; };
 		3FE4C5D44DF594B313A2EDE6 /* AnonymizationModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */; };
 		4FF5785E464C096FD42B86DE /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AAE839F60F73AA729930DD9 /* RecordingDetailView.swift */; };
@@ -33,6 +40,13 @@
 		A921016BFF96E7C034AA10B7 /* TranscriptsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptsView.swift; sourceTree = "<group>"; };
 		BC466D961441ABE452269B7B /* RecordingMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMetadata.swift; sourceTree = "<group>"; };
 		CE5EE01B431596E611A2B34A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = anonymize_bridge.py; path = Resources/anonymize_bridge.py; sourceTree = SOURCE_ROOT; };
+		B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResult.swift; sourceTree = "<group>"; };
+		D4E5F600010203040506D704 /* TranscriptionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionModel.swift; sourceTree = "<group>"; };
+		F6000102030405060708F906 /* TranscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionService.swift; sourceTree = "<group>"; };
+		18192021222324250708FB08 /* TranscriptionProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionProgressView.swift; sourceTree = "<group>"; };
+		3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResultView.swift; sourceTree = "<group>"; };
+		5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionSettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -55,6 +69,7 @@
 		DF8884E58B3616241EF874EB /* AudioRecordingManager */ = {
 			isa = PBXGroup;
 			children = (
+				F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */,
 				5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */,
 				750BF1F85FCC82DCC5E72B53 /* AnonymizationService.swift */,
 				614E979CCD97F0B83DCB8973 /* AudioRecordingManagerLib.swift */,
@@ -66,6 +81,12 @@
 				9D2E3719CBA56E7F84C22372 /* SVGImageView.swift */,
 				47BA5316465B5EE74C44F4E0 /* TranscriptManager.swift */,
 				A921016BFF96E7C034AA10B7 /* TranscriptsView.swift */,
+				B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */,
+				D4E5F600010203040506D704 /* TranscriptionModel.swift */,
+				F6000102030405060708F906 /* TranscriptionService.swift */,
+				18192021222324250708FB08 /* TranscriptionProgressView.swift */,
+				3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */,
+				5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */,
 			);
 			name = AudioRecordingManager;
 			path = Sources/AudioRecordingManager;
@@ -78,6 +99,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9D8798ACF97D7CA837D8AF5E /* Build configuration list for PBXNativeTarget "AudioRecordingManager" */;
 			buildPhases = (
+				D7C6B5A4F3E2D1C0B9A8F7E6 /* Resources */,
 				4826E0ED79CA6281CEAB866C /* Sources */,
 			);
 			buildRules = (
@@ -124,6 +146,17 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXResourcesBuildPhase section */
+		D7C6B5A4F3E2D1C0B9A8F7E6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8D7C6B5A4F3E2D1C0B9A8F7 /* anonymize_bridge.py in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		4826E0ED79CA6281CEAB866C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -140,6 +173,12 @@
 				1735D4D03E55F22857571523 /* TranscriptManager.swift in Sources */,
 				2EBA562109053A8CE0AEB214 /* TranscriptsView.swift in Sources */,
 				BD19341D96FC6C34B54B4A1B /* main.swift in Sources */,
+				A1B2C3D4E5F600010203A401 /* TranscriptionResult.swift in Sources */,
+				C3D4E5F6000102030405C603 /* TranscriptionModel.swift in Sources */,
+				E5F60001020304050607E805 /* TranscriptionService.swift in Sources */,
+				07081920212223240607FA07 /* TranscriptionProgressView.swift in Sources */,
+				292A2B2C2D2E2F30090AFF09 /* TranscriptionResultView.swift in Sources */,
+				4B4C4D4E4F5051420B0C010B /* TranscriptionSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

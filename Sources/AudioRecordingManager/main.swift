@@ -2229,6 +2229,20 @@ private struct RecordingPlayerNative: View {
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
 
+    // Diarization (step 2)
+    @State private var diarizationTask: Task<Void, Never>?
+    @State private var isDiarizing = false
+    @State private var diarizationError: String? = nil
+    @AppStorage("diarization.hfToken") private var hfToken = ""
+
+    // Analysis (step 3)
+    @State private var analysisTask: Task<Void, Never>?
+    @State private var isAnalyzing = false
+    @State private var analysisError: String? = nil
+    @State private var analysisResult: AnalysisResult? = nil
+    @State private var showAnalysisResult = false
+    @AppStorage("analysis.llmModel") private var llmModel = "qwen3:8b"
+
     private var isCurrentFile: Bool {
         audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
     }
@@ -2333,6 +2347,8 @@ private struct RecordingPlayerNative: View {
 
                 Form {
                     transcriptionSection
+                    diarizationSection
+                    analysisSection
 
                     Section("Handlinger") {
                         Button {
@@ -2400,11 +2416,23 @@ private struct RecordingPlayerNative: View {
                 .background(.ultraThinMaterial)
             }
         }
+        .sheet(isPresented: $showAnalysisResult) {
+            if let result = analysisResult {
+                AnalysisResultView(result: result)
+                    .frame(width: 680, height: 560)
+            }
+        }
         .onAppear {
             restoreTranscriptionStateIfNeeded()
+            // Restore analysis result
+            if analysisResult == nil {
+                analysisResult = ProcessingStateCache.shared.analysisResult(for: recording.path)
+            }
         }
         .onDisappear {
             transcriptionTask?.cancel()
+            diarizationTask?.cancel()
+            analysisTask?.cancel()
             TranscriptionService.shared.cancel()
         }
     }
@@ -2581,6 +2609,133 @@ private struct RecordingPlayerNative: View {
         }
     }
 
+    // MARK: - Diarization section
+
+    @ViewBuilder
+    private var diarizationSection: some View {
+        Section("Talerutskilling") {
+            if isDiarizing {
+                HStack(spacing: 10) {
+                    ProgressView().progressViewStyle(.circular).scaleEffect(0.75)
+                    Text(transcriptionService.stage == .diarizing
+                         ? "Identifiserer talere..."
+                         : "Forbereder...")
+                }
+                if transcriptionService.diarizationProgress > 0 {
+                    ProgressView(value: transcriptionService.diarizationProgress)
+                        .animation(.easeInOut(duration: 0.4), value: transcriptionService.diarizationProgress)
+                }
+                Button("Avbryt", role: .destructive) {
+                    diarizationTask?.cancel()
+                    TranscriptionService.shared.cancel()
+                    isDiarizing = false
+                }
+            } else if let result = transcriptionResult, result.metadata.diarizationRun == true {
+                // Completed
+                Label {
+                    Text("Talere identifisert")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+                Button {
+                    startDiarization()
+                } label: {
+                    Label("Kjør på nytt", systemImage: "arrow.counterclockwise")
+                }
+            } else if let error = diarizationError {
+                Label {
+                    Text(error).foregroundStyle(.red)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                }
+                Button("Prøv igjen", action: startDiarization)
+            } else {
+                // Not started
+                if transcriptionResult != nil {
+                    if hfToken.isEmpty {
+                        Label("Krever HuggingFace-token (sett i innstillinger)", systemImage: "key")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button {
+                            startDiarization()
+                        } label: {
+                            Label("Identifiser talere", systemImage: "person.2.fill")
+                        }
+                        .disabled(isTranscribing || isAnalyzing)
+                        Text("Bruker pyannote · \(defaultSpeakers) talere")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Transkriber lydfilen først")
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                }
+            }
+        }
+    }
+
+    // MARK: - Analysis section
+
+    @ViewBuilder
+    private var analysisSection: some View {
+        Section("Analyse") {
+            if isAnalyzing {
+                HStack(spacing: 10) {
+                    ProgressView().progressViewStyle(.circular).scaleEffect(0.75)
+                    Text("Analyserer med \(llmModel)...")
+                }
+                if transcriptionService.analysisProgress > 0 {
+                    ProgressView(value: transcriptionService.analysisProgress)
+                        .animation(.easeInOut(duration: 0.4), value: transcriptionService.analysisProgress)
+                }
+                Button("Avbryt", role: .destructive) {
+                    analysisTask?.cancel()
+                    TranscriptionService.shared.cancel()
+                    isAnalyzing = false
+                }
+            } else if analysisResult != nil {
+                // Completed
+                Label {
+                    Text("Analyse fullført")
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+                Button {
+                    showAnalysisResult = true
+                } label: {
+                    Label("Vis analyse", systemImage: "doc.text.magnifyingglass")
+                }
+                Button {
+                    startAnalysis()
+                } label: {
+                    Label("Analyser på nytt", systemImage: "arrow.counterclockwise")
+                }
+            } else if let error = analysisError {
+                Label {
+                    Text(error).foregroundStyle(.red)
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                }
+                Button("Prøv igjen", action: startAnalysis)
+            } else {
+                if transcriptionResult != nil {
+                    Button {
+                        startAnalysis()
+                    } label: {
+                        Label("Analyser med \(llmModel)", systemImage: "brain.head.profile")
+                    }
+                    .disabled(isTranscribing || isDiarizing)
+                    Text("Krever Ollama kjørende lokalt")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Transkriber lydfilen først")
+                        .foregroundStyle(.tertiary)
+                        .font(.caption)
+                }
+            }
+        }
+    }
+
     // MARK: - Actions
 
     private func startTranscription() {
@@ -2634,6 +2789,55 @@ private struct RecordingPlayerNative: View {
         transcriptionTask?.cancel()
         TranscriptionService.shared.cancel()
         isTranscribing = false
+    }
+
+    private func startDiarization() {
+        guard let result = transcriptionResult else { return }
+        isDiarizing = true
+        diarizationError = nil
+        diarizationTask = Task {
+            do {
+                let updated = try await TranscriptionService.shared.diarize(
+                    audioFile: URL(fileURLWithPath: recording.path),
+                    existingResult: result,
+                    hfToken: hfToken,
+                    speakers: defaultSpeakers
+                )
+                await MainActor.run {
+                    transcriptionResult = updated
+                    isDiarizing = false
+                }
+            } catch {
+                await MainActor.run {
+                    diarizationError = error.localizedDescription
+                    isDiarizing = false
+                }
+            }
+        }
+    }
+
+    private func startAnalysis() {
+        guard let result = transcriptionResult else { return }
+        isAnalyzing = true
+        analysisError = nil
+        analysisTask = Task {
+            do {
+                let analysis = try await TranscriptionService.shared.analyze(
+                    audioFile: URL(fileURLWithPath: recording.path),
+                    existingResult: result,
+                    llmModel: llmModel
+                )
+                await MainActor.run {
+                    analysisResult = analysis
+                    isAnalyzing = false
+                }
+            } catch {
+                await MainActor.run {
+                    analysisError = error.localizedDescription
+                    isAnalyzing = false
+                }
+            }
+        }
     }
 
     /// Saves plain-text transcript to ~/Desktop/tekstfiler/<stem>.txt.
@@ -2789,6 +2993,14 @@ struct RecordingRowView: View {
         return FileManager.default.fileExists(atPath: txtURL.path)
     }
 
+    private var hasDiarization: Bool {
+        ProcessingStateCache.shared.state(for: recording.path).diarization.status == .completed
+    }
+
+    private var hasAnalysis: Bool {
+        ProcessingStateCache.shared.state(for: recording.path).analysis.status == .completed
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -2814,11 +3026,25 @@ struct RecordingRowView: View {
 
                 Spacer()
 
-                if hasTranscription {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundStyle(Color(red: 200 / 255, green: 16 / 255, blue: 46 / 255).opacity(0.8))
-                        .help("Transkribert")
+                HStack(spacing: 4) {
+                    if hasTranscription {
+                        Image(systemName: "doc.text")
+                            .font(.caption2)
+                            .foregroundStyle(Color(red: 200/255, green: 16/255, blue: 46/255).opacity(0.8))
+                            .help("Transkribert")
+                    }
+                    if hasDiarization {
+                        Image(systemName: "person.2.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.blue.opacity(0.7))
+                            .help("Talere identifisert")
+                    }
+                    if hasAnalysis {
+                        Image(systemName: "brain.head.profile")
+                            .font(.caption2)
+                            .foregroundStyle(.purple.opacity(0.7))
+                            .help("Analysert")
+                    }
                 }
 
                 Text(recording.formattedSize)

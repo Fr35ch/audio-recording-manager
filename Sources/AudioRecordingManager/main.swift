@@ -1,10 +1,8 @@
 import AVFAudio
 import AVFoundation
 import CoreMedia
-import CoreWLAN
 import DiskArbitration
 import Foundation
-import IOBluetooth
 import SwiftUI
 
 // MARK: - Configuration
@@ -85,110 +83,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false  // Keep app running even if window closed
-    }
-}
-
-// MARK: - Network Manager (Security Critical)
-class NetworkManager: ObservableObject {
-    static let shared = NetworkManager()
-
-    @Published var wifiEnabled: Bool = true
-    @Published var bluetoothEnabled: Bool = true
-    @Published var isNetworkOverrideActive: Bool = false
-
-    private init() {
-        updateStatus()
-    }
-
-    /// Disable all network connections (WiFi, Bluetooth, AirDrop)
-    func disableAllConnections() {
-        disableWiFi()
-        disableBluetooth()
-        // AirDrop is disabled when WiFi and Bluetooth are off
-        updateStatus()
-    }
-
-    /// Enable all network connections
-    func enableAllConnections() {
-        enableWiFi()
-        enableBluetooth()
-        isNetworkOverrideActive = true
-        updateStatus()
-    }
-
-    /// Disable WiFi using networksetup command
-    private func disableWiFi() {
-        let task = Process()
-        task.launchPath = "/usr/sbin/networksetup"
-        task.arguments = ["-setairportpower", "en0", "off"]
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            print("Failed to disable WiFi: \(error)")
-        }
-    }
-
-    /// Enable WiFi using networksetup command
-    func enableWiFi() {
-        let task = Process()
-        task.launchPath = "/usr/sbin/networksetup"
-        task.arguments = ["-setairportpower", "en0", "on"]
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            print("Failed to enable WiFi: \(error)")
-        }
-    }
-
-    /// Disable Bluetooth using system commands
-    private func disableBluetooth() {
-        // Use blueutil if available, otherwise use AppleScript
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = [
-            "-c",
-            "blueutil -p 0 2>/dev/null || osascript -e 'tell application \"System Settings\" to quit' -e 'do shell script \"sudo defaults write /Library/Preferences/com.apple.Bluetooth ControllerPowerState -int 0 && sudo killall -HUP blued\" with administrator privileges' 2>/dev/null",
-        ]
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            print("Failed to disable Bluetooth: \(error)")
-        }
-    }
-
-    /// Enable Bluetooth
-    private func enableBluetooth() {
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = [
-            "-c",
-            "blueutil -p 1 2>/dev/null || osascript -e 'tell application \"System Settings\" to quit' -e 'do shell script \"sudo defaults write /Library/Preferences/com.apple.Bluetooth ControllerPowerState -int 1 && sudo killall -HUP blued\" with administrator privileges' 2>/dev/null",
-        ]
-
-        do {
-            try task.run()
-            task.waitUntilExit()
-        } catch {
-            print("Failed to enable Bluetooth: \(error)")
-        }
-    }
-
-    /// Update current network status
-    func updateStatus() {
-        // Check WiFi status
-        if let interface = CWWiFiClient.shared().interface() {
-            wifiEnabled = interface.powerOn()
-        }
-
-        // Check Bluetooth status
-        let btHost = IOBluetoothHostController.default()
-        bluetoothEnabled = btHost?.powerState == kBluetoothHCIPowerStateON
     }
 }
 
@@ -3137,7 +3031,6 @@ struct RecordingView: View {
     @ObservedObject var recorder: AudioRecorder
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
-    @StateObject private var networkManager = NetworkManager.shared
     @Binding var isShowing: Bool
     @State private var microphoneVerified = false
     @State private var verificationTimer: Timer?
@@ -3643,7 +3536,6 @@ struct AboutView: View {
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text("• Swift 6.1+ & SwiftUI")
-                            Text("• CoreWLAN & IOBluetooth for network control")
                             Text("• DiskArbitration for SD card detection")
                             Text("• AVFoundation for audio recording")
                             Text("• DSS Player for encrypted DS2 files")
@@ -3826,7 +3718,6 @@ struct SidebarMenuItem: View {
 
 // MARK: - Main View
 struct MainView: View {
-    @StateObject private var networkManager = NetworkManager.shared
     @StateObject private var fileManager = AudioFileManager.shared
     @StateObject private var sdCardManager = SDCardManager.shared
     @StateObject private var audioRecorder = AudioRecorder.shared
@@ -3889,38 +3780,6 @@ struct MainView: View {
         .ignoresSafeArea(edges: .top)
         .navigationTitle("")
         .toolbarBackground(.hidden, for: .windowToolbar)
-        .toolbar {
-            // Network Status Indicators on right side (DEMO: shows OFF during recording)
-            ToolbarItemGroup(placement: .automatic) {
-                Spacer()
-
-                let wifiActive = networkManager.wifiEnabled && !audioRecorder.isRecording
-                HStack(spacing: 6) {
-                    Image(systemName: wifiActive ? "wifi" : "wifi.slash")
-                        .font(.system(size: 12))
-                        .foregroundStyle(wifiActive ? .green : .red)
-                    Text("WiFi")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.secondary)
-                    Text(wifiActive ? "ON" : "OFF")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(wifiActive ? .green : .red)
-                }
-
-                let btActive = networkManager.bluetoothEnabled && !audioRecorder.isRecording
-                HStack(spacing: 6) {
-                    Image(systemName: "wave.3.right")
-                        .font(.system(size: 12))
-                        .foregroundStyle(btActive ? .green : .red)
-                    Text("Bluetooth")
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.secondary)
-                    Text(btActive ? "ON" : "OFF")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(btActive ? .green : .red)
-                }
-            }
-        }
         .frame(minWidth: 700, minHeight: 800)
         .sheet(isPresented: $showImportSheet) {
             SDCardImportView(sdCardManager: sdCardManager)
@@ -3961,7 +3820,6 @@ struct MainView: View {
             .presentationDetents([.height(400)])
         }
         .onAppear {
-            networkManager.updateStatus()
             recordingsManager.loadRecordings()
             folderManager.loadFolderStructure()
         }
@@ -4043,20 +3901,6 @@ struct MainView: View {
                 )
             }
 
-            // Network Status Indicator - Centered
-            HStack(spacing: 15) {
-                NetworkStatusBadge(
-                    label: "WiFi",
-                    isEnabled: networkManager.wifiEnabled
-                )
-                NetworkStatusBadge(
-                    label: "Bluetooth",
-                    isEnabled: networkManager.bluetoothEnabled
-                )
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 10)
-
             Divider()
                 .padding(.vertical, 10)
 
@@ -4133,47 +3977,6 @@ struct MainView: View {
                     }
                 }
 
-                Button(action: {
-                    toggleNetworkOverride()
-                }) {
-                    HStack {
-                        if AppConfig.DEMO_MODE {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                        }
-                        Image(
-                            systemName: networkManager.isNetworkOverrideActive
-                                ? "wifi.slash" : "wifi")
-                        Text(
-                            AppConfig.DEMO_MODE
-                                ? "DEMO MODE"
-                                : (networkManager.isNetworkOverrideActive
-                                    ? "Disable Network" : "Enable Network (Override)")
-                        )
-                        .fontWeight(.medium)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                }
-                .buttonStyle(.bordered)
-                .tint(
-                    AppConfig.DEMO_MODE ? .orange : (networkManager.isNetworkOverrideActive ? .red : .orange)
-                )
-                .disabled(AppConfig.DEMO_MODE)
-                .onContinuousHover { phase in
-                    if !AppConfig.DEMO_MODE {
-                        switch phase {
-                        case .active:
-                            DispatchQueue.main.async {
-                                NSCursor.pointingHand.set()
-                            }
-                        case .ended:
-                            DispatchQueue.main.async {
-                                NSCursor.arrow.set()
-                            }
-                        }
-                    }
-                }
             }
 
             Spacer()
@@ -4219,9 +4022,6 @@ struct MainView: View {
     }
 
     func uploadToTeams() {
-        // Enable only WiFi (Teams doesn't need Bluetooth)
-        networkManager.enableWiFi()
-
         let workspace = NSWorkspace.shared
 
         // Launch Microsoft Teams
@@ -4263,17 +4063,6 @@ struct MainView: View {
             message:
                 "Network enabled. Teams launched. Upload your files, then click 'Disable Network' when done."
         )
-    }
-
-    func toggleNetworkOverride() {
-        if networkManager.isNetworkOverrideActive {
-            networkManager.disableAllConnections()
-            networkManager.isNetworkOverrideActive = false
-            showSuccess(message: "Network disabled for security")
-        } else {
-            networkManager.enableAllConnections()
-            showSuccess(message: "Network override active")
-        }
     }
 
     func showSuccess(message: String) {
@@ -4518,32 +4307,6 @@ struct FileRowView: View {
             Spacer()
         }
         .padding(.vertical, 4)
-    }
-}
-
-// MARK: - Network Status Badge
-struct NetworkStatusBadge: View {
-    let label: String
-    let isEnabled: Bool
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(isEnabled ? Color.green : Color.red)
-                .frame(width: 12, height: 12)
-
-            Text(label)
-                .font(.headline)
-
-            Text(isEnabled ? "ON" : "OFF")
-                .font(.caption)
-                .fontWeight(.bold)
-                .foregroundStyle(isEnabled ? .green : .red)
-        }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 8)
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(20)
     }
 }
 

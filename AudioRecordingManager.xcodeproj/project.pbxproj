@@ -18,6 +18,7 @@
 		292A2B2C2D2E2F30090AFF09 /* TranscriptionResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */; };
 		1A0891D3556844459838DF10 /* AnalysisResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780774CD0DED46789A3AEFF5 /* AnalysisResultView.swift */; };
 		4B4C4D4E4F5051420B0C010B /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */; };
+		AA1122334455667788990011 /* OllamaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2233445566778899001122 /* OllamaManager.swift */; };
 		2EBA562109053A8CE0AEB214 /* TranscriptsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A921016BFF96E7C034AA10B7 /* TranscriptsView.swift */; };
 		3FE4C5D44DF594B313A2EDE6 /* AnonymizationModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */; };
 		4FF5785E464C096FD42B86DE /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AAE839F60F73AA729930DD9 /* RecordingDetailView.swift */; };
@@ -53,6 +54,7 @@
 		3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResultView.swift; sourceTree = "<group>"; };
 		780774CD0DED46789A3AEFF5 /* AnalysisResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResultView.swift; sourceTree = "<group>"; };
 		5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionSettingsView.swift; sourceTree = "<group>"; };
+		BB2233445566778899001122 /* OllamaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -96,6 +98,7 @@
 				18192021222324250708FB08 /* TranscriptionProgressView.swift */,
 				3A3B3C3D3E3F40410A0B000A /* TranscriptionResultView.swift */,
 				5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */,
+				BB2233445566778899001122 /* OllamaManager.swift */,
 			);
 			name = AudioRecordingManager;
 			path = Sources/AudioRecordingManager;
@@ -191,6 +194,7 @@
 				07081920212223240607FA07 /* TranscriptionProgressView.swift in Sources */,
 				292A2B2C2D2E2F30090AFF09 /* TranscriptionResultView.swift in Sources */,
 				4B4C4D4E4F5051420B0C010B /* TranscriptionSettingsView.swift in Sources */,
+				AA1122334455667788990011 /* OllamaManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -782,6 +782,23 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         try jsonData.write(to: tempURL)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
+        // Ensure Ollama is running — start it if needed
+        if !OllamaManager.shared.isRunning() {
+            if OllamaManager.shared.isInstalled {
+                DispatchQueue.main.async {
+                    self.stage = .analyzing
+                    self.analysisProgress = 0.0
+                }
+                OllamaManager.shared.startServer()
+                if !OllamaManager.shared.waitUntilReady(timeout: 20) {
+                    throw TranscriptionError.processFailed(
+                        "Ollama startet ikke innen 20 sekunder. Start Ollama manuelt og prøv igjen."
+                    )
+                }
+            }
+            // If not installed, navt.py will exit with code 5 and the error will surface naturally
+        }
+
         let python = venvRoot.appendingPathComponent("bin/python3").path
         let navtScript = navtScriptPath
         let tempJSONPath = tempURL.path

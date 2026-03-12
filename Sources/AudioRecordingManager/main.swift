@@ -2243,6 +2243,10 @@ private struct RecordingPlayerNative: View {
     @State private var showAnalysisResult = false
     @AppStorage("analysis.llmModel") private var llmModel = "qwen3:8b"
 
+    // Ollama status (checked off main thread)
+    @State private var ollamaIsRunning = false
+    @State private var ollamaIsInstalled = false
+
     private var isCurrentFile: Bool {
         audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
     }
@@ -2427,6 +2431,14 @@ private struct RecordingPlayerNative: View {
             // Restore analysis result
             if analysisResult == nil {
                 analysisResult = ProcessingStateCache.shared.analysisResult(for: recording.path)
+            }
+            // Check Ollama status off main thread
+            ollamaIsInstalled = OllamaManager.shared.isInstalled
+            if ollamaIsInstalled {
+                Task.detached {
+                    let running = OllamaManager.shared.isRunning()
+                    await MainActor.run { ollamaIsRunning = running }
+                }
             }
         }
         .onDisappear {
@@ -2725,8 +2737,20 @@ private struct RecordingPlayerNative: View {
                         Label("Analyser med \(llmModel)", systemImage: "brain.head.profile")
                     }
                     .disabled(isTranscribing || isDiarizing)
-                    Text("Krever Ollama kjørende lokalt")
-                        .font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: ollamaIsInstalled
+                              ? (ollamaIsRunning ? "circle.fill" : "circle.dotted")
+                              : "xmark.circle")
+                            .foregroundStyle(ollamaIsInstalled
+                                             ? (ollamaIsRunning ? Color.green : Color.orange)
+                                             : Color.red)
+                            .font(.caption2)
+                        Text(ollamaIsInstalled
+                             ? (ollamaIsRunning ? "Ollama kjører" : "Ollama starter automatisk ved klikk")
+                             : "Ollama er ikke installert — last ned fra ollama.com")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 } else {
                     Text("Transkriber lydfilen først")
                         .foregroundStyle(.tertiary)

@@ -12,6 +12,8 @@ struct TranscriptionSettingsView: View {
     @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
+    @AppStorage("diarization.hfToken")           private var hfToken = ""
+    @AppStorage("analysis.llmModel")             private var llmModel = "qwen3:8b"
 
     // Transient UI state
     @State private var installState: ActionState = .idle
@@ -19,6 +21,7 @@ struct TranscriptionSettingsView: View {
     @State private var downloadState: ActionState = .idle
     @State private var downloadingModel: TranscriptionModel?
     @State private var versionString: String? = nil
+    @State private var ollamaStatus: OllamaStatus = .stopped
 
     private var defaultModel: Binding<TranscriptionModel> {
         Binding(
@@ -35,11 +38,28 @@ struct TranscriptionSettingsView: View {
                 modelSection
                 Divider()
                 defaultsSection
+                Divider()
+                hfTokenSection
+                Divider()
+                llmModelSection
             }
             .padding(24)
         }
         .frame(width: 480)
-        .onAppear { loadVersion() }
+        .onAppear {
+            loadVersion()
+            Task.detached {
+                let status: OllamaStatus
+                if !OllamaManager.shared.isInstalled {
+                    status = .notInstalled
+                } else if OllamaManager.shared.isRunning() {
+                    status = .running
+                } else {
+                    status = .stopped
+                }
+                await MainActor.run { ollamaStatus = status }
+            }
+        }
     }
 
     // MARK: - Install section
@@ -225,6 +245,67 @@ struct TranscriptionSettingsView: View {
         }
     }
 
+    // MARK: - HuggingFace token section
+
+    private var hfTokenSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("HuggingFace-token", systemImage: "key")
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    SecureField("hf_...", text: $hfToken)
+                        .textContentType(.password)
+
+                    Text("Kreves for talerutskilling (pyannote). Hent token på huggingface.co/settings/tokens — velg 'Read'-tilgang.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !hfToken.isEmpty {
+                        Label("Token lagret", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.system(size: 11))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(4)
+            }
+        }
+    }
+
+    // MARK: - LLM model section
+
+    private var llmModelSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("Analysemodell (Ollama)", systemImage: "brain.head.profile")
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("f.eks. qwen3:8b", text: $llmModel)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: ollamaStatus == .running ? "circle.fill" :
+                              ollamaStatus == .notInstalled ? "xmark.circle" : "circle.dotted")
+                            .foregroundStyle(ollamaStatus == .running ? Color.green :
+                                             ollamaStatus == .notInstalled ? Color.red : Color.orange)
+                            .font(.caption2)
+                        Text(ollamaStatus == .running ? "Ollama kjører" :
+                             ollamaStatus == .notInstalled ? "Ollama ikke installert" : "Ollama ikke aktiv")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Anbefalt: qwen3:8b (rask) eller llama3.2:latest. Modellen må være lastet ned med 'ollama pull <modell>'.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(4)
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     private func sectionHeader(_ title: String, systemImage: String) -> some View {
@@ -304,6 +385,10 @@ private enum ActionState: Equatable {
     case success
     case failed(String)
 }
+
+// MARK: - Ollama status
+
+enum OllamaStatus { case running, stopped, notInstalled }
 
 // MARK: - Action Button
 

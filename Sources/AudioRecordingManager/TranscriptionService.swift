@@ -637,6 +637,371 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         }
     }
 
+    // MARK: - Diarize subprocess
+
+    private func runDiarizeSubprocess(
+        audioFile: URL,
+        existingResult: TranscriptionResult,
+        hfToken: String,
+        speakers: Int
+    ) throws -> TranscriptionResult {
+        // Write existing result to a temp JSON file for --transcript-input
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempURL = tempDir.appendingPathComponent("arm-transcript-\(UUID().uuidString).json")
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let jsonData = try encoder.encode(existingResult)
+        try jsonData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let python = venvRoot.appendingPathComponent("bin/python3").path
+        let navtScript = navtScriptPath
+        let tempJSONPath = tempURL.path
+        let cmd = "\(python.armShellEscaped) \(navtScript.armShellEscaped) --input \(audioFile.path.armShellEscaped) --transcript-input \(tempJSONPath.armShellEscaped) --format json --diarize-only --hf-token \(hfToken.armShellEscaped) --speakers \(speakers)"
+
+        let task = Process()
+        task.launchPath = "/bin/sh"
+        task.arguments = ["-lc", cmd]
+
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
+        env["TOKENIZERS_PARALLELISM"] = "false"
+        task.environment = env
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = stderrPipe
+
+        activeProcess = task
+
+        let stderrHandle = stderrPipe.fileHandleForReading
+        var stderrBuffer = ""
+        var fullStderrLines: [String] = []
+        let bufferLock = NSLock()
+
+        stderrHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            bufferLock.lock()
+            stderrBuffer += chunk
+            var lines = stderrBuffer.components(separatedBy: "\n")
+            stderrBuffer = lines.removeLast()
+            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
+            bufferLock.unlock()
+            for line in lines where !line.isEmpty {
+                self.handleProgressLine(line)
+            }
+        }
+
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        var accumulatedStdout = Data()
+        let stdoutLock = NSLock()
+
+        stdoutHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            stdoutLock.lock()
+            accumulatedStdout.append(data)
+            stdoutLock.unlock()
+        }
+
+        do {
+            try task.run()
+        } catch {
+            stderrHandle.readabilityHandler = nil
+            activeProcess = nil
+            throw TranscriptionError.processFailed(error.localizedDescription)
+        }
+
+        let deadline = Date().addingTimeInterval(7200)
+        while task.isRunning {
+            if Date() > deadline {
+                task.terminate()
+                stderrHandle.readabilityHandler = nil
+                activeProcess = nil
+                throw TranscriptionError.timeout
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        stderrHandle.readabilityHandler = nil
+        stdoutHandle.readabilityHandler = nil
+        activeProcess = nil
+
+        let exitCode = task.terminationStatus
+
+        switch exitCode {
+        case 0:
+            break
+        case 6:
+            throw TranscriptionError.processFailed(
+                "Ugyldig Hugging Face-token. Sjekk HF-tokenet i innstillingene."
+            )
+        default:
+            bufferLock.lock()
+            var allLines = fullStderrLines
+            let tail = stderrBuffer
+            bufferLock.unlock()
+            let extra = String(
+                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            if !tail.isEmpty { allLines.append(tail) }
+            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
+            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            throw TranscriptionError.processFailed(
+                errText.isEmpty ? "exit code \(exitCode)" : errText
+            )
+        }
+
+        stdoutLock.lock()
+        let stdoutData = accumulatedStdout
+        stdoutLock.unlock()
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let result = try? decoder.decode(TranscriptionResult.self, from: stdoutData) else {
+            throw TranscriptionError.invalidOutput
+        }
+
+        return result
+    }
+
+    // MARK: - Analyze subprocess
+
+    private func runAnalyzeSubprocess(
+        existingResult: TranscriptionResult,
+        llmModel: String
+    ) throws -> AnalysisResult {
+        // Write existing result to a temp JSON file for --transcript-input
+        let tempDir = FileManager.default.temporaryDirectory
+        let tempURL = tempDir.appendingPathComponent("arm-transcript-\(UUID().uuidString).json")
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        let jsonData = try encoder.encode(existingResult)
+        try jsonData.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let python = venvRoot.appendingPathComponent("bin/python3").path
+        let navtScript = navtScriptPath
+        let tempJSONPath = tempURL.path
+        let cmd = "\(python.armShellEscaped) \(navtScript.armShellEscaped) --analyze-only --transcript-input \(tempJSONPath.armShellEscaped) --format json --llm \(llmModel.armShellEscaped)"
+
+        let task = Process()
+        task.launchPath = "/bin/sh"
+        task.arguments = ["-lc", cmd]
+
+        var env = ProcessInfo.processInfo.environment
+        env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
+        env["TOKENIZERS_PARALLELISM"] = "false"
+        task.environment = env
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = stderrPipe
+
+        activeProcess = task
+
+        let stderrHandle = stderrPipe.fileHandleForReading
+        var stderrBuffer = ""
+        var fullStderrLines: [String] = []
+        let bufferLock = NSLock()
+
+        stderrHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            bufferLock.lock()
+            stderrBuffer += chunk
+            var lines = stderrBuffer.components(separatedBy: "\n")
+            stderrBuffer = lines.removeLast()
+            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
+            bufferLock.unlock()
+            for line in lines where !line.isEmpty {
+                self.handleProgressLine(line)
+            }
+        }
+
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        var accumulatedStdout = Data()
+        let stdoutLock = NSLock()
+
+        stdoutHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            stdoutLock.lock()
+            accumulatedStdout.append(data)
+            stdoutLock.unlock()
+        }
+
+        do {
+            try task.run()
+        } catch {
+            stderrHandle.readabilityHandler = nil
+            activeProcess = nil
+            throw TranscriptionError.processFailed(error.localizedDescription)
+        }
+
+        // 10-minute ceiling for LLM analysis
+        let deadline = Date().addingTimeInterval(600)
+        while task.isRunning {
+            if Date() > deadline {
+                task.terminate()
+                stderrHandle.readabilityHandler = nil
+                activeProcess = nil
+                throw TranscriptionError.timeout
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        stderrHandle.readabilityHandler = nil
+        stdoutHandle.readabilityHandler = nil
+        activeProcess = nil
+
+        let exitCode = task.terminationStatus
+
+        switch exitCode {
+        case 0:
+            break
+        case 5:
+            throw TranscriptionError.processFailed(
+                "Ollama kjører ikke. Start Ollama og prøv igjen."
+            )
+        default:
+            bufferLock.lock()
+            var allLines = fullStderrLines
+            let tail = stderrBuffer
+            bufferLock.unlock()
+            let extra = String(
+                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            if !tail.isEmpty { allLines.append(tail) }
+            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
+            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            throw TranscriptionError.processFailed(
+                errText.isEmpty ? "exit code \(exitCode)" : errText
+            )
+        }
+
+        stdoutLock.lock()
+        let stdoutData = accumulatedStdout
+        stdoutLock.unlock()
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .secondsSince1970
+        guard let result = try? decoder.decode(AnalysisResult.self, from: stdoutData) else {
+            throw TranscriptionError.invalidOutput
+        }
+
+        return result
+    }
+
+    // MARK: - Public diarize/analyze API
+
+    func diarize(
+        audioFile: URL,
+        existingResult: TranscriptionResult,
+        hfToken: String,
+        speakers: Int
+    ) async throws -> TranscriptionResult {
+        await MainActor.run {
+            self.stage = .diarizing
+            self.diarizationProgress = 0
+        }
+        ProcessingStateCache.shared.setStep(.diarization, status: .inProgress, for: audioFile.path)
+
+        do {
+            let result = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let r = try self.runDiarizeSubprocess(
+                            audioFile: audioFile,
+                            existingResult: existingResult,
+                            hfToken: hfToken,
+                            speakers: speakers
+                        )
+                        continuation.resume(returning: r)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+            TranscriptionCache.shared.store(result, for: audioFile.path)
+            saveTranscriptJSON(result, audioURL: audioFile)
+            ProcessingStateCache.shared.setStep(.diarization, status: .completed, for: audioFile.path)
+            await MainActor.run {
+                self.diarizationProgress = 1.0
+                self.stage = .idle
+            }
+            return result
+        } catch {
+            ProcessingStateCache.shared.setStep(.diarization, status: .failed, for: audioFile.path,
+                                                error: error.localizedDescription)
+            await MainActor.run { self.stage = .idle }
+            throw error
+        }
+    }
+
+    func analyze(
+        audioFile: URL,
+        existingResult: TranscriptionResult,
+        llmModel: String
+    ) async throws -> AnalysisResult {
+        await MainActor.run {
+            self.stage = .analyzing
+            self.analysisProgress = 0
+        }
+        ProcessingStateCache.shared.setStep(.analysis, status: .inProgress, for: audioFile.path)
+
+        do {
+            let result = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let r = try self.runAnalyzeSubprocess(
+                            existingResult: existingResult,
+                            llmModel: llmModel
+                        )
+                        continuation.resume(returning: r)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+            ProcessingStateCache.shared.storeAnalysisResult(result, for: audioFile.path)
+            ProcessingStateCache.shared.setStep(.analysis, status: .completed, for: audioFile.path)
+            await MainActor.run {
+                self.analysisProgress = 1.0
+                self.stage = .idle
+            }
+            return result
+        } catch {
+            ProcessingStateCache.shared.setStep(.analysis, status: .failed, for: audioFile.path,
+                                                error: error.localizedDescription)
+            await MainActor.run { self.stage = .idle }
+            throw error
+        }
+    }
+
+    // MARK: - Transcript JSON persistence
+
+    func saveTranscriptJSONPublic(_ result: TranscriptionResult, audioURL: URL) {
+        saveTranscriptJSON(result, audioURL: audioURL)
+    }
+
+    private func saveTranscriptJSON(_ result: TranscriptionResult, audioURL: URL) {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let dir = support.appendingPathComponent("AudioRecordingManager/transcripts")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stem = audioURL.deletingPathExtension().lastPathComponent
+        let url = dir.appendingPathComponent("\(stem).json")
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        if let data = try? encoder.encode(result) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
     // MARK: - Progress parsing
 
     private func handleProgressLine(_ line: String) {
@@ -651,6 +1016,14 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async {
             self.progress = progressVal
             self.stage = newStage
+            switch newStage {
+            case .diarizing:
+                self.diarizationProgress = progressVal
+            case .analyzing:
+                self.analysisProgress = progressVal
+            default:
+                break
+            }
         }
     }
 }

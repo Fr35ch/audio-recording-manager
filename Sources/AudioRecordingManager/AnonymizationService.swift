@@ -19,7 +19,7 @@ enum AnonymizationError: LocalizedError {
               pip install "no-anonymizer[ner]"
             """
         case .timeout:
-            return "Anonymisering tok for lang tid (maks 30 sekunder). Prøv igjen."
+            return "Anonymisering tok for lang tid (maks 3 minutter). Prøv igjen."
         case .processFailed(let message):
             return "Anonymisering feilet: \(message)"
         case .invalidOutput:
@@ -125,7 +125,7 @@ final class AnonymizationService: @unchecked Sendable {
         }
 
         // Poll for completion with 30-second timeout
-        let deadline = Date().addingTimeInterval(30)
+        let deadline = Date().addingTimeInterval(180)
         while task.isRunning {
             if Date() > deadline {
                 task.terminate()

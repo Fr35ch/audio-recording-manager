@@ -71,7 +71,11 @@ def main() -> None:
     try:
         result = anonymize(text)
     except RuntimeError as exc:
-        _write_error({"error": "runtime_error", "message": str(exc)})
+        msg = str(exc)
+        if "not installed" in msg or "pip install" in msg:
+            _write_error({"error": "library_not_installed", "message": msg})
+            sys.exit(3)
+        _write_error({"error": "runtime_error", "message": msg})
         sys.exit(1)
     except Exception as exc:
         _write_error(

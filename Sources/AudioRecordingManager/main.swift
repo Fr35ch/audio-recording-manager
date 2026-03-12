@@ -2423,9 +2423,25 @@ private struct RecordingPlayerNative: View {
             return
         }
 
-        // 2. Disk fallback: check ~/Desktop/tekstfiler/<stem>.txt (written on previous transcription)
         let audioURL = URL(fileURLWithPath: recording.path)
         let stem = audioURL.deletingPathExtension().lastPathComponent
+
+        // 2. JSON transcript fallback: check Application Support/AudioRecordingManager/transcripts/<stem>.json
+        //    This preserves speaker diarization labels across app restarts.
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let jsonURL = support.appendingPathComponent("AudioRecordingManager/transcripts/\(stem).json")
+        if FileManager.default.fileExists(atPath: jsonURL.path),
+           let jsonData = try? Data(contentsOf: jsonURL) {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            if let result = try? decoder.decode(TranscriptionResult.self, from: jsonData) {
+                transcriptionResult = result
+                TranscriptionCache.shared.store(result, for: recording.path)
+                return
+            }
+        }
+
+        // 3. Disk fallback: check ~/Desktop/tekstfiler/<stem>.txt (written on previous transcription)
         let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
         let txtURL = desktop.appendingPathComponent("tekstfiler/\(stem).txt")
 
@@ -2590,6 +2606,9 @@ private struct RecordingPlayerNative: View {
 
                 // Store in the in-memory cache so the result survives file navigation
                 TranscriptionCache.shared.store(result, for: recording.path)
+                // Save full TranscriptionResult JSON to disk (preserves speaker labels across restarts)
+                TranscriptionService.shared.saveTranscriptJSONPublic(result, audioURL: audioURL)
+                ProcessingStateCache.shared.setStep(.transcription, status: .completed, for: recording.path)
 
                 // Persist plain-text transcript for anonymization
                 let plainText = result.segments

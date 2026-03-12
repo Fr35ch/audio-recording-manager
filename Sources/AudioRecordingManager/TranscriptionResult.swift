@@ -29,6 +29,7 @@ struct TranscriptionResultMetadata: Codable {
     let modelVariant: String
     let computeType: String
     let device: String
+    let diarizationRun: Bool?
 }
 
 // MARK: - Top-level result (mirrors no-transcribe JSON contract v1.0)

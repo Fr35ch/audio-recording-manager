@@ -37,6 +37,7 @@ enum TranscriptionStage: String {
     case transcribing
     case aligning
     case diarizing
+    case analyzing
     case complete
 
     /// Norwegian display string for the current stage.
@@ -47,6 +48,7 @@ enum TranscriptionStage: String {
         case .transcribing: return "Transkriberer..."
         case .aligning:     return "Justerer tidsstempler..."
         case .diarizing:    return "Identifiserer talere..."
+        case .analyzing:    return "Analyserer..."
         case .complete:     return "Ferdig"
         }
     }
@@ -96,6 +98,8 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
 
     @Published var progress: Double = 0
     @Published var stage: TranscriptionStage = .idle
+    @Published var diarizationProgress: Double = 0
+    @Published var analysisProgress: Double = 0
     @Published var isSettingUp: Bool = false
     @Published var setupError: String? = nil
     /// Human-readable description of the current setup step (e.g. pip download lines).

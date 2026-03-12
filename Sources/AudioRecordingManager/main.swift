@@ -2448,7 +2448,8 @@ private struct RecordingPlayerNative: View {
                 processingTimeSeconds: 0,
                 modelVariant: "ukjent",
                 computeType: "ukjent",
-                device: "ukjent"
+                device: "ukjent",
+                diarizationRun: nil
             )
             let result = TranscriptionResult(
                 version: "1.0",

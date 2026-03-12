@@ -43,10 +43,21 @@ struct AppRadius {
 // MARK: - App Entry Point
 struct VirginProjectApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var startupCoordinator = StartupCoordinator()
 
     var body: some Scene {
         WindowGroup {
-            MainView()
+            ZStack {
+                MainView()
+                if !startupCoordinator.isComplete {
+                    SplashView(coordinator: startupCoordinator)
+                        .zIndex(1000)
+                        .transition(.opacity)
+                }
+            }
+            .task {
+                await startupCoordinator.runStartupSequence()
+            }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

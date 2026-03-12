@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		216EE070BFF64DE4A6B55C10 /* CheckResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4325E9ACE0674494B806E1E6 /* CheckResult.swift */; };
+		972F1D20656E49FAADF7B596 /* SystemRequirement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3131B3745FCB4B0EA2C3DBB5 /* SystemRequirement.swift */; };
+		74A06C9AC8454D26972C5D12 /* SystemRequirementChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF08F17447184331982A2477 /* SystemRequirementChecker.swift */; };
+		89483D5FC79542DC90F3B4A3 /* DependencyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9D45615AC86459EBA95B78E /* DependencyManager.swift */; };
+		143EDA0DADFD4967A6F0F15E /* StartupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D0A8F892A14D8A95D0F699 /* StartupCoordinator.swift */; };
+		23EEE30B03584443B69B355A /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7604D1892A4E64B1ADF9E4 /* SplashView.swift */; };
 		E8D7C6B5A4F3E2D1C0B9A8F7 /* anonymize_bridge.py in Resources */ = {isa = PBXBuildFile; fileRef = F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */; };
 		1735D4D03E55F22857571523 /* TranscriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BA5316465B5EE74C44F4E0 /* TranscriptManager.swift */; };
 		A1B2C3D4E5F600010203A401 /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */; };
@@ -55,6 +61,12 @@
 		780774CD0DED46789A3AEFF5 /* AnalysisResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResultView.swift; sourceTree = "<group>"; };
 		5C5D5E5F60616243050C020C /* TranscriptionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionSettingsView.swift; sourceTree = "<group>"; };
 		A9D07DCC68E64F1A9F234B17 /* OllamaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OllamaManager.swift; sourceTree = "<group>"; };
+		4325E9ACE0674494B806E1E6 /* CheckResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckResult.swift; sourceTree = "<group>"; };
+		3131B3745FCB4B0EA2C3DBB5 /* SystemRequirement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemRequirement.swift; sourceTree = "<group>"; };
+		DF08F17447184331982A2477 /* SystemRequirementChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemRequirementChecker.swift; sourceTree = "<group>"; };
+		F9D45615AC86459EBA95B78E /* DependencyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyManager.swift; sourceTree = "<group>"; };
+		65D0A8F892A14D8A95D0F699 /* StartupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupCoordinator.swift; sourceTree = "<group>"; };
+		8A7604D1892A4E64B1ADF9E4 /* SplashView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -74,9 +86,33 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		F3B81DF68E89417CB66441E8 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				4325E9ACE0674494B806E1E6 /* CheckResult.swift */,
+				3131B3745FCB4B0EA2C3DBB5 /* SystemRequirement.swift */,
+			);
+			name = Models;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		74A331597C1C4628A6F1ABE2 /* Startup */ = {
+			isa = PBXGroup;
+			children = (
+				F3B81DF68E89417CB66441E8 /* Models */,
+				DF08F17447184331982A2477 /* SystemRequirementChecker.swift */,
+				F9D45615AC86459EBA95B78E /* DependencyManager.swift */,
+				65D0A8F892A14D8A95D0F699 /* StartupCoordinator.swift */,
+				8A7604D1892A4E64B1ADF9E4 /* SplashView.swift */,
+			);
+			name = Startup;
+			path = Startup;
+			sourceTree = "<group>";
+		};
 		DF8884E58B3616241EF874EB /* AudioRecordingManager */ = {
 			isa = PBXGroup;
 			children = (
+				74A331597C1C4628A6F1ABE2 /* Startup */,
 				F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */,
 				5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */,
 				750BF1F85FCC82DCC5E72B53 /* AnonymizationService.swift */,
@@ -174,6 +210,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				216EE070BFF64DE4A6B55C10 /* CheckResult.swift in Sources */,
+				972F1D20656E49FAADF7B596 /* SystemRequirement.swift in Sources */,
+				74A06C9AC8454D26972C5D12 /* SystemRequirementChecker.swift in Sources */,
+				89483D5FC79542DC90F3B4A3 /* DependencyManager.swift in Sources */,
+				143EDA0DADFD4967A6F0F15E /* StartupCoordinator.swift in Sources */,
+				23EEE30B03584443B69B355A /* SplashView.swift in Sources */,
 				3FE4C5D44DF594B313A2EDE6 /* AnonymizationModal.swift in Sources */,
 				76C0870C4F2C9649C96E1705 /* AnonymizationService.swift in Sources */,
 				C2BDD8B2B068C31C9BE0B93B /* AudioRecordingManagerLib.swift in Sources */,

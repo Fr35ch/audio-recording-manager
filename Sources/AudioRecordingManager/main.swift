@@ -1,5 +1,6 @@
 import AVFAudio
 import AVFoundation
+import Accelerate
 import CoreMedia
 import DiskArbitration
 import Foundation
@@ -69,6 +70,9 @@ struct VirginProjectApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App delegate did finish launching")
+        // Ensure the app appears in the Dock and App Switcher
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
         // Auto-install no-transcribe in the background if not already present
         Task {
             await TranscriptionService.shared.setupIfNeeded()
@@ -93,7 +97,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false  // Keep app running even if window closed
+        return true
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows {
+            sender.windows.first?.makeKeyAndOrderFront(nil)
+        }
+        return true
     }
 }
 
@@ -141,6 +152,201 @@ class AudioFileManager: ObservableObject {
     }
 }
 
+// MARK: - Speech Activity Detector (VAD)
+// Must inherit NSObject to support block-based notification observation via stored token.
+private final class SpeechActivityDetector: NSObject {
+    private let fftSize = 1024
+    // Speech bins calculated from actual hardware sample rate in start()
+    private var speechBinLow = 7
+    private var speechBinHigh = 79
+
+    // Adaptive noise floor
+    private let noiseWindowCount = 30
+    private var energyHistory: [Float] = []
+    private var noiseFloor: Float = 1e-6
+
+    // Temporal debounce
+    private let speechOnsetDuration: TimeInterval = 1.5
+    private let speechOffsetGrace: TimeInterval = 0.5
+    private var speechOnsetAccumulator: TimeInterval = 0
+    private var speechOffsetAccumulator: TimeInterval = 0
+    private(set) var isSpeechActive = false
+
+    private let engine = AVAudioEngine()
+    private var tapInstalled = false
+    private var configChangeToken: NSObjectProtocol?
+    private var actualSampleRate: Double = 44100
+
+    // PCM accumulation ring — pre-allocated to avoid heap allocs on audio thread
+    private var sampleAccumulator: [Float] = []
+
+    // Pre-allocated FFT work buffers (reused every window — no heap alloc on audio thread)
+    private let halfN: Int
+    private var hannWindow: [Float]
+    private var windowed: [Float]
+    private var realPart: [Float]
+    private var imagPart: [Float]
+    private var mags: [Float]
+    private var fftSetup: FFTSetup?
+
+    var onSpeechStateChanged: ((Bool) -> Void)?
+
+    // isPaused: written on main thread, read on Core Audio real-time thread.
+    // Using a plain Bool — a single aligned store/load is effectively atomic on ARM64/x86_64.
+    // The worst case is processing one extra audio window after pause, which is harmless.
+    var isPaused: Bool = false
+
+    override init() {
+        halfN = fftSize / 2
+        hannWindow = [Float](repeating: 0, count: fftSize)
+        windowed   = [Float](repeating: 0, count: fftSize)
+        realPart   = [Float](repeating: 0, count: fftSize / 2)
+        imagPart   = [Float](repeating: 0, count: fftSize / 2)
+        mags       = [Float](repeating: 0, count: fftSize / 2)
+        let log2n = vDSP_Length(log2(Double(fftSize)))
+        fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
+        super.init()
+        vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
+        sampleAccumulator.reserveCapacity(fftSize * 4)
+    }
+
+    deinit {
+        if let s = fftSetup { vDSP_destroy_fftsetup(s) }
+        stopEngine()
+    }
+
+    func start() {
+        guard fftSetup != nil else { return }
+        stopEngine()
+        let inputNode = engine.inputNode
+        // Use the hardware's native format — avoids sample-rate conversion overhead
+        // and ensures speech bin indices are correct for this device.
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
+        let sr = Float(nativeFormat.sampleRate > 0 ? nativeFormat.sampleRate : 44100)
+        actualSampleRate = Double(sr)
+        speechBinLow  = max(0,          Int((300.0  * Float(fftSize)) / sr))
+        speechBinHigh = min(halfN - 1,  Int((3400.0 * Float(fftSize)) / sr))
+
+        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(fftSize),
+                             format: nativeFormat) { [weak self] buf, _ in
+            self?.processTap(buf)
+        }
+        tapInstalled = true
+        engine.prepare()
+        do {
+            try engine.start()
+        } catch {
+            print("SAD: engine start failed: \(error)")
+            inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+            return
+        }
+        // Block-based observer — no @objc / #selector needed
+        configChangeToken = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            guard self?.tapInstalled == true else { return }
+            self?.stopEngine()
+            self?.start()
+        }
+    }
+
+    func stop()   { stopEngine(); fullReset() }  // stopEngine() removes tap before reset — no race
+    func pause()  { isPaused = true }            // audio thread exits on next callback via isPaused guard
+    func resume() { isPaused = false }
+
+    private func stopEngine() {
+        if let token = configChangeToken {
+            NotificationCenter.default.removeObserver(token)
+            configChangeToken = nil
+        }
+        guard tapInstalled else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        tapInstalled = false
+    }
+
+    private func fullReset() {
+        sampleAccumulator.removeAll(keepingCapacity: true)
+        energyHistory.removeAll(keepingCapacity: true)
+        noiseFloor = 1e-6
+        speechOnsetAccumulator = 0
+        speechOffsetAccumulator = 0
+        isSpeechActive = false
+    }
+
+    // MARK: - Core Audio real-time thread (no locks, no heap allocation)
+
+    private func processTap(_ buffer: AVAudioPCMBuffer) {
+        guard !isPaused, let ch = buffer.floatChannelData?[0] else { return }
+        sampleAccumulator.append(
+            contentsOf: UnsafeBufferPointer(start: ch, count: Int(buffer.frameLength)))
+        // Safety cap against stalls
+        if sampleAccumulator.count > fftSize * 8 {
+            sampleAccumulator.removeFirst(sampleAccumulator.count - fftSize * 4)
+        }
+        while sampleAccumulator.count >= fftSize {
+            processWindow()
+            sampleAccumulator.removeFirst(fftSize)
+        }
+    }
+
+    private func processWindow() {
+        guard let fftSetup = fftSetup else { return }
+        // Apply Hann window (pre-computed, no alloc)
+        vDSP_vmul(sampleAccumulator, 1, hannWindow, 1, &windowed, 1, vDSP_Length(fftSize))
+
+        // Pack real signal as split complex: even→real, odd→imag
+        windowed.withUnsafeBytes { rawPtr in
+            let ptr = rawPtr.bindMemory(to: DSPComplex.self).baseAddress!
+            var split = DSPSplitComplex(realp: &realPart, imagp: &imagPart)
+            vDSP_ctoz(ptr, 2, &split, 1, vDSP_Length(halfN))
+        }
+
+        // Forward FFT
+        var split = DSPSplitComplex(realp: &realPart, imagp: &imagPart)
+        let log2n = vDSP_Length(log2(Double(fftSize)))
+        vDSP_fft_zrip(fftSetup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
+
+        // Squared magnitudes
+        vDSP_zvmags(&split, 1, &mags, 1, vDSP_Length(halfN))
+
+        // Speech band energy (no Array slice alloc — index into pre-allocated mags)
+        var speechEnergy: Float = 0
+        let binCount = vDSP_Length(speechBinHigh - speechBinLow)
+        withUnsafePointer(to: mags[speechBinLow]) { ptr in
+            vDSP_sve(ptr, 1, &speechEnergy, binCount)
+        }
+
+        // Adaptive noise floor
+        energyHistory.append(speechEnergy)
+        if energyHistory.count > noiseWindowCount { energyHistory.removeFirst() }
+        if energyHistory.count >= 5, let minE = energyHistory.min(), minE > 0 {
+            noiseFloor = 0.85 * noiseFloor + 0.15 * minE
+        }
+
+        // Classify + temporal debounce
+        let isSpeech = speechEnergy > noiseFloor * 8.0
+        let windowDur = Double(fftSize) / actualSampleRate  // ≈ 0.023 s @ 44100 Hz
+
+        if isSpeech {
+            speechOnsetAccumulator  += windowDur
+            speechOffsetAccumulator  = 0
+            if speechOnsetAccumulator >= speechOnsetDuration, !isSpeechActive {
+                isSpeechActive = true
+                DispatchQueue.main.async { [weak self] in self?.onSpeechStateChanged?(true) }
+            }
+        } else {
+            speechOffsetAccumulator += windowDur
+            speechOnsetAccumulator   = 0
+            if speechOffsetAccumulator >= speechOffsetGrace, isSpeechActive {
+                isSpeechActive = false
+                DispatchQueue.main.async { [weak self] in self?.onSpeechStateChanged?(false) }
+            }
+        }
+    }
+}
+
 // MARK: - Audio Recorder
 class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     static let shared = AudioRecorder()
@@ -156,6 +362,16 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var waveformHistory: [Float] = []  // Stores average amplitude over time
     @Published var showNamingDialog = false  // Show dialog for naming recording
     @Published var pendingRecordingURL: URL?  // Temp recording waiting to be named
+    @Published var showSilenceWarning = false
+
+    // MARK: - Silence Detection (VAD-driven)
+    private let vad = SpeechActivityDetector()
+    private var isSpeechActive = false
+    private var silenceDuration: TimeInterval = 0
+    private var lastSilenceCheckTime: Date?
+    private let silenceAlertInterval: TimeInterval = 120  // 2 minutes
+    private var silenceCooldownActive = false
+    private let silenceCooldownDuration: TimeInterval = 300  // 5-min cooldown after dismiss
 
     private let maxHistoryLength = 300  // ~15 seconds at 20fps
     private var audioRecorder: AVAudioRecorder?
@@ -166,6 +382,9 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     private override init() {
         super.init()
+        vad.onSpeechStateChanged = { [weak self] active in
+            self?.isSpeechActive = active
+        }
         print("✅ Audio recorder initialized")
     }
 
@@ -234,6 +453,24 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             let normalizedLevel = (clampedAverage - minDB) / (maxDB - minDB)
             self.audioLevel = normalizedLevel
 
+            // Silence detection — VAD-driven (not raw amplitude)
+            if self.isRecording, !self.isPaused, !self.silenceCooldownActive {
+                let now = Date()
+                let elapsed = self.lastSilenceCheckTime.map { now.timeIntervalSince($0) } ?? 0.05
+                self.lastSilenceCheckTime = now
+                if !self.isSpeechActive {
+                    self.silenceDuration += elapsed
+                    if self.silenceDuration >= self.silenceAlertInterval, !self.showSilenceWarning {
+                        self.showSilenceWarning = true
+                    }
+                } else {
+                    self.silenceDuration = 0
+                }
+            } else if !self.isRecording || self.isPaused {
+                self.silenceDuration = 0
+                self.lastSilenceCheckTime = nil
+            }
+
             // Generate frequency band visualization
             for i in 0..<32 {
                 let bandFrequency = Float(i) / 32.0
@@ -262,6 +499,20 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private func stopLevelMonitoring() {
         levelTimer?.invalidate()
         levelTimer = nil
+    }
+
+    private func resetSilenceTracking() {
+        silenceDuration = 0
+        lastSilenceCheckTime = nil
+    }
+
+    func dismissSilenceWarning() {
+        showSilenceWarning = false
+        resetSilenceTracking()
+        silenceCooldownActive = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + silenceCooldownDuration) { [weak self] in
+            self?.silenceCooldownActive = false
+        }
     }
 
     // MARK: - Recording Control
@@ -304,6 +555,7 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if !isMonitoring {
                     startLevelMonitoring()
                 }
+                vad.start()
 
                 print("✅ Started recording to: \(url.lastPathComponent)")
             } else {
@@ -319,6 +571,10 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         audioRecorder?.pause()
         isPaused = true
         stopRecordingTimer()
+        resetSilenceTracking()
+        showSilenceWarning = false
+        silenceCooldownActive = false
+        vad.pause()
 
         print("⏸️ Recording paused")
     }
@@ -328,6 +584,9 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         audioRecorder?.record()
         isPaused = false
         startRecordingTimer()
+        resetSilenceTracking()
+        silenceCooldownActive = false
+        vad.resume()
 
         print("▶️ Recording resumed")
     }
@@ -340,6 +599,11 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isPaused = false
         stopRecordingTimer()
         stopLevelMonitoring()
+        resetSilenceTracking()
+        showSilenceWarning = false
+        silenceCooldownActive = false
+        vad.stop()
+        isSpeechActive = false
 
         // Store the recording URL for naming
         if let url = currentRecordingURL {
@@ -2254,6 +2518,8 @@ private struct RecordingPlayerNative: View {
     @State private var showAnalysisResult = false
     @AppStorage("analysis.llmModel") private var llmModel = "qwen3:8b"
 
+    @State private var showSettings = false
+
     // Ollama status (checked off main thread)
     @State private var ollamaIsRunning = false
     @State private var ollamaIsInstalled = false
@@ -2410,6 +2676,31 @@ private struct RecordingPlayerNative: View {
                     Image(systemName: "ellipsis.circle")
                 }
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .help("Innstillinger")
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Innstillinger")
+                        .font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    Button("Lukk") { showSettings = false }
+                        .keyboardShortcut(.cancelAction)
+                        .buttonStyle(.bordered)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+                Divider()
+                TranscriptionSettingsView()
+            }
+            .frame(minWidth: 480, minHeight: 400)
         }
         .sheet(isPresented: $showTranscriptionResult) {
             if let result = transcriptionResult {
@@ -2676,8 +2967,11 @@ private struct RecordingPlayerNative: View {
                 // Not started
                 if transcriptionResult != nil {
                     if hfToken.isEmpty {
-                        Label("Krever HuggingFace-token (sett i innstillinger)", systemImage: "key")
-                            .foregroundStyle(.secondary)
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Label("Legg til HuggingFace-token i innstillinger", systemImage: "key")
+                        }
                     } else {
                         Button {
                             startDiarization()
@@ -2747,7 +3041,7 @@ private struct RecordingPlayerNative: View {
                     } label: {
                         Label("Analyser med \(llmModel)", systemImage: "brain.head.profile")
                     }
-                    .disabled(isTranscribing || isDiarizing)
+                    .disabled(isTranscribing || isDiarizing || !ollamaIsInstalled)
                     HStack(spacing: 4) {
                         Image(systemName: ollamaIsInstalled
                               ? (ollamaIsRunning ? "circle.fill" : "circle.dotted")
@@ -3307,6 +3601,61 @@ struct RecordingNameDialog: View {
     }
 }
 
+// MARK: - Silence Warning Dialog
+struct SilenceWarningDialog: View {
+    let onContinue: () -> Void
+    let onPause: () -> Void
+    let onStop: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            VStack(spacing: 12) {
+                Image(systemName: "waveform.slash")
+                    .font(.system(size: 48, weight: .light))
+                    .foregroundStyle(AppColors.warning)
+                Text("Ingen lyd registrert")
+                    .font(.system(size: 20, weight: .semibold))
+                Text("Vi har ikke registrert stemmer eller lyd på en stund. Vil du pause eller stoppe opptaket?")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(spacing: 10) {
+                Button(action: onContinue) {
+                    Text("Fortsett opptak")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+
+                Button(action: onPause) {
+                    Text("Pause opptak")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+
+                Button(action: onStop) {
+                    Text("Stopp opptak")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+            }
+        }
+        .padding(32)
+        .frame(width: 420)
+        .background {
+            RoundedRectangle(cornerRadius: AppRadius.xlarge)
+                .fill(.regularMaterial)
+        }
+        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+    }
+}
+
 // MARK: - Recording View
 struct RecordingView: View {
     @ObservedObject var recorder: AudioRecorder
@@ -3331,6 +3680,23 @@ struct RecordingView: View {
                     onDiscard: {
                         recorder.cancelPendingRecording()
                         recordingName = ""
+                    }
+                )
+            }
+            .sheet(isPresented: $recorder.showSilenceWarning) {
+                SilenceWarningDialog(
+                    onContinue: {
+                        recorder.dismissSilenceWarning()
+                    },
+                    onPause: {
+                        recorder.showSilenceWarning = false
+                        recorder.pauseRecording()
+                    },
+                    onStop: {
+                        recorder.showSilenceWarning = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            recorder.stopRecording()
+                        }
                     }
                 )
             }

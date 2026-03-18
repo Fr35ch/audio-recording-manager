@@ -126,6 +126,16 @@ struct SplashView: View {
                 if let lastLocked = lockedBars.lastIndex(of: true) {
                     failedBarIndex = lastLocked
                 }
+            } else if case .complete = phase {
+                // Lock all remaining unlocked bars with staggered spring animations
+                for i in lockedBars.indices where !lockedBars[i] {
+                    let delay = Double(i) * 0.08
+                    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) {
+                            lockedBars[i] = true
+                        }
+                    }
+                }
             }
         }
     }

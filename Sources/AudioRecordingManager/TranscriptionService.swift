@@ -783,20 +783,22 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Ensure Ollama is running — start it if needed
+        if !OllamaManager.shared.isInstalled {
+            throw TranscriptionError.processFailed(
+                "Ollama er ikke installert. Last ned fra ollama.com og prøv igjen."
+            )
+        }
         if !OllamaManager.shared.isRunning() {
-            if OllamaManager.shared.isInstalled {
-                DispatchQueue.main.async {
-                    self.stage = .analyzing
-                    self.analysisProgress = 0.0
-                }
-                OllamaManager.shared.startServer()
-                if !OllamaManager.shared.waitUntilReady(timeout: 20) {
-                    throw TranscriptionError.processFailed(
-                        "Ollama startet ikke innen 20 sekunder. Start Ollama manuelt og prøv igjen."
-                    )
-                }
+            DispatchQueue.main.async {
+                self.stage = .analyzing
+                self.analysisProgress = 0.0
             }
-            // If not installed, navt.py will exit with code 5 and the error will surface naturally
+            OllamaManager.shared.startServer()
+            if !OllamaManager.shared.waitUntilReady(timeout: 20) {
+                throw TranscriptionError.processFailed(
+                    "Ollama startet ikke innen 20 sekunder. Start Ollama manuelt og prøv igjen."
+                )
+            }
         }
 
         let python = venvRoot.appendingPathComponent("bin/python3").path

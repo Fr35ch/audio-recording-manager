@@ -7,7 +7,7 @@ import Foundation
 // Date is encoded by navt.py as a Unix timestamp (Double); use .secondsSince1970.
 
 struct AnalysisResult: Codable, Identifiable {
-    let generatedAt: Date
+    let generatedAt: Date?
     let llmModel: String
     let keyThemes: [String]
     let keyQuotes: [String]
@@ -15,5 +15,5 @@ struct AnalysisResult: Codable, Identifiable {
     let opportunities: [String]
     let rawMarkdown: String
 
-    var id: String { llmModel + generatedAt.description }
+    var id: String { llmModel + (generatedAt?.description ?? "") }
 }

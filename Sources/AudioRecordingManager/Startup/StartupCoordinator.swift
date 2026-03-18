@@ -47,7 +47,7 @@ class StartupCoordinator: ObservableObject {
         // Phase 3: Complete
         phase = .complete
         statusMessage = "Audio Recording Manager er klar"
-        try? await Task.sleep(nanoseconds: 1_200_000_000)  // 1.2s display
+        try? await Task.sleep(nanoseconds: 3_000_000_000)  // 1s for bars to settle + 2s display
         isComplete = true
     }
 
@@ -58,7 +58,7 @@ class StartupCoordinator: ObservableObject {
         if dependencyManager.firstFailedCheck == nil {
             phase = .complete
             statusMessage = "Audio Recording Manager er klar"
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            try? await Task.sleep(nanoseconds: 3_000_000_000)  // 1s for bars to settle + 2s display
             isComplete = true
         }
     }

@@ -1,442 +1,246 @@
-# Agentive Starter Kit
+# Audio Recording Manager
 
-**Production-ready infrastructure for agentive AI development**
+macOS-app for opptak, transkripsjon, talerutskilling og analyse av brukerintervjuer.
+Utviklet for NAV Arbeids- og velferdsdirektoratet.
 
-Build software with specialized AI agents, adversarial evaluation, and structured task management.
-
----
-
-## What Is This?
-
-A complete starter kit for **agentive development** - a methodology for coordinating specialized AI agents to build high-quality software at scale.
-
-This kit provides:
-
-- **10+ Specialized Agents** - Planner, feature-developer, test-runner, and more
-- **Task Management System** - Linear-compatible workflow with numbered folders
-- **Adversarial Evaluation** - GPT-4o reviews your plans before implementation
-- **Serena Integration** - Semantic code navigation across multiple languages
-- **TDD Infrastructure** - Pre-commit hooks, test templates, quality gates
-- **Comprehensive Documentation** - Agentive development guide included
-
-**Source**: Extracted from a production project with 90+ completed tasks and 85%+ test pass rate.
+**Versjon**: 1.4.0 · **Krever**: macOS 14 Sonoma · Apple Silicon · 16 GB RAM · 30 GB ledig disk
 
 ---
 
-## Prerequisites
+## Funksjonalitet
 
-Before you begin, verify you have the following:
+| Steg | Funksjon | Avhengighet |
+|------|----------|-------------|
+| 🎙️ Opptak | Innspilling direkte i appen | Mikrofontilgang |
+| 📝 Transkripsjon | Norsk tale-til-tekst via NB-Whisper | Python 3.10+ · no-transcribe |
+| 👥 Talerutskilling | Identifiser hvem som snakker | HuggingFace-token · pyannote |
+| 🧠 Analyse | Strukturert AI-oppsummering | Ollama med LLM-modell |
+| 🔒 Anonymisering | Fjern navn og personnummer | no-anonymizer |
+| 📼 DS2-støtte | Olympus DS2-filer (stub) | VMware + Olympus DSS Player |
 
-### Must Have (Required)
+---
 
-| Requirement | How to Check | How to Get |
-|-------------|--------------|------------|
-| **Claude Account** | You can log into [claude.ai](https://claude.ai) | [Sign up](https://claude.ai) |
-| **Claude Code** | `claude --version` | [Download](https://claude.ai/download) or install VS Code/Cursor extension |
-| **GitHub Account** | You can log into [github.com](https://github.com) | [Sign up](https://github.com/signup) |
-| **Git Configured** | `git config user.name && git config user.email` | [Setup guide](https://docs.github.com/en/get-started/quickstart/set-up-git) |
+## Oppsett — steg for steg
 
-> **New to Git?** Check out [GitHub's Git Handbook](https://guides.github.com/introduction/git-handbook/) for a quick introduction.
+### 1. Xcode
 
-### Should Have (For Core Features)
-
-| Requirement | How to Check | How to Get |
-|-------------|--------------|------------|
-| **Python 3.9+** | `python3 --version` | [python.org](https://www.python.org/downloads/) or `brew install python` |
-| **uvx or pipx** | `uvx --version` or `pipx --version` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-
-### Nice to Have (Optional Enhancements)
-
-| Requirement | Purpose | How to Get |
-|-------------|---------|------------|
-| **OpenAI API Key** | Adversarial evaluation (~$0.04/eval) | [platform.openai.com](https://platform.openai.com/api-keys) |
-| **Linear Integration** | Task sync with Linear issues | See [Linear Integration](#linear-integration) section below |
-
-### Quick Preflight Check
-
-Run this script to validate your environment:
+Last ned **Xcode** fra Mac App Store (gratis).
+Åpne Xcode én gang og godta lisensavtalen, deretter:
 
 ```bash
-./agents/preflight
+xcode-select --install
 ```
 
-It will check all requirements and tell you what's missing.
-
----
-
-## Quick Start
-
-### 1. Clone the Repository
-
-Open your terminal and navigate to where you keep projects (e.g., `~/Github` or `~/Projects`):
+Klon og åpne prosjektet:
 
 ```bash
-cd ~/Github
+git clone <repo-url> ~/Github/ARM-xcode
+open ~/Github/ARM-xcode/AudioRecordingManager.xcodeproj
 ```
 
-Then clone this starter kit with your project name:
+Trykk **⌘B** for å bygge. Trykk **⌘R** for å kjøre.
+
+---
+
+### 2. Python 3.10+
+
+Appen krever Python 3.10 eller nyere for transkripsjon.
 
 ```bash
-git clone https://github.com/movito/agentive-starter-kit.git my-project-name
-cd my-project-name
+# Sjekk installert versjon
+python3 --version
+
+# Installer via Homebrew hvis nødvendig
+brew install python@3.12
 ```
 
-This creates a new `my-project-name` folder with everything inside. **Don't create the folder first** - the clone command does that for you.
-
-Then open the folder in your IDE (VS Code, Cursor, etc.).
-
-### 2. Run First-Time Onboarding
+Homebrew installeres med:
 
 ```bash
-./agents/onboarding
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
-
-### 3. Follow Interactive Setup
-
-`planner` (your project coordinator) will guide you through:
-
-1. **Project Configuration** - Name your project
-2. **Language Selection** - Configure Serena for your languages
-3. **API Keys** - Set up Anthropic, OpenAI, and Linear (optional)
-4. **Feature Selection** - Enable evaluation, task sync, etc.
-5. **First Task** - Create your first task to get started
-
-Setup takes approximately 5-10 minutes.
 
 ---
 
-## What's Included
+### 3. no-transcribe (transkripsjon)
 
-### Agents (`.claude/agents/`)
+**no-transcribe** er transkripsjonsmotoren. Appen installerer den automatisk i et virtuelt
+miljø første gang du trykker **Installer** i Innstillinger → Transkripsjon.
 
-| Agent | Purpose |
-|-------|---------|
-| `planner` | Helps you plan, tracks work, keeps things on track |
-
-| `tycho` | Day-to-day project management |
-| `feature-developer` | Implementation tasks |
-| `test-runner` | TDD and testing |
-| `powertest-runner` | Comprehensive test suites |
-| `document-reviewer` | Documentation quality |
-| `security-reviewer` | Security analysis |
-| `ci-checker` | CI/CD verification |
-| `agent-creator` | Create new specialized agents |
-
-### Task Management (`delegation/tasks/`)
-
-Linear-compatible folder structure:
-
-```
-delegation/tasks/
-├── 1-backlog/      → Backlog (planned, not started)
-├── 2-todo/         → Todo (ready to start)
-├── 3-in-progress/  → In Progress (active work)
-├── 4-in-review/    → In Review (awaiting review)
-├── 5-done/         → Done (completed)
-├── 6-canceled/     → Canceled
-├── 7-blocked/      → Blocked (waiting on dependencies)
-├── 8-archive/      → Archive (historical)
-└── 9-reference/    → Reference (templates, docs)
-```
-
-### Adversarial Evaluation (`.adversarial/`)
-
-GPT-4o reviews your task specifications before implementation:
+Manuell kloning (navt.py leses fra `~/Github/no-transcribe/`):
 
 ```bash
-# Run evaluation on a task
-adversarial evaluate delegation/tasks/2-todo/TASK-0001-my-task.md
-
-# Results saved to .adversarial/logs/
+git clone https://github.com/Fr35ch/no-transcribe.git ~/Github/no-transcribe
 ```
 
-Cost: ~$0.04-0.08 per evaluation.
-
-### Serena Integration (`.serena/`)
-
-Semantic code navigation with LSP support:
-
-- Python (pylsp)
-- TypeScript/JavaScript (typescript-language-server)
-- Swift (sourcekit-lsp)
-- And more...
-
-Reduces token consumption by 70-98% for code navigation tasks.
-
----
-
-## Configuration
-
-### Environment Variables (`.env`)
-
-Copy `.env.template` to `.env` and configure:
+Det virtuelle miljøet med avhengigheter opprettes automatisk av appen. For manuell installasjon:
 
 ```bash
-# For adversarial evaluation (optional)
-OPENAI_API_KEY=sk-your-key
-
-# For Linear task sync (optional) - see Linear Integration section
-LINEAR_API_KEY=lin_api_your-key
-LINEAR_TEAM_ID=ABC
+python3.12 -m venv ~/Library/Application\ Support/AudioRecordingManager/no-transcribe-venv
+source ~/Library/Application\ Support/AudioRecordingManager/no-transcribe-venv/bin/activate
+pip install torch torchaudio transformers numpy requests
 ```
 
-### Serena (`.serena/project.yml`)
+**NB-Whisper-modell** lastes ned automatisk første gang du transkriberer.
+Du kan forhåndslaste den via Innstillinger → Transkripsjon → Last ned modell.
 
-Copy `.serena/project.yml.template` to `.serena/project.yml`:
-
-```yaml
-project_name: "my-project"
-languages:
-  - python
-  - typescript
-```
-
-### Adversarial (`.adversarial/config.yml`)
-
-Copy `.adversarial/config.yml.template` to `.adversarial/config.yml`.
+| Modell | Størrelse | Nedlastningstid | Anbefaling |
+|--------|-----------|-----------------|------------|
+| tiny | ~150 MB | 1–2 min | Testing |
+| base | ~300 MB | 2–4 min | Korte klipp |
+| medium | ~1.4 GB | 10–20 min | Balansert |
+| large | ~3 GB | 20–40 min | ✅ Anbefalt |
 
 ---
 
-## Linear Integration
+### 4. HuggingFace-token (talerutskilling)
 
-The starter kit includes a built-in task management system that helps agents do better work and helps you track progress. Tasks are stored as markdown files in `delegation/tasks/` folders.
+Talerutskilling bruker **pyannote.audio** og krever en HuggingFace-konto med
+godkjent modelltilgang.
 
-**You can optionally sync these tasks with [Linear](https://linear.app)** for team visibility and project management. This is more involved than just adding an API key.
+1. Opprett gratis konto på [huggingface.co](https://huggingface.co)
+2. Gå til [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) og trykk **Accept**
+3. Gjør det samme for [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+4. Gå til [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+5. Trykk **New token** → velg **Read**-tilgang → kopier tokenet
+6. Åpne appen → trykk ⚙️ (Innstillinger) → lim inn tokenet under **HuggingFace-token**
 
-### Setting Up Linear (Optional)
+> Begge modellene (punkt 2 og 3) må godkjennes separat — ellers feiler talerutskilling
+> med «Token not authorized».
 
-**1. Create a Linear account**
+---
 
-Sign up at [linear.app](https://linear.app) if you don't have an account.
+### 5. Ollama (analyse)
 
-**2. Create a new team**
+**Ollama** kjører språkmodeller lokalt for AI-analyse av transkripsjoner.
 
-Go to Settings → Teams → [Create new team](https://linear.app/settings/new-team)
-
-**Important:** Use the same identifier for your Linear team as you use for task prefixes in the codebase. For example:
-- If your task files are named `ABC-0001-feature.md`, `ABC-0002-bugfix.md`
-- Set your Linear team identifier to `ABC`
-
-This keeps task IDs consistent between your codebase and Linear.
-
-**3. Get your Linear API key**
-
-Go to Settings → API → [API settings](https://linear.app/settings/api)
-
-The page shows "OAuth applications" and "Webhooks" - **click "Webhooks"** on the left sidebar to find Personal API keys.
-
-- Scroll down to "Personal API keys"
-- Click "Create new API key"
-- Give it a name (e.g., "agentive-starter-kit")
-- Copy the key (starts with `lin_api_`)
-
-**4. Get your Team ID**
-
-Your Team ID is the identifier you chose in step 2 (e.g., `ABC`).
-
-**5. Configure your `.env` file**
+**Installer Ollama:**
 
 ```bash
-LINEAR_API_KEY=lin_api_your-key-here
-LINEAR_TEAM_ID=ABC
+brew install ollama
 ```
 
-### How Linear Sync Works
+Eller last ned installasjonspakken fra [ollama.com](https://ollama.com).
 
-When configured, the task system:
-- Syncs task files in `delegation/tasks/` folders to Linear issues
-- Maps folder locations to Linear statuses (e.g., `2-todo/` → "Todo")
-- Adds GitHub links to task files in Linear issue descriptions
-
-**Manual sync:**
-```bash
-./project linearsync
-```
-
-**Auto-sync:** Pushing to `main` or `develop` triggers GitHub Actions workflow.
-
-**GitHub Actions setup:**
-1. Go to your repo Settings → Secrets and variables → Actions
-2. Add `LINEAR_API_KEY` secret
-3. Add `LINEAR_TEAM_ID` secret (optional)
-
-### Without Linear
-
-Tasks work fine without Linear - they're just markdown files. Agents can create, track, and complete tasks using the folder structure alone. Linear adds team visibility and integrations, but isn't required.
-
----
-
-## Usage
-
-### First-Time Setup
+**Last ned en modell** (anbefalt: qwen3:8b, ~5 GB):
 
 ```bash
-# Run onboarding (first time only)
-./agents/onboarding
+ollama pull qwen3:8b
 ```
 
-### Launching Agents (After Setup)
+Andre modeller:
 
 ```bash
-# Interactive menu
-./agents/launch
-
-# Launch specific agent
-./agents/launch planner
-./agents/launch feature-developer
-./agents/launch test-runner
+ollama pull llama3.2        # ~2 GB — raskere, litt lavere kvalitet
+ollama pull qwen3:14b       # ~9 GB — høyere kvalitet, krever 32 GB RAM
 ```
 
-### Creating Tasks
-
-**The easy way:** Just tell `planner` what you want to build. The agent will create and manage tasks for you.
+Appen starter Ollama automatisk ved behov. Verifiser at det fungerer:
 
 ```bash
-./agents/launch planner
-# Then: "I want to add user authentication to my app"
+curl http://localhost:11434   # Skal returnere "Ollama is running"
 ```
 
-**Manual task creation** (if you prefer):
+Velg ønsket modell i Innstillinger → **LLM-modell**. Standard er `qwen3:8b`.
 
-1. Copy task template: `delegation/tasks/9-reference/templates/task-template.md`
-2. Create task file: `delegation/tasks/2-todo/TASK-0001-my-task.md`
-3. Run evaluation: `adversarial evaluate delegation/tasks/2-todo/TASK-0001-my-task.md`
-4. Assign to agent via `planner`
+---
 
-### Running Tests
+### 6. DS2-filer (Olympus-opptakere)
+
+DS2 er et proprietært kryptert format brukt av Olympus/OM System-opptakere.
+Dekoding krever **Olympus DSS Player Pro**, som kun er tilgjengelig for Windows.
+
+**Løsning: VMware Fusion + Windows**
+
+1. Last ned **VMware Fusion** (gratis for personlig bruk) fra [vmware.com](https://www.vmware.com/products/fusion.html)
+2. Installer en Windows 10 eller 11 VM
+3. Installer **Olympus DSS Player Pro** i Windows-VM-en
+   - Lisens kjøpes fra Olympus/OM System
+   - Alternativt: bruk prøveversjon for konvertering
+4. Åpne DS2-filen i DSS Player og eksporter til WAV eller MP3
+5. Del den konverterte filen til macOS via VMwares delte mapper:
+   - VMware Fusion → Settings → Sharing → aktiver delt mappe
+   - Filer er tilgjengelige under `/Volumes/VMware Shared Folders/` på Mac
+
+Importer den konverterte WAV/MP3-filen i ARM som vanlig.
+
+> **Merk**: Direkte DS2-dekoding i ARM er under utvikling og avventer tilgang til
+> OM System Audio SDK ([audiodeveloper.omsystem.com](https://audiodeveloper.omsystem.com)).
+
+---
+
+### 7. no-anonymizer (valgfritt)
+
+For automatisk anonymisering av navn og personnummer i transkripsjoner:
 
 ```bash
-# Run all tests
-pytest tests/ -v
+pip install "no-anonymizer[ner]"
+```
 
-# Run with coverage
-pytest tests/ --cov=your_project --cov-report=term-missing
+BERT-modellen (~500 MB) lastes automatisk ned fra HuggingFace ved første bruk.
+
+---
+
+## Systemkrav
+
+| Krav | Minimum | Anbefalt |
+|------|---------|----------|
+| Mac | Apple Silicon (M1+) | M2 Pro / M3 |
+| macOS | 14 Sonoma | 15 Sequoia |
+| RAM | 16 GB | 32 GB |
+| Ledig disk | 30 GB | 50 GB |
+| Python | 3.10 | 3.12 |
+
+> Intel Mac støttes ikke. NB-Whisper er optimalisert for Apple MPS (Metal Performance Shaders).
+
+---
+
+## Hurtigstart
+
+1. Start appen — velkomstsplash viser status for alle avhengigheter
+2. Trykk ⚙️ → verifiser at no-transcribe er installert (grønt avkrysningsmerke)
+3. Importer eller spill inn en lydfil
+4. Velg filen → trykk **Transkriber** (large-modell anbefales)
+5. Etter transkripsjon → trykk **Identifiser talere**
+6. Etter talerutskilling → trykk **Analyser**
+
+---
+
+## Lagring
+
+```
+~/Library/Application Support/AudioRecordingManager/
+├── no-transcribe-venv/     # Python-miljø (installeres automatisk)
+├── transcripts/            # Transkripsjoner (JSON)
+├── analysis/               # Analyseresultater (JSON)
+└── processing-state.json   # Behandlingsstatus per fil
+
+~/.cache/huggingface/hub/   # NB-Whisper og pyannote-modeller
 ```
 
 ---
 
-## Documentation
+## Feilsøking
 
-- **Agentive Development Guide**: `docs/agentive-development/README.md`
-- **Agent Template**: `.claude/agents/AGENT-TEMPLATE.md`
-- **Task Template**: `delegation/tasks/9-reference/templates/task-template.md`
-- **Evaluation Workflow**: `.adversarial/docs/EVALUATION-WORKFLOW.md`
-- **ADR Template**: `docs/decisions/adr/TEMPLATE-FOR-ADR-FILES.md`
-
----
-
-## Project Structure
-
-```
-your-project/
-├── .claude/
-│   ├── agents/              # Agent definitions
-│   ├── commands/            # Slash commands
-│   └── settings.local.json  # Claude Code settings
-├── .agent-context/
-│   ├── agent-handoffs.json  # Agent coordination state
-│   ├── current-state.json   # Project state
-│   ├── workflows/           # Workflow documentation
-│   └── templates/           # Handoff templates
-├── .serena/
-│   └── project.yml          # Serena configuration
-├── .adversarial/
-│   ├── config.yml           # Evaluation config
-│   ├── scripts/             # Evaluation scripts
-│   └── docs/                # Evaluation docs
-├── delegation/
-│   ├── tasks/               # Task files (numbered folders)
-│   └── handoffs/            # Agent handoff documents
-├── docs/
-│   ├── agentive-development/# Complete methodology guide
-│   ├── decisions/adr/       # Architectural Decision Records
-│   └── prd/                 # Product Requirements Documents
-├── agents/
-│   ├── launch               # Agent launcher (interactive menu)
-│   └── onboarding           # First-run setup (run once)
-├── tests/                   # Test suite
-├── .env                     # Environment variables (git-ignored)
-├── .pre-commit-config.yaml  # Pre-commit hooks
-└── pyproject.toml           # Python project config
-```
+| Feilmelding | Løsning |
+|-------------|---------|
+| «no-transcribe ikke installert» | Innstillinger → Installer |
+| «NB-Whisper-modell ikke funnet» | Innstillinger → Last ned modell → Large |
+| «Ollama er ikke installert» | `brew install ollama` + `ollama pull qwen3:8b` |
+| «Ollama kjører ikke» | `ollama serve` i Terminal |
+| «Krever HuggingFace-token» | Følg steg 4, godkjenn begge pyannote-modellene |
+| «Token not authorized» (pyannote) | Godkjenn modellene på HuggingFace (steg 4.2 og 4.3) |
+| Appen starter ikke | Sjekk at Mac er Apple Silicon: `uname -m` → `arm64` |
+| Treg transkripsjon | Lukk andre apper for å frigjøre RAM til MPS |
 
 ---
 
-## Philosophy
+## Avhengigheter og lisenser
 
-### Progressive Refinement Over Perfectionism
-- Start simple, iterate based on real feedback
-- 2-3 iteration maximum on any task
-- Ship with known limitations
-
-### Test-Driven Development
-- Tests before implementation
-- 80%+ coverage for new code
-- Pre-commit hooks catch issues early
-
-### Multi-Model Collaboration
-- Claude for implementation
-- GPT-4o for evaluation/critique
-- Planner for orchestration
-
-### Context Management
-- Documentation is infrastructure
-- Handoffs prevent context loss
-- Shared memory enables coordination
-
----
-
-## Pulling Updates from the Starter Kit
-
-As we improve the starter kit, you can pull updates into your project:
-
-```bash
-# Add the starter kit as upstream (one time)
-git remote add upstream https://github.com/movito/agentive-starter-kit.git
-
-# Pull updates
-git fetch upstream
-git merge upstream/main
-```
-
-**How merging works:**
-- Files **only you changed** → your changes preserved
-- Files **only upstream changed** → you get the updates
-- Files **both changed** → merge conflict (you decide what to keep)
-
-**Best practices for easy updates:**
-- Keep customizations in **new files** when possible (new agents, new docs)
-- Avoid heavily editing core starter kit files
-- When you do edit core files, the merge is usually straightforward
-
-**Your stuff stays safe:**
-- Custom agents you created
-- Your `.env` configuration (gitignored)
-- Project-specific docs and tasks
-
----
-
-## Contributing
-
-This starter kit is extracted from real development practices. Contributions welcome:
-
-1. Found a better pattern? Document what and why
-2. Tried this approach? Share your results
-3. Adapted for your domain? Share variations
-
----
-
-## License
-
-MIT
-
----
-
-## Acknowledgments
-
-Developed through real-world use on production projects. Special thanks to the Claude and GPT-4o teams for making agentive development possible.
-
----
-
-**Version**: 1.0.0
-**Last Updated**: 2025-11-25
+| Komponent | Lisens |
+|-----------|--------|
+| NbAiLab/nb-whisper-large | Apache 2.0 |
+| pyannote.audio 3.1 | MIT (krever modellgodkjenning) |
+| Ollama | MIT |
+| qwen3:8b | Qwen License |
+| no-anonymizer | Apache 2.0 |

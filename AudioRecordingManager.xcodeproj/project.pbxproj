@@ -14,6 +14,7 @@
 		143EDA0DADFD4967A6F0F15E /* StartupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D0A8F892A14D8A95D0F699 /* StartupCoordinator.swift */; };
 		23EEE30B03584443B69B355A /* SplashView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A7604D1892A4E64B1ADF9E4 /* SplashView.swift */; };
 		E8D7C6B5A4F3E2D1C0B9A8F7 /* anonymize_bridge.py in Resources */ = {isa = PBXBuildFile; fileRef = F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */; };
+		F53FA62399314681B793A802 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F883F771229D40CBA3F54A52 /* Assets.xcassets */; };
 		1735D4D03E55F22857571523 /* TranscriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47BA5316465B5EE74C44F4E0 /* TranscriptManager.swift */; };
 		A1B2C3D4E5F600010203A401 /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */; };
 		F70419BE261F4441AA8883E7 /* AnalysisResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63113FFD22C5431AB374BBEF /* AnalysisResult.swift */; };
@@ -51,6 +52,7 @@
 		BC466D961441ABE452269B7B /* RecordingMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMetadata.swift; sourceTree = "<group>"; };
 		CE5EE01B431596E611A2B34A /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; name = anonymize_bridge.py; path = Resources/anonymize_bridge.py; sourceTree = SOURCE_ROOT; };
+		F883F771229D40CBA3F54A52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = Resources/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F60001020304B502 /* TranscriptionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResult.swift; sourceTree = "<group>"; };
 		63113FFD22C5431AB374BBEF /* AnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisResult.swift; sourceTree = "<group>"; };
 		82989F1166754DF3BDB81BE6 /* ProcessingState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingState.swift; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 			children = (
 				74A331597C1C4628A6F1ABE2 /* Startup */,
 				F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */,
+				F883F771229D40CBA3F54A52 /* Assets.xcassets */,
 				5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */,
 				750BF1F85FCC82DCC5E72B53 /* AnonymizationService.swift */,
 				614E979CCD97F0B83DCB8973 /* AudioRecordingManagerLib.swift */,
@@ -200,6 +203,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E8D7C6B5A4F3E2D1C0B9A8F7 /* anonymize_bridge.py in Resources */,
+				F53FA62399314681B793A802 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

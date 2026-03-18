@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#D91020"/>
+      <stop offset="100%" stop-color="#960B1A"/>
+    </linearGradient>
+    <linearGradient id="bar-shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,1.0)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.82)"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.18)"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed background (macOS clips to squircle) -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Subtle top gloss overlay -->
+  <ellipse cx="512" cy="0" rx="480" ry="320" fill="rgba(255,255,255,0.07)"/>
+
+  <!-- Waveform bars — scaled to fit 1024x1024 with ~18% padding -->
+  <!-- Original viewBox: 431.77 x 233.48 -->
+  <!-- Target width: 1024 * 0.64 = 655.6 → scale = 655.6/431.77 = 1.519 -->
+  <!-- xOffset = (1024 - 655.6) / 2 = 184.2 -->
+  <!-- yOffset = (1024 - 233.48*1.519) / 2 = (1024 - 354.7) / 2 = 334.65 -->
+
+  <g transform="translate(184.2, 334.65) scale(1.519)" filter="url(#soft-shadow)">
+
+    <!-- Bar 1: x=0, y=50.61, w=31.11, h=182.88 -->
+    <rect x="0" y="50.61" width="31.11" height="182.88" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 2: x=50.11, y=0, w=31.11, h=152.59 -->
+    <rect x="50.11" y="0" width="31.11" height="152.59" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 3: x=100.22, y=50.61, w=31.11, h=182.88 -->
+    <rect x="100.22" y="50.61" width="31.11" height="182.88" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 4: x=150.72, y=0, w=31.11, h=233.48 (tallest) -->
+    <rect x="150.72" y="0" width="31.11" height="233.48" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 5: x=200.83, y=0, w=31.11, h=152.59 -->
+    <rect x="200.83" y="0" width="31.11" height="152.59" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 6: x=250.94, y=50.6, w=31.11, h=182.88 -->
+    <rect x="250.94" y="50.6" width="31.11" height="182.88" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 7: x=300.44, y=0, w=31.11, h=233.48 (tallest) -->
+    <rect x="300.44" y="0" width="31.11" height="233.48" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 8: x=350.55, y=50.6, w=31.11, h=101.99 (shortest) -->
+    <rect x="350.55" y="50.6" width="31.11" height="101.99" rx="15" fill="url(#bar-shine)"/>
+
+    <!-- Bar 9: x=400.66, y=0, w=31.11, h=233.48 (tallest) -->
+    <rect x="400.66" y="0" width="31.11" height="233.48" rx="15" fill="url(#bar-shine)"/>
+
+  </g>
+
+  <!-- Bottom reflection strip -->
+  <rect x="0" y="900" width="1024" height="124" fill="rgba(0,0,0,0.08)"/>
+</svg>

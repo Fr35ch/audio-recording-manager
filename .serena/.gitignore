@@ -1,7 +1,0 @@
-# Serena cache files
-cache/
-*.pkl
-memories/
-
-# Keep project.yml template but ignore actual config
-# project.yml  <- uncomment if you want to ignore actual config

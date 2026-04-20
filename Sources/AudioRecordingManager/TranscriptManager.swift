@@ -3,13 +3,24 @@ import Foundation
 // MARK: - Transcript Item
 
 struct TranscriptItem: Identifiable, Equatable, Hashable {
-    let id = UUID()
+    let id: UUID
+    /// Human-readable label shown in the UI. Comes from the recording's
+    /// `displayName` in the sidecar (Phase 0+) — no longer a filesystem
+    /// filename.
     let filename: String
+    /// Absolute path to `transcript.txt` inside the recording's folder.
     let path: String
     let date: Date
     let size: Int64
+    /// UUID of the owning recording. Used to match back to `RecordingItem`
+    /// without filename-stem coupling. Optional only for the rare case of a
+    /// transcript whose owning recording cannot be resolved (should never
+    /// happen with `RecordingStore`-sourced data).
+    let recordingId: UUID?
 
-    /// Filename without extension — used to match against recording stems.
+    /// Filename without extension. Retained for code that still wants a
+    /// stem-shaped string (e.g. legacy display paths). Phase 0+ matching
+    /// should use `recordingId` instead.
     var stem: String {
         URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
     }
@@ -28,122 +39,80 @@ struct TranscriptItem: Identifiable, Equatable, Hashable {
 }
 
 // MARK: - Transcript Manager
-
-/// Watches ~/Desktop/tekstfiler/ for .txt transcript files.
-///
-/// Follows the same DispatchSource pattern as RecordingsManager.
-/// The folder is created automatically on first launch.
+//
+// As of Phase 0 (ADR-1014), transcripts live inside per-recording folders
+// at `~/Library/Application Support/AudioRecordingManager/recordings/<uuid>/transcript.txt`,
+// not in `~/Desktop/tekstfiler/`. This class is now a thin adapter that
+// surfaces the store's transcripts as `[TranscriptItem]` for the UI.
+//
+// Folder watching has been replaced by subscription to
+// `RecordingStore.didChangeNotification`.
 class TranscriptManager: ObservableObject {
     static let shared = TranscriptManager()
 
     @Published var transcripts: [TranscriptItem] = []
 
-    let transcriptFolderPath: String
-
-    private var fileDescriptor: Int32 = -1
-    private var dispatchSource: DispatchSourceFileSystemObject?
+    private var changeObserver: NSObjectProtocol?
     private var reloadWorkItem: DispatchWorkItem?
 
     private init() {
-        let desktopPath = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        transcriptFolderPath = desktopPath.appendingPathComponent("tekstfiler").path
-        createFolderIfNeeded()
         loadTranscripts()
-        startWatchingFolder()
+        subscribeToStoreChanges()
     }
 
     deinit {
-        stopWatchingFolder()
-    }
-
-    // MARK: - Folder management
-
-    private func createFolderIfNeeded() {
-        guard !FileManager.default.fileExists(atPath: transcriptFolderPath) else { return }
-        do {
-            try FileManager.default.createDirectory(
-                atPath: transcriptFolderPath, withIntermediateDirectories: true)
-            print("📁 Created tekstfiler folder at: \(transcriptFolderPath)")
-        } catch {
-            print("❌ TranscriptManager: could not create folder: \(error)")
+        if let token = changeObserver {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 
-    // MARK: - File watching (mirrors RecordingsManager)
-
-    private func startWatchingFolder() {
-        fileDescriptor = open(transcriptFolderPath, O_EVTONLY)
-        guard fileDescriptor >= 0 else {
-            print("⚠️ TranscriptManager: could not open folder for monitoring")
-            return
-        }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
-            queue: DispatchQueue.main
-        )
-
-        source.setEventHandler { [weak self] in
+    private func subscribeToStoreChanges() {
+        changeObserver = NotificationCenter.default.addObserver(
+            forName: RecordingStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
             self?.reloadWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                print("📄 tekstfiler changed, reloading transcripts...")
                 self?.loadTranscripts()
             }
             self?.reloadWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
         }
-
-        source.setCancelHandler { [weak self] in
-            if let fd = self?.fileDescriptor, fd >= 0 {
-                close(fd)
-            }
-            self?.fileDescriptor = -1
-        }
-
-        dispatchSource = source
-        source.resume()
-        print("👁️ Watching tekstfiler folder: \(transcriptFolderPath)")
-    }
-
-    private func stopWatchingFolder() {
-        dispatchSource?.cancel()
-        dispatchSource = nil
-        reloadWorkItem?.cancel()
     }
 
     // MARK: - Load
 
     func loadTranscripts() {
-        let fileManager = FileManager.default
-        do {
-            let files = try fileManager.contentsOfDirectory(atPath: transcriptFolderPath)
-            var items: [TranscriptItem] = []
+        let metas = RecordingStore.shared.loadAll()
+        var items: [TranscriptItem] = []
 
-            for file in files {
-                let filePath = (transcriptFolderPath as NSString).appendingPathComponent(file)
-                let fileURL = URL(fileURLWithPath: filePath)
+        for meta in metas {
+            // Only include recordings whose transcript is on disk and done.
+            guard meta.transcript.status == .done else { continue }
+            let url = StorageLayout.recordingFolder(id: meta.id)
+                .appendingPathComponent(meta.transcript.filename)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
 
-                guard fileURL.pathExtension.lowercased() == "txt" else { continue }
+            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let size = (attrs?[.size] as? Int64) ?? 0
+            let date = (attrs?[.modificationDate] as? Date)
+                ?? meta.transcript.completedAt
+                ?? meta.createdAt
 
-                let attrs = try fileManager.attributesOfItem(atPath: filePath)
-                if let size = attrs[.size] as? Int64,
-                    let date = attrs[.modificationDate] as? Date
-                {
-                    items.append(
-                        TranscriptItem(
-                            filename: file,
-                            path: filePath,
-                            date: date,
-                            size: size
-                        ))
-                }
-            }
-
-            transcripts = items.sorted { $0.date > $1.date }
-            print("📋 Loaded \(transcripts.count) transcripts")
-        } catch {
-            print("❌ TranscriptManager: error loading transcripts: \(error)")
+            items.append(
+                TranscriptItem(
+                    id: meta.id,
+                    filename: meta.displayName,
+                    path: url.path,
+                    date: date,
+                    size: size,
+                    recordingId: meta.id
+                )
+            )
         }
+
+        transcripts = items.sorted { $0.date > $1.date }
+        print("📋 Loaded \(transcripts.count) transcripts from RecordingStore")
     }
 }

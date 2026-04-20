@@ -103,10 +103,29 @@ struct SplashView: View {
     private let redAccent = Color(red: 200/255, green: 16/255, blue: 46/255)
 
     var body: some View {
-        ZStack {
-            bgColor.ignoresSafeArea()
-            contentStack
+        // Wrap in NavigationSplitView with `.detailOnly` so the splash
+        // hooks into the same chrome pipeline that gives Lydopptak /
+        // Transkripsjoner their correct rounded-corner radius. The
+        // sidebar column is never displayed; `EmptyView()` satisfies the
+        // init requirement. `.toolbar(removing: .sidebarToggle)` at the
+        // outer scope hides the default sidebar-toggle button that
+        // NavigationSplitView would otherwise add to the window toolbar.
+        NavigationSplitView(columnVisibility: .constant(.detailOnly)) {
+            EmptyView()
+                .navigationSplitViewColumnWidth(0)
+        } detail: {
+            ZStack {
+                // Full-bleed dark background; OS clips to the window's
+                // rounded corners. `ignoresSafeArea()` ensures the colour
+                // reaches every window edge so the dark extends all the
+                // way out to the rounded frame.
+                bgColor
+                    .ignoresSafeArea()
+
+                contentStack
+            }
         }
+        .navigationSplitViewStyle(.balanced)
         .onChange(of: coordinator.completedCheckIndex) { _, idx in
             guard idx >= 0, idx < checkToBarIndex.count else { return }
             let barIdx = checkToBarIndex[idx]

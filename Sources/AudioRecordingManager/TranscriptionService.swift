@@ -947,7 +947,9 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
                 }
             }
             TranscriptionCache.shared.store(result, for: audioFile.path)
-            saveTranscriptJSON(result, audioURL: audioFile)
+            if let recId = StorageLayout.recordingId(from: audioFile.deletingLastPathComponent()) {
+                saveTranscriptJSON(result, recordingId: recId)
+            }
             ProcessingStateCache.shared.setStep(.diarization, status: .completed, for: audioFile.path)
             await MainActor.run {
                 self.diarizationProgress = 1.0
@@ -1004,16 +1006,15 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
 
     // MARK: - Transcript JSON persistence
 
-    func saveTranscriptJSONPublic(_ result: TranscriptionResult, audioURL: URL) {
-        saveTranscriptJSON(result, audioURL: audioURL)
+    func saveTranscriptJSONPublic(_ result: TranscriptionResult, recordingId: UUID) {
+        saveTranscriptJSON(result, recordingId: recordingId)
     }
 
-    private func saveTranscriptJSON(_ result: TranscriptionResult, audioURL: URL) {
+    private func saveTranscriptJSON(_ result: TranscriptionResult, recordingId: UUID) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = support.appendingPathComponent("AudioRecordingManager/transcripts")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let stem = audioURL.deletingPathExtension().lastPathComponent
-        let url = dir.appendingPathComponent("\(stem).json")
+        let url = dir.appendingPathComponent("\(recordingId.uuidString).json")
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         if let data = try? encoder.encode(result) {

@@ -8,56 +8,20 @@ enum AppTab {
     case transcripts
 }
 
-// MARK: - Transcripts View (Transkripsjoner tab)
+// MARK: - Transcripts List Column (content column for 3-column split)
 
-struct TranscriptsView: View {
+struct TranscriptsListColumn: View {
     @ObservedObject var transcriptManager: TranscriptManager
-    @StateObject private var recordingsManager = RecordingsManager.shared
-    @Binding var selectedTab: AppTab
-
-    @State private var selectedTranscript: TranscriptItem? = nil
+    @Binding var selectedTranscript: TranscriptItem?
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            // Sidebar: transcript list
-            List(transcriptManager.transcripts, selection: $selectedTranscript) { transcript in
-                TranscriptRowView(
-                    transcript: transcript,
-                    hasAnonymization: hasAnonymization(for: transcript)
-                )
-                .tag(transcript)
-                .listRowSeparator(.visible)
-            }
-            .listStyle(.plain)
-            .navigationTitle("Transkripsjoner")
-            .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            // Detail: selected transcript or empty state
-            if let transcript = selectedTranscript {
-                TranscriptDetailPanel(
-                    transcript: transcript,
-                    matchingRecording: matchingRecording(for: transcript),
-                    onSwitchToRecordings: { selectedTab = .recordings }
-                )
-                .id(transcript.path)
-            } else {
-                ContentUnavailableView(
-                    "Velg en transkripsjon",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text("Klikk på en fil til venstre for å vise innhold og kjøre anonymisering.")
-                )
-            }
-        }
-        .navigationSplitViewStyle(.balanced)
-    }
-
-    // MARK: - Helpers
-
-    private func matchingRecording(for transcript: TranscriptItem) -> RecordingItem? {
-        recordingsManager.recordings.first {
-            URL(fileURLWithPath: $0.path).deletingPathExtension().lastPathComponent
-                == transcript.stem
+        List(transcriptManager.transcripts, selection: $selectedTranscript) { transcript in
+            TranscriptRowView(
+                transcript: transcript,
+                hasAnonymization: hasAnonymization(for: transcript)
+            )
+            .tag(transcript)
+            .listRowSeparator(.visible)
         }
     }
 
@@ -68,7 +32,7 @@ struct TranscriptsView: View {
 
 // MARK: - Transcript Row View
 
-private struct TranscriptRowView: View {
+struct TranscriptRowView: View {
     let transcript: TranscriptItem
     let hasAnonymization: Bool
     @State private var isHovering = false
@@ -99,8 +63,7 @@ private struct TranscriptRowView: View {
 
 // MARK: - Transcript Detail Panel
 
-/// Right panel for the Transkripsjoner tab.
-private struct TranscriptDetailPanel: View {
+struct TranscriptDetailPanel: View {
     let transcript: TranscriptItem
     let matchingRecording: RecordingItem?
     let onSwitchToRecordings: () -> Void
@@ -153,8 +116,6 @@ private struct TranscriptDetailPanel: View {
         }
         return parts.joined(separator: " · ")
     }
-
-    // MARK: - Sections
 
     private var textSection: some View {
         Section("Transkripsjon") {
@@ -273,8 +234,6 @@ private struct TranscriptDetailPanel: View {
         }
     }
 
-    // MARK: Constants
-
     private let whatIsRemoved = [
         "Navn på personer",
         "Telefonnumre og e-postadresser",
@@ -300,10 +259,7 @@ private struct TranscriptDetailPanel: View {
         return parts.joined(separator: ", ") + " fjernet"
     }
 
-    // MARK: Load data
-
     private func loadData() {
-        // Read original text from .txt file (the file IS the original — we never modify it)
         do {
             originalText = try String(contentsOfFile: transcript.path, encoding: .utf8)
         } catch {
@@ -311,15 +267,12 @@ private struct TranscriptDetailPanel: View {
             return
         }
 
-        // Load metadata for anonymization state
         let loaded = RecordingMetadataManager.shared.load(for: transcript.path)
         metadata = loaded
         if let loaded = loaded, let date = loaded.anonymizationDate {
             anonymizationState = .completed(date: date, stats: loaded.anonymizationStats ?? [:])
         }
     }
-
-    // MARK: Actions
 
     private func startAnonymization() {
         let text = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -375,7 +328,7 @@ private struct TranscriptDetailPanel: View {
     }
 }
 
-// MARK: - Transcript anonymization state (private to this file)
+// MARK: - Transcript anonymization state
 
 private enum TranscriptAnonymizationState {
     case notStarted

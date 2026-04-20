@@ -210,10 +210,16 @@ BERT-modellen (~500 MB) lastes automatisk ned fra HuggingFace ved første bruk.
 
 ```
 ~/Library/Application Support/AudioRecordingManager/
-├── no-transcribe-venv/     # Python-miljø (installeres automatisk)
-├── transcripts/            # Transkripsjoner (JSON)
-├── analysis/               # Analyseresultater (JSON)
-└── processing-state.json   # Behandlingsstatus per fil
+├── recordings/             # Opptak — én UUID-mappe per intervju
+│   └── <uuid>/
+│       ├── audio.m4a       # Lydfil
+│       ├── transcript.txt  # Transkripsjon (plain text)
+│       └── meta.json       # Metadata-sidecar (status, UUID, tidsstempler)
+├── audit/                  # Revisjonslogg (JSONL, månedlig rotasjon)
+│   └── audit-YYYY-MM.jsonl
+├── state/                  # App-tilstand (migrasjonsmarkører, prosjektkonfigurasjon)
+│   └── app.json
+└── no-transcribe-venv/     # Python-miljø (installeres automatisk)
 
 ~/.cache/huggingface/hub/   # NB-Whisper og pyannote-modeller
 ```

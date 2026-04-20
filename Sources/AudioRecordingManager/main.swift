@@ -13,33 +13,11 @@ struct AppConfig {
 }
 
 // MARK: - Design System
-/// Modern Liquid Glass design with system colors and spacing
-struct AppColors {
-    // Brand accent color
-    static let accent = Color.blue
-    static let accentSubtle = Color.blue.opacity(0.2)
-
-    // Status colors
-    static let destructive = Color.red
-    static let success = Color.green
-    static let warning = Color.orange
-}
-
-struct AppSpacing {
-    static let xs: CGFloat = 4
-    static let sm: CGFloat = 8
-    static let md: CGFloat = 12
-    static let lg: CGFloat = 16
-    static let xl: CGFloat = 24
-    static let xxl: CGFloat = 32
-}
-
-struct AppRadius {
-    static let small: CGFloat = 8
-    static let medium: CGFloat = 12
-    static let large: CGFloat = 16
-    static let xlarge: CGFloat = 20
-}
+// Design tokens (AppColors, AppSpacing, AppRadius) have been extracted to
+// `Design/DesignTokens.swift`. Glass styles (GlassButtonStyle,
+// HoverButtonStyle, glassEffectIfAvailable) are in `Design/GlassStyles.swift`.
+// Window chrome is documented in `Design/WindowChrome.swift`.
+// See `Design/README.md` for the rules around that folder.
 
 // MARK: - App Entry Point
 struct VirginProjectApp: App {
@@ -50,6 +28,7 @@ struct VirginProjectApp: App {
         WindowGroup {
             ZStack {
                 MainView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 if !startupCoordinator.isComplete {
                     SplashView(coordinator: startupCoordinator)
                         .zIndex(1000)
@@ -59,40 +38,125 @@ struct VirginProjectApp: App {
             .task {
                 await startupCoordinator.runStartupSequence()
             }
+            // Add an invisible toolbar to trigger unified window chrome
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    EmptyView()
+                }
+            }
         }
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {}
         }
+        .defaultSize(width: 1200, height: 800)
     }
 }
 
 // MARK: - App Delegate for Launch Configuration
 class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Surfaces the most recent migration outcome to the UI (e.g. a splash
+    /// screen or toast). `nil` if migration was skipped because it had
+    /// already run on this machine.
+    static var migrationOutcome: MigrationOutcome?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App delegate did finish launching")
+
+        // Phase 0: Run the one-shot legacy-Desktop → Application Support migration
+        // synchronously, before any other code touches files. Idempotent —
+        // subsequent launches no-op via `AppState.migrationCompletedAt`.
+        //
+        // See ADR-1014 and docs/prd/file-management-teams-sync/PHASE_0_TASKS.md
+        // task 0C3.
+        runPhase0MigrationIfNeeded()
+
         // Ensure the app appears in the Dock and App Switcher
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+
+        // The unified window chrome from .windowToolbarStyle(.unified(showsTitle: false))
+        // already provides the transparent titlebar and proper corner radius.
+        // No manual window configuration needed - SwiftUI handles it correctly.
+
         // Auto-install no-transcribe in the background if not already present
         Task {
             await TranscriptionService.shared.setupIfNeeded()
         }
     }
 
-    private func createRequiredDesktopFolders() {
+    /// Runs the legacy-Desktop migration and logs the outcome to the audit log.
+    /// Failures are logged but do not block app launch; the migration will be
+    /// retried on the next launch.
+    ///
+    /// This is in two independent passes, each idempotent and gated by its
+    /// own marker in `AppState`:
+    ///   1. **Primary** (`StorageMigrator`): moves `.m4a` and `.txt` files
+    ///      into UUID-named recording folders. Gated by `migrationCompletedAt`.
+    ///   2. **Follow-up** (`LegacyMetadataMigrator`): processes legacy
+    ///      `.metadata.json` sidecars (extract inline transcripts), moves
+    ///      non-`.m4a` Desktop audio (DS2/MP3/WAV), and removes the legacy
+    ///      `.audit_log.jsonl` dotfile. Gated by `legacyMetadataCleanedAt`.
+    ///
+    /// Two passes rather than one schema version so users upgrading from a
+    /// build that only had pass 1 still get pass 2 on next launch without a
+    /// manual reset.
+    private func runPhase0MigrationIfNeeded() {
+        // Pass 1 — primary audio/transcript move.
         do {
-            let desktop = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Desktop")
-            let folders = ["Lydfiler", "Tekstfiler"]
-            for folder in folders {
-                let url = desktop.appendingPathComponent(folder)
-                if !FileManager.default.fileExists(atPath: url.path) {
-                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-                    print("✅ Created folder: \(folder)")
-                }
+            let outcome = try StorageMigrator.runIfNeeded()
+            AppDelegate.migrationOutcome = outcome
+            if outcome.wasSkipped {
+                print("ℹ️  Phase 0 primary migration: already completed on a previous launch; skipping.")
+            } else {
+                print("✅ Phase 0 primary migration: moved \(outcome.filesMoved) files across \(outcome.recordingsCreated) recordings (errors: \(outcome.errorCount)).")
+                AuditLogger.shared.log(
+                    .migrationCompleted,
+                    payload: [
+                        "pass": .string("primary"),
+                        "recordingsCreated": .int(outcome.recordingsCreated),
+                        "filesMoved": .int(outcome.filesMoved),
+                        "errorCount": .int(outcome.errorCount),
+                    ]
+                )
             }
         } catch {
-            print("⚠️  Error creating folders: \(error)")
+            print("❌ Phase 0 primary migration failed: \(error). Will retry on next launch.")
+        }
+
+        // Pass 2 — follow-up for legacy metadata + non-m4a audio + audit log.
+        do {
+            let outcome = try LegacyMetadataMigrator.runIfNeeded()
+            if outcome.wasSkipped {
+                print("ℹ️  Phase 0 follow-up migration: already completed on a previous launch; skipping.")
+            } else {
+                print("""
+                    ✅ Phase 0 follow-up migration:
+                       transcripts migrated: \(outcome.transcriptsMigrated)
+                       anonymized transcripts migrated: \(outcome.anonymizedMigrated)
+                       orphan recordings created: \(outcome.orphanRecordingsCreated)
+                       non-m4a audio migrated: \(outcome.nonM4AAudioMigrated)
+                       legacy metadata files removed: \(outcome.metadataFilesRemoved)
+                       legacy audit log removed: \(outcome.legacyAuditLogRemoved)
+                       errors: \(outcome.errorCount)
+                    """)
+                AuditLogger.shared.log(
+                    .migrationCompleted,
+                    payload: [
+                        "pass": .string("legacyMetadata"),
+                        "transcriptsMigrated": .int(outcome.transcriptsMigrated),
+                        "anonymizedMigrated": .int(outcome.anonymizedMigrated),
+                        "orphanRecordingsCreated": .int(outcome.orphanRecordingsCreated),
+                        "nonM4AAudioMigrated": .int(outcome.nonM4AAudioMigrated),
+                        "metadataFilesRemoved": .int(outcome.metadataFilesRemoved),
+                        "legacyAuditLogRemoved": .bool(outcome.legacyAuditLogRemoved),
+                        "errorCount": .int(outcome.errorCount),
+                    ]
+                )
+            }
+        } catch {
+            print("❌ Phase 0 follow-up migration failed: \(error). Will retry on next launch.")
         }
     }
 
@@ -344,25 +408,56 @@ private final class SpeechActivityDetector: NSObject {
                 DispatchQueue.main.async { [weak self] in self?.onSpeechStateChanged?(false) }
             }
         }
+
     }
 }
 
 // MARK: - Audio Recorder
+
+/// Manages microphone access, recording lifecycle, and real-time audio level visualization.
+///
+/// ## Visualization pipeline
+/// A 20 Hz `Timer` (`startLevelMonitoring`) reads `AVAudioRecorder.updateMeters()` during
+/// both the pre-recording monitoring phase and active recording. This is the single source
+/// of truth for all visualization data — `frequencyBands`, `audioLevel`, and `waveformHistory`
+/// are all populated exclusively by this timer.
+///
+/// `SpeechActivityDetector` runs an `AVAudioEngine` FFT tap in parallel for voice-activity
+/// detection only; it does **not** drive any visualization properties.
 class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     static let shared = AudioRecorder()
+
+    // MARK: - Published state
 
     @Published var isRecording = false
     @Published var isPaused = false
     @Published var recordingDuration: TimeInterval = 0
+
+    /// Current audio level, normalized 0–1. Updated at 20 Hz by the metering timer.
     @Published var audioLevel: Float = 0
+
     @Published var lastSavedFile: String?
     @Published var showSaveConfirmation = false
+
+    /// Smoothed per-band energy for 32 frequency bands, each normalized 0–1.
+    /// Updated at 20 Hz. Lower bands carry more weight to reflect natural speech distribution.
     @Published var frequencyBands: [Float] = Array(repeating: 0, count: 32)
+
     @Published var isMonitoring = false
-    @Published var waveformHistory: [Float] = []  // Stores average amplitude over time
-    @Published var showNamingDialog = false  // Show dialog for naming recording
-    @Published var pendingRecordingURL: URL?  // Temp recording waiting to be named
+
+    /// Ring buffer of amplitude samples for the waveform timeline, ordered oldest-first.
+    /// Capped at `maxHistoryLength` entries (~50 s at 20 Hz). Each entry has a stable `id`
+    /// so `ScrollingWaveformView` can match bars correctly as the buffer scrolls.
+    @Published var waveformHistory: [WaveformEntry] = []
+
+    @Published var showNamingDialog = false
+    @Published var pendingRecordingURL: URL?
     @Published var showSilenceWarning = false
+
+    // MARK: - Private state
+
+    /// Monotonically-increasing counter stamped onto each `WaveformEntry` at append time.
+    private var waveformCounter: UInt64 = 0
 
     // MARK: - Silence Detection (VAD-driven)
     private let vad = SpeechActivityDetector()
@@ -373,11 +468,18 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var silenceCooldownActive = false
     private let silenceCooldownDuration: TimeInterval = 300  // 5-min cooldown after dismiss
 
-    private let maxHistoryLength = 300  // ~15 seconds at 20fps
+    /// Maximum number of waveform samples to retain (~15 s at 20 Hz).
+    // 1000 samples at 20 Hz = 50 seconds of history, enough to fill the waveform
+    // even on wide windows (stride is 4 pt/bar, so 1000 bars cover ~4000 pt).
+    private let maxHistoryLength = 1000
     private var audioRecorder: AVAudioRecorder?
     private var recordingTimer: Timer?
     private var levelTimer: Timer?
     private var currentRecordingURL: URL?
+    /// UUID of the in-progress recording in `RecordingStore`. Set in
+    /// `startRecording()`, used in `saveRecordingWithName()` to finalize
+    /// the sidecar's `displayName` and `durationSeconds`.
+    private var currentRecordingId: UUID?
     private var monitorRecorder: AVAudioRecorder?
 
     private override init() {
@@ -392,6 +494,12 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func startMonitoring() {
         guard !isMonitoring else { return }
+
+        // Always start with a clean slate so a previous recording's waveform
+        // doesn't carry into the next session's monitoring phase.
+        waveformHistory.removeAll()
+        frequencyBands = Array(repeating: 0, count: 32)
+        audioLevel = 0
 
         // Create a temporary URL for monitoring (won't save)
         let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(
@@ -418,7 +526,7 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         }
     }
 
-    func stopMonitoring() {
+    func stopMonitoring(clearHistory: Bool = true) {
         guard isMonitoring else { return }
 
         monitorRecorder?.stop()
@@ -429,7 +537,9 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Clear visualization
         frequencyBands = Array(repeating: 0, count: 32)
         audioLevel = 0
-        waveformHistory.removeAll()
+        if clearHistory {
+            waveformHistory.removeAll()
+        }
 
         print("🛑 Stopped audio monitoring")
     }
@@ -438,27 +548,29 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self = self else { return }
 
-            // Use monitor recorder if not recording, otherwise use main recorder
-            let recorder = self.isRecording ? self.audioRecorder : self.monitorRecorder
-            guard let recorder = recorder else { return }
+            // Single source of truth for visualization: AVAudioRecorder metering.
+            // Works reliably for both monitoring and recording phases.
+            let avRecorder = self.isRecording ? self.audioRecorder : self.monitorRecorder
+            guard let avRecorder else { return }
 
-            recorder.updateMeters()
-            let averagePower = recorder.averagePower(forChannel: 0)
-            let peakPower = recorder.peakPower(forChannel: 0)
+            avRecorder.updateMeters()
+            let averagePower = avRecorder.averagePower(forChannel: 0)
+            let peakPower    = avRecorder.peakPower(forChannel: 0)
 
-            // Convert dB to 0-1 range with balanced sensitivity
-            let minDB: Float = -50.0
+            // -44 dB floor: ambient room noise typically sits at -55 to -45 dBFS.
+            // Anything quieter than -44 dB maps to zero so the display is silent
+            // unless actual speech or deliberate sound is present.
+            let minDB: Float = -44.0
             let maxDB: Float = -5.0
-            let clampedAverage = max(minDB, min(maxDB, averagePower))
-            let normalizedLevel = (clampedAverage - minDB) / (maxDB - minDB)
+            let normalizedLevel = max(0, (max(minDB, min(maxDB, averagePower)) - minDB) / (maxDB - minDB))
             self.audioLevel = normalizedLevel
 
-            // Silence detection — VAD-driven (not raw amplitude)
+            // Silence detection (VAD speech state + amplitude fallback)
             if self.isRecording, !self.isPaused, !self.silenceCooldownActive {
                 let now = Date()
                 let elapsed = self.lastSilenceCheckTime.map { now.timeIntervalSince($0) } ?? 0.05
                 self.lastSilenceCheckTime = now
-                if !self.isSpeechActive {
+                if !(self.isSpeechActive || self.audioLevel > 0.1) {
                     self.silenceDuration += elapsed
                     if self.silenceDuration >= self.silenceAlertInterval, !self.showSilenceWarning {
                         self.showSilenceWarning = true
@@ -471,25 +583,19 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 self.lastSilenceCheckTime = nil
             }
 
-            // Generate frequency band visualization
+            // Frequency band visualization — deterministic per-band weighting, no random noise.
+            // Lower bands are weighted louder to reflect natural speech energy distribution.
+            let powerVariance = max(0, (max(minDB, min(maxDB, peakPower)) - minDB) / (maxDB - minDB))
+            let smoothing: Float = 0.75
             for i in 0..<32 {
-                let bandFrequency = Float(i) / 32.0
-                let clampedPeak = max(minDB, min(maxDB, peakPower))
-                let powerVariance = (clampedPeak - minDB) / (maxDB - minDB)
-                let randomVariation = Float.random(in: 0.85...1.15)
-                let frequencyWeight = 1.0 - (bandFrequency * 0.6)
-                let amplification: Float = 1.8
-                let bandLevel =
-                    normalizedLevel * frequencyWeight * randomVariation * powerVariance
-                    * amplification
-
-                let smoothing: Float = 0.55
-                self.frequencyBands[i] =
-                    self.frequencyBands[i] * smoothing + bandLevel * (1 - smoothing)
+                let frequencyWeight = 1.0 - (Float(i) / 32.0 * 0.6)
+                let bandLevel = normalizedLevel * frequencyWeight * powerVariance * 1.4
+                self.frequencyBands[i] = self.frequencyBands[i] * smoothing + bandLevel * (1 - smoothing)
             }
 
-            // Add current level to waveform history
-            self.waveformHistory.append(normalizedLevel)
+            // Waveform timeline history
+            self.waveformCounter &+= 1
+            self.waveformHistory.append(WaveformEntry(id: self.waveformCounter, level: normalizedLevel))
             if self.waveformHistory.count > self.maxHistoryLength {
                 self.waveformHistory.removeFirst()
             }
@@ -518,13 +624,20 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     // MARK: - Recording Control
 
     func startRecording() {
-        // Stop monitoring when actual recording starts
+        // Stop monitoring when actual recording starts with a clean waveform slate.
         if isMonitoring {
-            stopMonitoring()
+            stopMonitoring(clearHistory: true)
         }
-        // Generate file path in lydfiler folder
-        let filePath = AudioFileManager.shared.getNewFilePath(extension: "m4a")
-        currentRecordingURL = URL(fileURLWithPath: filePath)
+
+        // Create a new recording in RecordingStore and record to its audio path.
+        do {
+            let handle = try RecordingStore.shared.create()
+            currentRecordingId = handle.id
+            currentRecordingURL = handle.audioURL
+        } catch {
+            print("❌ Failed to create recording in store: \(error)")
+            return
+        }
 
         guard let url = currentRecordingURL else {
             print("❌ Failed to create recording URL")
@@ -616,74 +729,75 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         currentRecordingURL = nil
     }
 
-    /// Save the pending recording with a custom name + timestamp
+    /// Save the pending recording with a custom name + timestamp.
+    /// The audio file already lives in `RecordingStore` at
+    /// `recordings/<uuid>/audio.m4a` — this method just updates the
+    /// sidecar's `displayName` and finalizes the recording.
     func saveRecordingWithName(_ customName: String) {
-        guard let tempURL = pendingRecordingURL else {
+        guard let id = currentRecordingId else {
             print("❌ No pending recording to save")
             return
         }
 
-        // Generate timestamp
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         let timestamp = formatter.string(from: Date())
 
-        // Clean the custom name (remove invalid characters)
         let cleanName = customName
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
 
-        // Build final filename: customName_timestamp.m4a
-        let finalName: String
+        let displayName: String
         if cleanName.isEmpty {
-            finalName = "lydfil_\(timestamp).m4a"
+            displayName = "lydfil_\(timestamp)"
         } else {
-            finalName = "\(cleanName)_\(timestamp).m4a"
+            displayName = "\(cleanName)_\(timestamp)"
         }
 
-        let finalPath = (AudioFileManager.shared.audioFolderPath as NSString)
-            .appendingPathComponent(finalName)
-        let finalURL = URL(fileURLWithPath: finalPath)
+        // Finalize the sidecar: set displayName, duration, audio size + status.
+        let audioURL = StorageLayout.audioURL(id: id)
+        let size = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
 
         do {
-            // Move/rename the temp file to the final name
-            try FileManager.default.moveItem(at: tempURL, to: finalURL)
-            lastSavedFile = finalName
-            showNamingDialog = false
-            showSaveConfirmation = true
-            print("✅ Recording saved: \(finalName)")
-
-            // Hide confirmation after 3 seconds
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                self.showSaveConfirmation = false
-                self.recordingDuration = 0
+            try RecordingStore.shared.finalize(
+                id: id,
+                durationSeconds: recordingDuration,
+                sizeBytes: size
+            )
+            try RecordingStore.shared.updateMeta(id: id) { meta in
+                meta.displayName = displayName
             }
         } catch {
-            print("❌ Error saving recording: \(error)")
-            // If move fails, the file stays at the temp location with original name
-            lastSavedFile = tempURL.lastPathComponent
-            showNamingDialog = false
-            showSaveConfirmation = true
+            print("❌ Error finalizing recording: \(error)")
+        }
+
+        lastSavedFile = displayName
+        showNamingDialog = false
+        showSaveConfirmation = true
+        print("✅ Recording saved: \(displayName)")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            self.showSaveConfirmation = false
+            self.recordingDuration = 0
         }
 
         pendingRecordingURL = nil
-
-        // Restart monitoring to keep visualization active
+        currentRecordingId = nil
         startMonitoring()
     }
 
     /// Cancel/discard the pending recording
     func cancelPendingRecording() {
-        if let url = pendingRecordingURL {
-            try? FileManager.default.removeItem(at: url)
+        if let id = currentRecordingId {
+            try? RecordingStore.shared.delete(id: id)
             print("🗑️ Pending recording discarded")
         }
         pendingRecordingURL = nil
+        currentRecordingId = nil
         showNamingDialog = false
         recordingDuration = 0
 
-        // Restart monitoring
         startMonitoring()
     }
 
@@ -692,14 +806,15 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             stopRecording()
         }
 
-        if let url = currentRecordingURL {
-            try? FileManager.default.removeItem(at: url)
+        if let id = currentRecordingId {
+            try? RecordingStore.shared.delete(id: id)
             print("🗑️ Recording deleted")
         }
 
         recordingDuration = 0
         audioLevel = 0
         currentRecordingURL = nil
+        currentRecordingId = nil
     }
 
     // MARK: - Recording Timer (duration only)
@@ -736,7 +851,7 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
 // MARK: - Recording Item Model
 struct RecordingItem: Identifiable, Equatable, Hashable {
-    let id = UUID()
+    let id: UUID
     let filename: String
     let path: String
     let date: Date
@@ -872,118 +987,104 @@ class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 }
 
 // MARK: - Recordings Manager
+//
+// As of Phase 0 (ADR-1014), recordings live in `RecordingStore` under
+// `~/Library/Application Support/AudioRecordingManager/recordings/<uuid>/`,
+// not on the Desktop. This class is a thin adapter that exposes the store's
+// contents as `[RecordingItem]` for the existing UI.
+//
+// The `RecordingItem` model is unchanged; `path` is the absolute audio file
+// path (now under Application Support), and `filename` is the human-readable
+// `displayName` from the sidecar — not the opaque UUID on disk.
 class RecordingsManager: ObservableObject {
     static let shared = RecordingsManager()
 
     @Published var recordings: [RecordingItem] = []
 
-    private var fileDescriptor: Int32 = -1
-    private var dispatchSource: DispatchSourceFileSystemObject?
+    /// Subscription to `RecordingStore.didChangeNotification` so the list
+    /// stays in sync with sidecar writes.
+    private var changeObserver: NSObjectProtocol?
     private var reloadWorkItem: DispatchWorkItem?
 
     private init() {
         loadRecordings()
-        startWatchingFolder()
+        subscribeToStoreChanges()
     }
 
     deinit {
-        stopWatchingFolder()
+        if let token = changeObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
-    /// Start monitoring the audio folder for changes (file added, renamed, deleted)
-    private func startWatchingFolder() {
-        let audioFolder = AudioFileManager.shared.audioFolderPath
-
-        fileDescriptor = open(audioFolder, O_EVTONLY)
-        guard fileDescriptor >= 0 else {
-            print("⚠️ Could not open folder for monitoring: \(audioFolder)")
-            return
-        }
-
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fileDescriptor,
-            eventMask: [.write, .delete, .rename, .extend, .attrib, .link],
-            queue: DispatchQueue.main
-        )
-
-        source.setEventHandler { [weak self] in
-            // Debounce: cancel pending reload and schedule a new one
+    /// Subscribe to RecordingStore notifications so the recordings list
+    /// updates when sidecars change (create, finalize, updateMeta, delete).
+    private func subscribeToStoreChanges() {
+        changeObserver = NotificationCenter.default.addObserver(
+            forName: RecordingStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Debounce so a burst of writes doesn't trigger many reloads.
             self?.reloadWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak self] in
-                print("📁 Folder changed, reloading recordings...")
                 self?.loadRecordings()
             }
             self?.reloadWorkItem = workItem
-            // Wait 300ms before reloading to let file operations complete
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
         }
-
-        source.setCancelHandler { [weak self] in
-            if let fd = self?.fileDescriptor, fd >= 0 {
-                close(fd)
-            }
-            self?.fileDescriptor = -1
-        }
-
-        dispatchSource = source
-        source.resume()
-        print("👁️ Watching folder for changes: \(audioFolder)")
-    }
-
-    /// Stop monitoring the folder
-    private func stopWatchingFolder() {
-        dispatchSource?.cancel()
-        dispatchSource = nil
-        reloadWorkItem?.cancel()
     }
 
     func loadRecordings() {
-        let audioFolder = AudioFileManager.shared.audioFolderPath
-        let fileManager = FileManager.default
+        let metas = RecordingStore.shared.loadAll()
+        var items: [RecordingItem] = []
 
-        do {
-            let files = try fileManager.contentsOfDirectory(atPath: audioFolder)
-            var items: [RecordingItem] = []
+        for meta in metas {
+            // Skip recordings whose audio is not on disk (e.g. orphan
+            // metadata records) — they shouldn't appear in the recordings
+            // list. They remain in the store and surface elsewhere later.
+            guard meta.audio.status == .done else { continue }
 
-            for file in files {
-                let filePath = (audioFolder as NSString).appendingPathComponent(file)
-                let fileURL = URL(fileURLWithPath: filePath)
+            let audioURL = StorageLayout.recordingFolder(id: meta.id)
+                .appendingPathComponent(meta.audio.filename)
+            guard FileManager.default.fileExists(atPath: audioURL.path) else { continue }
 
-                guard fileURL.pathExtension.lowercased() == "m4a" else { continue }
+            let size = meta.audio.sizeBytes
+                ?? (try? FileManager.default
+                    .attributesOfItem(atPath: audioURL.path)[.size] as? Int64)
+                ?? 0
 
-                let attributes = try fileManager.attributesOfItem(atPath: filePath)
-                if let fileSize = attributes[.size] as? Int64,
-                    let modDate = attributes[.modificationDate] as? Date
-                {
-                    let audioFile = try? AVAudioFile(forReading: fileURL)
-                    let audioDuration = audioFile.map {
-                        Double($0.length) / $0.processingFormat.sampleRate
-                    } ?? 0
-
-                    items.append(
-                        RecordingItem(
-                            filename: file,
-                            path: filePath,
-                            date: modDate,
-                            size: fileSize,
-                            duration: audioDuration.isNaN ? 0 : audioDuration
-                        ))
-                }
+            let duration: TimeInterval
+            if let stored = meta.durationSeconds, stored > 0 {
+                duration = stored
+            } else if let f = try? AVAudioFile(forReading: audioURL) {
+                let d = Double(f.length) / f.processingFormat.sampleRate
+                duration = d.isNaN ? 0 : d
+            } else {
+                duration = 0
             }
 
-            // Sort by date, newest first
-            recordings = items.sorted { $0.date > $1.date }
-            print("📋 Loaded \(recordings.count) recordings")
-        } catch {
-            print("❌ Error loading recordings: \(error)")
+            items.append(
+                RecordingItem(
+                    id: meta.id,
+                    filename: meta.displayName,
+                    path: audioURL.path,
+                    date: meta.createdAt,
+                    size: size,
+                    duration: duration
+                )
+            )
         }
+
+        recordings = items.sorted { $0.date > $1.date }
+        print("📋 Loaded \(recordings.count) recordings from RecordingStore")
     }
 
     func deleteRecording(_ item: RecordingItem) {
         do {
-            try FileManager.default.removeItem(atPath: item.path)
-            loadRecordings()
+            try RecordingStore.shared.delete(id: item.id)
             print("🗑️ Deleted: \(item.filename)")
+            // RecordingStore posts didChangeNotification; subscriber will reload.
         } catch {
             print("❌ Error deleting recording: \(error)")
         }
@@ -991,88 +1092,8 @@ class RecordingsManager: ObservableObject {
 }
 
 // MARK: - Glass Effect Helpers
-
-extension View {
-    @ViewBuilder
-    func glassEffectIfAvailable(in shape: RoundedRectangle) -> some View {
-        if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
-        } else {
-            self
-        }
-    }
-}
-
-// MARK: - Liquid Glass Button Styles
-
-struct GlassButtonStyle: ButtonStyle {
-    @State private var isHovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, AppSpacing.xl)
-            .padding(.vertical, AppSpacing.lg)
-            .background {
-                if isHovering || configuration.isPressed {
-                    if #available(macOS 26.0, *) {
-                        RoundedRectangle(cornerRadius: AppRadius.medium)
-                            .fill(.thinMaterial)
-                            .glassEffect(.regular.tint(.blue).interactive(), in: .rect(cornerRadius: AppRadius.medium))
-                    } else {
-                        RoundedRectangle(cornerRadius: AppRadius.medium)
-                            .fill(.thinMaterial)
-                    }
-                } else {
-                    if #available(macOS 26.0, *) {
-                        RoundedRectangle(cornerRadius: AppRadius.medium)
-                            .fill(.ultraThinMaterial)
-                            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: AppRadius.medium))
-                    } else {
-                        RoundedRectangle(cornerRadius: AppRadius.medium)
-                            .fill(.ultraThinMaterial)
-                    }
-                }
-            }
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isHovering)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    isHovering = true
-                    DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                case .ended:
-                    isHovering = false
-                    DispatchQueue.main.async { NSCursor.arrow.set() }
-                }
-            }
-    }
-}
-
-// Hover button style with subtle glass effect on hover
-struct HoverButtonStyle: ButtonStyle {
-    @State private var isHovering = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background {
-                if isHovering {
-                    RoundedRectangle(cornerRadius: AppRadius.small)
-                        .fill(.ultraThinMaterial)
-                }
-            }
-            .onContinuousHover { phase in
-                switch phase {
-                case .active:
-                    isHovering = true
-                    DispatchQueue.main.async { NSCursor.pointingHand.set() }
-                case .ended:
-                    isHovering = false
-                    DispatchQueue.main.async { NSCursor.arrow.set() }
-                }
-            }
-    }
-}
+// `glassEffectIfAvailable`, `GlassButtonStyle`, and `HoverButtonStyle` have
+// been extracted to `Design/GlassStyles.swift`. See `Design/README.md`.
 
 // MARK: - Cursor Modifier
 extension View {
@@ -1923,7 +1944,14 @@ class FolderManager: ObservableObject {
             Double($0.length) / $0.processingFormat.sampleRate
         } ?? 0
 
+        // Derive stable ID from the parent folder UUID (Phase 0 layout)
+        // or generate a deterministic one from the path for legacy items.
+        let stableId = StorageLayout.recordingId(from: url.deletingLastPathComponent())
+            ?? UUID(uuidString: url.path.hash.description)
+            ?? UUID()
+
         return RecordingItem(
+            id: stableId,
             filename: url.lastPathComponent,
             path: url.path,
             date: date,
@@ -2034,11 +2062,11 @@ struct NewFolderDialog: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Create New Folder")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
 
             TextField("Folder name", text: $folderName)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 315)
+                .frame(width: 280)
 
             HStack(spacing: 12) {
                 Button("Cancel") {
@@ -2056,12 +2084,7 @@ struct NewFolderDialog: View {
             }
         }
         .padding(24)
-        .frame(width: 400)
-        .background {
-            RoundedRectangle(cornerRadius: AppRadius.xlarge)
-                .fill(.regularMaterial)
-        }
-        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+        .frame(width: 360)
     }
 }
 
@@ -2075,36 +2098,36 @@ struct AnonymizationReminderDialog: View {
             // Header
             VStack(spacing: 12) {
                 Image(systemName: "exclamationmark.shield.fill")
-                    .font(.system(size: 48, weight: .light))
+                    .font(.system(size: 44, weight: .light))
                     .foregroundStyle(AppColors.warning)
 
                 Text("Before uploading")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
 
                 Text("Check that the text is anonymized")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.secondary)
             }
 
             // Checklist
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 ChecklistItem(text: "Remove names, contact info, and ID numbers")
                 ChecklistItem(text: "Remove names of family, friends, and NAV employees")
                 ChecklistItem(text: "Remove health information that could identify the participant")
                 ChecklistItem(text: "Use codes like P1, P2, etc. instead of names")
             }
-            .padding(16)
+            .padding(14)
             .background {
                 RoundedRectangle(cornerRadius: AppRadius.medium)
-                    .fill(.ultraThinMaterial)
+                    .fill(Color(nsColor: .controlBackgroundColor))
             }
 
             // Buttons
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Button(action: onCancel) {
                     Text("Cancel")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
 
@@ -2114,18 +2137,13 @@ struct AnonymizationReminderDialog: View {
                         Text("Continue to Teams")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(32)
-        .frame(width: 450)
-        .background {
-            RoundedRectangle(cornerRadius: AppRadius.xlarge)
-                .fill(.regularMaterial)
-        }
-        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+        .padding(28)
+        .frame(width: 440)
     }
 }
 
@@ -2229,77 +2247,85 @@ struct NavPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Logo area at the top
+            // Logo area at the top - toolbar will handle traffic light spacing
             VStack(spacing: 8) {
                 // Audio waveform icon from SVG
                 AudioWaveformIcon()
-                    .frame(width: 48, height: 48)
+                    .frame(width: 44, height: 44)
 
                 Text("ARM")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
 
                 Text("Audio Recording Manager")
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 8, weight: .regular))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
-                    .tracking(0.5)
+                    .tracking(0.8)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
+            .padding(.horizontal, 16)
 
             Divider()
+                .padding(.horizontal, 12)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 navItem(tab: .record, label: "Ta opp lyd", icon: "mic.fill")
                 navItem(tab: .recordings, label: "Lydopptak", icon: "waveform")
                 navItem(tab: .transcripts, label: "Transkripsjoner", icon: "doc.text.fill")
             }
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
 
             Spacer()
 
             Divider()
-
-            Button(action: toggleAppearance) {
-                HStack(spacing: 8) {
-                    Image(systemName: isDarkMode ? "sun.max" : "moon")
-                        .font(.system(size: 12))
-                        .foregroundStyle(AppColors.accent)
-                        .frame(width: 16)
-                    Text(isDarkMode ? "Light mode" : "Dark mode")
-                        .font(.system(size: 12))
-                    Spacer()
-                }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(.plain)
 
-            Button(action: { showAbout = true }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 12))
-                        .foregroundStyle(AppColors.accent)
-                        .frame(width: 16)
-                    Text("About")
-                        .font(.system(size: 12))
-                    Spacer()
+            VStack(spacing: 0) {
+                Button(action: toggleAppearance) {
+                    HStack(spacing: 10) {
+                        Image(systemName: isDarkMode ? "sun.max" : "moon")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Text(isDarkMode ? "Light Mode" : "Dark Mode")
+                            .font(.system(size: 13))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .buttonStyle(.plain)
+
+                Button(action: { showAbout = true }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 16)
+                        Text("About")
+                            .font(.system(size: 13))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 7)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.top, 8)
 
             Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 10)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
         }
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func toggleAppearance() {
@@ -2312,24 +2338,24 @@ struct NavPanel: View {
     @ViewBuilder
     private func navItem(tab: AppTab, label: String, icon: String) -> some View {
         Button(action: { selectedTab = tab }) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: selectedTab == tab ? .semibold : .regular))
                     .frame(width: 16)
                 Text(label)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: selectedTab == tab ? .medium : .regular))
                     .lineLimit(1)
                 Spacer()
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
             .background {
                 if selectedTab == tab {
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(AppColors.accentSubtle)
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.accentColor.opacity(0.15))
                 }
             }
-            .foregroundStyle(selectedTab == tab ? AppColors.accent : .primary)
+            .foregroundStyle(selectedTab == tab ? .primary : .secondary)
         }
         .buttonStyle(.plain)
     }
@@ -2337,40 +2363,19 @@ struct NavPanel: View {
 
 // MARK: - Recordings Native View (macOS Glass Design)
 
-struct RecordingsNativeView: View {
+// MARK: - Recordings List Column (content column for 3-column split)
+
+struct RecordingsListColumn: View {
     @ObservedObject var recordingsManager: RecordingsManager
     @ObservedObject var folderManager: FolderManager
     @ObservedObject var audioPlayer: AudioPlayer
     @Binding var selectedRecording: RecordingItem?
 
     var body: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            // Sidebar: recordings list
-            List(selection: $selectedRecording) {
-                ForEach(folderManager.folderStructure) { folder in
-                    Section(folder.name) {
-                        ForEach(folder.recordings) { recording in
-                            RecordingListRow(
-                                recording: recording,
-                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
-                                audioPlayer: audioPlayer,
-                                recordingsManager: recordingsManager
-                            )
-                            .tag(recording)
-                            .listRowSeparator(.visible)
-                        }
-                    }
-                }
-
-                // Root-level recordings (not in folders) - no section header
-                let rootRecordings = recordingsManager.recordings.filter { recording in
-                    !folderManager.folderStructure.contains { folder in
-                        folder.recordings.contains { $0.path == recording.path }
-                    }
-                }
-
-                if !rootRecordings.isEmpty {
-                    ForEach(rootRecordings) { recording in
+        List(selection: $selectedRecording) {
+            ForEach(folderManager.folderStructure) { folder in
+                Section(folder.name) {
+                    ForEach(folder.recordings) { recording in
                         RecordingListRow(
                             recording: recording,
                             isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
@@ -2382,33 +2387,32 @@ struct RecordingsNativeView: View {
                     }
                 }
             }
-            .listStyle(.plain)
-            .navigationTitle("Lydopptak")
-            .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
-            .toolbar(removing: .sidebarToggle)
-        } detail: {
-            // Detail: player or empty state
-            if let recording = selectedRecording {
-                RecordingPlayerNative(
-                    recording: recording,
-                    audioPlayer: audioPlayer
-                )
-                .id(recording.path)
-            } else {
-                ContentUnavailableView(
-                    "Velg et opptak",
-                    systemImage: "waveform",
-                    description: Text("Klikk på et lydopptak til venstre for å spille av.")
-                )
+
+            let rootRecordings = recordingsManager.recordings.filter { recording in
+                !folderManager.folderStructure.contains { folder in
+                    folder.recordings.contains { $0.path == recording.path }
+                }
+            }
+
+            if !rootRecordings.isEmpty {
+                ForEach(rootRecordings) { recording in
+                    RecordingListRow(
+                        recording: recording,
+                        isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
+                        audioPlayer: audioPlayer,
+                        recordingsManager: recordingsManager
+                    )
+                    .tag(recording)
+                    .listRowSeparator(.visible)
+                }
             }
         }
-        .navigationSplitViewStyle(.balanced)
     }
 }
 
-// MARK: - Recording List Row (Native)
+// MARK: - Recording List Row
 
-private struct RecordingListRow: View {
+struct RecordingListRow: View {
     let recording: RecordingItem
     let isPlaying: Bool
     @ObservedObject var audioPlayer: AudioPlayer
@@ -2484,9 +2488,10 @@ private struct RecordingListRow: View {
 
 // MARK: - Recording Player (Native)
 
-private struct RecordingPlayerNative: View {
+struct RecordingPlayerNative: View {
     let recording: RecordingItem
     @ObservedObject var audioPlayer: AudioPlayer
+    var onNavigateToTranscript: ((UUID) -> Void)?
 
     // Scrubber state
     @State private var isDraggingScrubber: Bool = false
@@ -2498,7 +2503,6 @@ private struct RecordingPlayerNative: View {
     @State private var transcriptionResult: TranscriptionResult?
     @State private var transcriptionError: TranscriptionError?
     @State private var isTranscribing = false
-    @State private var showTranscriptionResult = false
     @AppStorage("transcription.defaultModel")    private var defaultModelRaw = TranscriptionModel.large.rawValue
     @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
     @AppStorage("transcription.verbatim")        private var verbatim = false
@@ -2702,32 +2706,8 @@ private struct RecordingPlayerNative: View {
             }
             .frame(minWidth: 480, minHeight: 400)
         }
-        .sheet(isPresented: $showTranscriptionResult) {
-            if let result = transcriptionResult {
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Transkripsjon")
-                            .font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                        Button("Lukk") { showTranscriptionResult = false }
-                            .keyboardShortcut(.cancelAction)
-                            .buttonStyle(.bordered)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                    Divider()
-                    TranscriptionResultView(result: result)
-                }
-                .frame(width: 680, height: 560)
-                .background(.ultraThinMaterial)
-            }
-        }
-        .sheet(isPresented: $showAnalysisResult) {
-            if let result = analysisResult {
-                AnalysisResultView(result: result)
-                    .frame(width: 680, height: 560)
-            }
-        }
+        // Transcript modal and analysis modal removed — both now live
+        // in TranscriptEditorView (Transkripsjoner tab).
         .onAppear {
             restoreTranscriptionStateIfNeeded()
             // Restore analysis result
@@ -2754,8 +2734,7 @@ private struct RecordingPlayerNative: View {
     // MARK: - Transcription state restoration
 
     /// Restores a cached TranscriptionResult for this file (in-memory cache first,
-    /// then disk fallback: if ~/Desktop/tekstfiler/<stem>.txt exists, we know a
-    /// transcription was completed and mark the state accordingly with a sentinel result).
+    /// then JSON on disk, then transcript.txt in the recording's UUID folder).
     private func restoreTranscriptionStateIfNeeded() {
         guard transcriptionResult == nil, !isTranscribing else { return }
 
@@ -2765,13 +2744,12 @@ private struct RecordingPlayerNative: View {
             return
         }
 
-        let audioURL = URL(fileURLWithPath: recording.path)
-        let stem = audioURL.deletingPathExtension().lastPathComponent
-
-        // 2. JSON transcript fallback: check Application Support/AudioRecordingManager/transcripts/<stem>.json
+        // 2. JSON transcript fallback: check Application Support/AudioRecordingManager/transcripts/<uuid>.json
         //    This preserves speaker diarization labels across app restarts.
+        //    Uses recording.id (stable UUID) instead of the audio filename stem
+        //    (which is always "audio" in the Phase 0 layout and would collide).
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let jsonURL = support.appendingPathComponent("AudioRecordingManager/transcripts/\(stem).json")
+        let jsonURL = support.appendingPathComponent("AudioRecordingManager/transcripts/\(recording.id.uuidString).json")
         if FileManager.default.fileExists(atPath: jsonURL.path),
            let jsonData = try? Data(contentsOf: jsonURL) {
             let decoder = JSONDecoder()
@@ -2783,9 +2761,8 @@ private struct RecordingPlayerNative: View {
             }
         }
 
-        // 3. Disk fallback: check ~/Desktop/tekstfiler/<stem>.txt (written on previous transcription)
-        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        let txtURL = desktop.appendingPathComponent("tekstfiler/\(stem).txt")
+        // 3. Disk fallback: check transcript.txt in the recording's UUID folder
+        let txtURL = StorageLayout.transcriptURL(id: recording.id)
 
         if FileManager.default.fileExists(atPath: txtURL.path),
            let text = try? String(contentsOf: txtURL, encoding: .utf8),
@@ -2854,9 +2831,9 @@ private struct RecordingPlayerNative: View {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                 }
                 Button {
-                    showTranscriptionResult = true
+                    onNavigateToTranscript?(recording.id)
                 } label: {
-                    Label("Vis transkripsjon", systemImage: "list.bullet.rectangle")
+                    Label("Åpne i transkripsjonseditoren", systemImage: "doc.text")
                 }
                 Button {
                     startTranscription()
@@ -3091,17 +3068,20 @@ private struct RecordingPlayerNative: View {
                 // Store in the in-memory cache so the result survives file navigation
                 TranscriptionCache.shared.store(result, for: recording.path)
                 // Save full TranscriptionResult JSON to disk (preserves speaker labels across restarts)
-                TranscriptionService.shared.saveTranscriptJSONPublic(result, audioURL: audioURL)
+                TranscriptionService.shared.saveTranscriptJSONPublic(result, recordingId: recording.id)
                 ProcessingStateCache.shared.setStep(.transcription, status: .completed, for: recording.path)
 
-                // Persist plain-text transcript for anonymization
+                // Persist plain-text transcript into the recording's UUID folder
                 let plainText = result.segments
                     .map { $0.text.trimmingCharacters(in: .whitespaces) }
                     .joined(separator: "\n\n")
-                RecordingMetadataManager.shared.setOriginalTranscript(plainText, for: recording.path)
 
-                // Save .txt file to ~/Desktop/tekstfiler/ as disk fallback
-                savePlainTextTranscript(plainText, audioURL: audioURL)
+                let transcriptURL = StorageLayout.transcriptURL(id: recording.id)
+                try? plainText.write(to: transcriptURL, atomically: true, encoding: .utf8)
+                _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
+                    meta.transcript.status = .done
+                    meta.transcript.completedAt = Date()
+                }
             } catch let error as TranscriptionError {
                 guard !Task.isCancelled else { return }
                 transcriptionError = error
@@ -3166,23 +3146,6 @@ private struct RecordingPlayerNative: View {
                     isAnalyzing = false
                 }
             }
-        }
-    }
-
-    /// Saves plain-text transcript to ~/Desktop/tekstfiler/<stem>.txt.
-    /// This file acts as a disk-based fallback for restoring transcription state after app restart.
-    private func savePlainTextTranscript(_ text: String, audioURL: URL) {
-        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        let tekstfilerURL = desktop.appendingPathComponent("tekstfiler")
-        do {
-            if !FileManager.default.fileExists(atPath: tekstfilerURL.path) {
-                try FileManager.default.createDirectory(at: tekstfilerURL, withIntermediateDirectories: true)
-            }
-            let stem = audioURL.deletingPathExtension().lastPathComponent
-            let txtURL = tekstfilerURL.appendingPathComponent("\(stem).txt")
-            try text.write(to: txtURL, atomically: true, encoding: .utf8)
-        } catch {
-            print("⚠️ Could not save transcript to tekstfiler: \(error)")
         }
     }
 
@@ -3312,13 +3275,10 @@ struct RecordingRowView: View {
     @State private var isHovering = false
 
     /// True when this recording has a transcription result — either in the session cache
-    /// or as a saved .txt file on disk (~/Desktop/tekstfiler/<stem>.txt).
+    /// or as a saved transcript.txt in the recording's UUID folder.
     private var hasTranscription: Bool {
         if TranscriptionCache.shared.hasResult(for: recording.path) { return true }
-        let audioURL = URL(fileURLWithPath: recording.path)
-        let stem = audioURL.deletingPathExtension().lastPathComponent
-        let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-        let txtURL = desktop.appendingPathComponent("tekstfiler/\(stem).txt")
+        let txtURL = StorageLayout.transcriptURL(id: recording.id)
         return FileManager.default.fileExists(atPath: txtURL.path)
     }
 
@@ -3446,51 +3406,6 @@ struct RecordingRowView: View {
     }
 }
 
-// MARK: - Scrolling Waveform View
-struct ScrollingWaveformView: View {
-    let waveformHistory: [Float]
-    let isRecording: Bool
-
-    var body: some View {
-        GeometryReader { geometry in
-            let barWidth: CGFloat = 3
-            let barSpacing: CGFloat = 1
-            let totalBarWidth = barWidth + barSpacing
-            let visibleBars = Int(geometry.size.width / totalBarWidth)
-            let height = geometry.size.height
-
-            HStack(alignment: .center, spacing: barSpacing) {
-                // Show empty bars if history is shorter than visible area
-                let emptyBars = max(0, visibleBars - waveformHistory.count)
-                ForEach(0..<emptyBars, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: barWidth, height: 4)
-                }
-
-                // Show waveform history (most recent on right)
-                let visibleHistory = Array(waveformHistory.suffix(visibleBars))
-
-                ForEach(Array(visibleHistory.enumerated()), id: \.offset) { index, level in
-                    let barHeight = max(4, CGFloat(level) * height * 0.9)
-                    let isRecent = index > visibleHistory.count - 10
-
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(barColor(level: level, isRecent: isRecent))
-                        .frame(width: barWidth, height: barHeight)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        }
-    }
-
-    private func barColor(level: Float, isRecent: Bool) -> Color {
-        // Grey color based on amplitude level
-        let opacity = Double(max(0.3, min(0.9, level + 0.3)))
-        return Color.gray.opacity(isRecent ? opacity : opacity * 0.8)
-    }
-}
-
 // MARK: - Recording Name Dialog
 struct RecordingNameDialog: View {
     @Binding var recordingName: String
@@ -3500,89 +3415,84 @@ struct RecordingNameDialog: View {
     @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 22) {
             // Header
             VStack(spacing: 8) {
                 Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 48, weight: .light))
+                    .font(.system(size: 44, weight: .light))
                     .foregroundStyle(AppColors.accent)
 
                 Text("Name Your Recording")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
 
                 Text("Duration: \(formatDuration(duration))")
-                    .font(.system(size: 14, weight: .light))
+                    .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.secondary)
             }
 
             // Filename input
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Recording name")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 TextField("e.g., Interview with participant", text: $recordingName)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .focused($isTextFieldFocused)
                     .onSubmit {
                         onSave()
                     }
 
                 Text("Timestamp will be added automatically")
-                    .font(.system(size: 11, weight: .light))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundStyle(.tertiary)
             }
 
             // Preview
             if !recordingName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                HStack {
+                HStack(spacing: 6) {
                     Text("Preview:")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                     Text("\(recordingName.trimmingCharacters(in: .whitespacesAndNewlines))_\(previewTimestamp()).m4a")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
                         .foregroundStyle(.primary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color(nsColor: .controlBackgroundColor))
                 }
             }
 
             // Buttons
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Button(action: onDiscard) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "trash")
                         Text("Discard")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
 
                 Button(action: onSave) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "checkmark")
                         Text("Save")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(32)
+        .padding(28)
         .frame(width: 400)
-        .background {
-            RoundedRectangle(cornerRadius: AppRadius.xlarge)
-                .fill(.regularMaterial)
-        }
-        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
         .onAppear {
             isTextFieldFocused = true
         }
@@ -3608,24 +3518,24 @@ struct SilenceWarningDialog: View {
     let onStop: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 12) {
+        VStack(spacing: 22) {
+            VStack(spacing: 10) {
                 Image(systemName: "waveform.slash")
-                    .font(.system(size: 48, weight: .light))
+                    .font(.system(size: 44, weight: .light))
                     .foregroundStyle(AppColors.warning)
                 Text("Ingen lyd registrert")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                 Text("Vi har ikke registrert stemmer eller lyd på en stund. Vil du pause eller stoppe opptaket?")
-                    .font(.system(size: 14))
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 Button(action: onContinue) {
                     Text("Fortsett opptak")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
@@ -3633,26 +3543,21 @@ struct SilenceWarningDialog: View {
                 Button(action: onPause) {
                     Text("Pause opptak")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
 
                 Button(action: onStop) {
                     Text("Stopp opptak")
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
             }
         }
-        .padding(32)
-        .frame(width: 420)
-        .background {
-            RoundedRectangle(cornerRadius: AppRadius.xlarge)
-                .fill(.regularMaterial)
-        }
-        .glassEffectIfAvailable(in: .init(cornerRadius: AppRadius.xlarge))
+        .padding(28)
+        .frame(width: 400)
     }
 }
 
@@ -3665,6 +3570,8 @@ struct RecordingView: View {
     @State private var microphoneVerified = false
     @State private var verificationTimer: Timer?
     @State private var recordingName = ""  // User-entered filename
+    @State private var glowRadius: CGFloat = 10
+    @State private var glowOpacity: Double = 0.2
 
     var body: some View {
         // Main recording area (sidebar is now global in MainView)
@@ -3729,18 +3636,19 @@ struct RecordingView: View {
                     recordingsManager.loadRecordings()
                 }
             }
-            .onChange(of: recorder.frequencyBands) { _, _ in
+            .onChange(of: recorder.frequencyBands) { _, bands in
+                // Update glow state with a smooth animation so it plays through between frames
+                // rather than restarting every 23 ms (which caused jitter with inline animation).
+                let avg = bands.isEmpty ? 0 : bands.reduce(0, +) / Float(bands.count)
+                let amplified = min(Double(avg) * 3.0, 1.0)
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    glowRadius = CGFloat(amplified) * 30 + 10   // 10–40 pt
+                    glowOpacity = amplified * 0.8 + 0.2          // 0.2–1.0
+                }
                 // Auto-verify when audio is detected
-                if !microphoneVerified {
-                    let averageLevel =
-                        recorder.frequencyBands.isEmpty
-                        ? 0
-                        : recorder.frequencyBands.reduce(0, +)
-                            / Float(recorder.frequencyBands.count)
-                    if averageLevel > 0.15 {
-                        microphoneVerified = true
-                        verificationTimer?.invalidate()
-                    }
+                if !microphoneVerified, avg > 0.15 {
+                    microphoneVerified = true
+                    verificationTimer?.invalidate()
                 }
             }
     }
@@ -3774,15 +3682,6 @@ struct RecordingView: View {
                     } else {
                         // Microphone Icon with pulsing glow
                         VStack(spacing: 24) {
-                            let averageLevel =
-                                recorder.frequencyBands.isEmpty
-                                ? 0
-                                : recorder.frequencyBands.reduce(0, +)
-                                    / Float(recorder.frequencyBands.count)
-                            let amplifiedLevel = min(averageLevel * 3.0, 1.0)  // Increased amplification
-                            let glowRadius = CGFloat(amplifiedLevel) * 30 + 10  // Larger glow range (10-40)
-                            let glowOpacity = Double(amplifiedLevel) * 0.8 + 0.2  // More visible (0.2-1.0)
-
                             Image(
                                 systemName: recorder.isRecording && !recorder.isPaused
                                     ? "mic.fill" : "mic"
@@ -3807,7 +3706,6 @@ struct RecordingView: View {
                                 x: 0,
                                 y: 0
                             )
-                            .animation(.easeInOut(duration: 0.1), value: averageLevel)
 
                             // Recording Duration
                             if recorder.isRecording || recorder.recordingDuration > 0 {
@@ -3844,31 +3742,12 @@ struct RecordingView: View {
 
                     // Scrolling Waveform Timeline - Only visible when recording
                     if recorder.isRecording {
-                        VStack(spacing: 8) {
-                            ScrollingWaveformView(
-                                waveformHistory: recorder.waveformHistory,
-                                isRecording: recorder.isRecording
-                            )
-                            .frame(height: 80)
-                            .padding(.horizontal, 40)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.gray.opacity(0.05))
-                                    .padding(.horizontal, 35)
-                            )
-
-                            // Time markers
-                            HStack {
-                                Text("0:00")
-                                    .font(.system(size: 10, weight: .light))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(formatDuration(recorder.recordingDuration))
-                                    .font(.system(size: 10, weight: .light))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 40)
-                        }
+                        ScrollingWaveformView(
+                            waveformHistory: recorder.waveformHistory,
+                            isRecording: recorder.isRecording
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 80, maxHeight: 80)
+                        .padding(.horizontal, 20)
                         .padding(.bottom, 20)
                     }
 
@@ -3941,7 +3820,6 @@ struct RecordingView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -3952,16 +3830,6 @@ struct RecordingView: View {
         return String(format: "%02d:%02d.%01d", minutes, seconds, milliseconds)
     }
 
-    func getSpectrumColor(for index: Int) -> Color {
-        let ratio = Double(index) / 32.0
-        if ratio < 0.33 {
-            return .blue
-        } else if ratio < 0.66 {
-            return .green
-        } else {
-            return .red
-        }
-    }
 }
 
 // MARK: - Recording Player Panel (right panel for Lydopptak tab)
@@ -4385,49 +4253,96 @@ struct MainView: View {
     @StateObject private var transcriptManager = TranscriptManager.shared
     @State private var selectedTab: AppTab = .record
     @State private var selectedRecording: RecordingItem? = nil
+    @State private var selectedTranscript: TranscriptItem? = nil
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showAnonymizationDialog = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer().frame(height: 52)
-
-            HStack(spacing: 0) {
-                // Panel 1: Navigation (always visible)
-                NavPanel(selectedTab: $selectedTab, showAbout: $showAbout)
-                    .frame(width: 200)
-
-                Divider()
-                    .frame(maxHeight: .infinity)
-
-                // Panels 2 + 3: content based on selected tab
-                if selectedTab == .record {
-                    RecordingView(recorder: audioRecorder, isShowing: .constant(true))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                } else if selectedTab == .recordings {
-                    // Native macOS recordings view
-                    RecordingsNativeView(
+        // Single 3-column NavigationSplitView (Mail.app pattern):
+        //   Column 1 (sidebar): NavPanel — always visible
+        //   Column 2 (content): tab-dependent list (recordings / transcripts / empty)
+        //   Column 3 (detail):  tab-dependent detail (player / transcript / RecordingView)
+        //
+        // Selection works natively because columns 2 and 3 are real
+        // NavigationSplitView columns. No nesting, no sidebar toggle
+        // conflicts, correct rounded-corner chrome on all tabs.
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Column 1: sidebar
+            NavPanel(selectedTab: $selectedTab, showAbout: $showAbout)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 260)
+        } content: {
+            // Column 2: tab-dependent list
+            Group {
+                switch selectedTab {
+                case .record:
+                    Color.clear
+                case .recordings:
+                    RecordingsListColumn(
                         recordingsManager: recordingsManager,
                         folderManager: folderManager,
                         audioPlayer: audioPlayer,
                         selectedRecording: $selectedRecording
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                } else {
-                    TranscriptsView(
+                case .transcripts:
+                    TranscriptsListColumn(
                         transcriptManager: transcriptManager,
-                        selectedTab: $selectedTab
+                        selectedTranscript: $selectedTranscript
                     )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationSplitViewColumnWidth(
+                min: selectedTab == .record ? 0 : 240,
+                ideal: selectedTab == .record ? 0 : 280,
+                max: selectedTab == .record ? 0 : 360
+            )
+        } detail: {
+            // Column 3: tab-dependent detail
+            switch selectedTab {
+            case .record:
+                RecordingView(recorder: audioRecorder, isShowing: .constant(true))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .recordings:
+                if let recording = selectedRecording {
+                    RecordingPlayerNative(
+                        recording: recording,
+                        audioPlayer: audioPlayer,
+                        onNavigateToTranscript: { recordingId in
+                            // Find the matching transcript and switch to editor
+                            selectedTranscript = transcriptManager.transcripts.first {
+                                $0.recordingId == recordingId
+                            }
+                            selectedTab = .transcripts
+                        }
+                    )
+                    .id(recording.path)
+                } else {
+                    ContentUnavailableView(
+                        "Velg et opptak",
+                        systemImage: "waveform",
+                        description: Text("Klikk på et lydopptak til venstre for å spille av.")
+                    )
+                }
+            case .transcripts:
+                if let transcript = selectedTranscript {
+                    transcriptDetailOrEditor(for: transcript)
+                        .id(transcript.id)
+                } else {
+                    ContentUnavailableView(
+                        "Velg en transkripsjon",
+                        systemImage: "doc.text.magnifyingglass",
+                        description: Text("Klikk på en fil til venstre for å vise innhold og kjøre anonymisering.")
+                    )
+                }
+            }
         }
-        .ignoresSafeArea(edges: .top)
-        .navigationTitle("")
-        .toolbarBackground(.hidden, for: .windowToolbar)
-        .frame(minWidth: 700, minHeight: 800)
+        .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
+        .onChange(of: selectedTab) { _, newTab in
+            if newTab != .recordings { selectedRecording = nil }
+            if newTab != .transcripts { selectedTranscript = nil }
+            withAnimation { columnVisibility = (newTab == .record) ? .doubleColumn : .all }
+        }
+        .frame(minWidth: 900, minHeight: 600)
         .sheet(isPresented: $showImportSheet) {
             SDCardImportView(sdCardManager: sdCardManager)
                 .presentationDetents([.medium, .large])
@@ -4472,6 +4387,50 @@ struct MainView: View {
         }
     }
 
+    /// Shows the transcript editor if a TranscriptionResult JSON exists for
+    /// this recording, otherwise falls back to the plain TranscriptDetailPanel.
+    @ViewBuilder
+    private func transcriptDetailOrEditor(for transcript: TranscriptItem) -> some View {
+        let matching = matchingRecording(for: transcript)
+        if let recId = transcript.recordingId,
+           let result = loadTranscriptionResult(recordingId: recId) {
+            let audioURL = StorageLayout.audioURL(id: recId)
+            TranscriptEditorView(
+                recordingId: recId,
+                audioURL: audioURL,
+                transcriptionResult: result,
+                onShowLinkedRecording: {
+                    selectedRecording = matching
+                    selectedTab = .recordings
+                }
+            )
+        } else {
+            TranscriptDetailPanel(
+                transcript: transcript,
+                matchingRecording: matching,
+                onSwitchToRecordings: {
+                    selectedRecording = matching
+                    selectedTab = .recordings
+                }
+            )
+        }
+    }
+
+    private func loadTranscriptionResult(recordingId: UUID) -> TranscriptionResult? {
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let jsonURL = support.appendingPathComponent("AudioRecordingManager/transcripts/\(recordingId.uuidString).json")
+        guard let data = try? Data(contentsOf: jsonURL) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(TranscriptionResult.self, from: data)
+    }
+
+    private func matchingRecording(for transcript: TranscriptItem) -> RecordingItem? {
+        if let id = transcript.recordingId {
+            return recordingsManager.recordings.first { $0.id == id }
+        }
+        return nil
+    }
 
     var mainContentView: some View {
         VStack(spacing: 20) {

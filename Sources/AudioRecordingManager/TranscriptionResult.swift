@@ -11,11 +11,11 @@ struct TranscriptionWord: Codable {
 
 // MARK: - Segment
 
-struct TranscriptionSegment: Codable {
+struct TranscriptionSegment: Codable, Identifiable {
     let id: Int
     let start: Double
     let end: Double
-    let text: String
+    var text: String
     let speaker: String
     let confidence: Double
     let words: [TranscriptionWord]
@@ -43,6 +43,6 @@ struct TranscriptionResult: Codable {
     let language: String
     let durationSeconds: Double
     let numSpeakers: Int
-    let segments: [TranscriptionSegment]
+    var segments: [TranscriptionSegment]
     let metadata: TranscriptionResultMetadata
 }

@@ -5,6 +5,36 @@ All notable changes to the Audio Recording Manager (ARM) will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Planned (Phase 0 — file management pivot)
+
+Architectural redesign of file storage, egress, and machine handoff. Decision captured in [ADR-1014](docs/decisions/adr/ADR-1014-file-storage-architecture-pivot.md); spec revised in [docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md](docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md); build order in [docs/prd/file-management-teams-sync/PHASE_0_TASKS.md](docs/prd/file-management-teams-sync/PHASE_0_TASKS.md). Intended for the next major release (2.0.0) because it changes storage location and removes Desktop-write paths.
+
+- **Storage moves off the Desktop.** Audio, transcripts, and audit log relocate to `~/Library/Application Support/AudioRecordingManager/`. MDM-excluded from the roaming profile sync so files stay local to the library machine.
+- **UUID-named recording folders** replace the filename-stem coupling between audio and transcript. Metadata moves into a per-recording `meta.json` sidecar with explicit state fields.
+- **Audit log relocated** from the hidden dotfile `.audit_log.jsonl` inside the audio folder to the new data root with monthly rotation.
+- **Return Machine flow** introduced as the only path that deletes local data. Pre-check, friction gate (typed phrase), zero-overwrite secure delete, receipt written to `~/Documents/` as external audit trail.
+- **Manual Desktop-drag upload flow retired.** Replaced (Phase 1) by direct Microsoft Graph API upload to a per-project Teams/SharePoint destination, automatic per-artifact as each artifact reaches a stable final state.
+- **Anonymization gate removed from pre-upload path.** Anonymization is a post-upload workflow on OneDrive (NAV's 30-day retention window is designed around this). ARM does not block upload on anonymization state.
+- **Migration on first launch** moves any existing `~/Desktop/lydfiler/` and `~/Desktop/tekstfiler/` content into the new layout, audited.
+
+### Documentation
+
+- **New**: [ADR-1014](docs/decisions/adr/ADR-1014-file-storage-architecture-pivot.md) — file storage architecture pivot.
+- **New**: [CLAUDE.md](CLAUDE.md) — project context for future Claude sessions.
+- **New**: [docs/prd/file-management-teams-sync/PHASE_0_TASKS.md](docs/prd/file-management-teams-sync/PHASE_0_TASKS.md) — concrete build-order task list for the pivot.
+- **Revised**: [docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md](docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md) — spec rewritten to reflect new architecture; the earlier Desktop + folder-picker draft is superseded.
+- **Revised**: [docs/prd/file-management-teams-sync/USER_STORIES.md](docs/prd/file-management-teams-sync/USER_STORIES.md) — stories renumbered (US-FM-01 … US-FM-14). Prior US-1 … US-7 are preserved at the foot of the document as superseded, for commit-history readability.
+
+### External dependencies kicked off (not yet confirmed)
+
+- Azure AD / Entra ID app registration with Graph scopes `Files.ReadWrite`, `Sites.ReadWrite.All`, `User.Read` — long lead time, blocks Phase 1.
+- MDM sync exclusion for `~/Library/Application Support/AudioRecordingManager/` — load-bearing assumption for Phase 0 security posture.
+- FileVault mandate on library machines — confirmed required; awaiting IT policy confirmation.
+
+---
+
 ## [1.4.0] - 2026-03-11
 
 ### Changed

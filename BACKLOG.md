@@ -2,7 +2,7 @@
 
 This document tracks planned features, ongoing investigations, and future work for the Virgin Project - Audio Recording Manager.
 
-**Last Updated:** 2025-11-24
+**Last Updated:** 2026-04-14
 **Project Manager:** Claude Code
 
 ## PM Guidelines
@@ -15,6 +15,28 @@ This document tracks planned features, ongoing investigations, and future work f
 ---
 
 ## Current Sprint
+
+### 🟢 ACTIVE — File Management Architecture Pivot (Phase 0)
+
+**Epic:** File Management & Teams Sync (revised)
+**Priority:** High
+**Status:** Planned and scoped — ready to build
+**Decision:** [ADR-1014](docs/decisions/adr/ADR-1014-file-storage-architecture-pivot.md)
+**Spec:** [docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md](docs/FILE_MANAGEMENT_AND_TEAMS_SYNC.md)
+**Stories:** [docs/prd/file-management-teams-sync/USER_STORIES.md](docs/prd/file-management-teams-sync/USER_STORIES.md)
+**Tasks:** [docs/prd/file-management-teams-sync/PHASE_0_TASKS.md](docs/prd/file-management-teams-sync/PHASE_0_TASKS.md)
+
+Moves storage off the Desktop and into `~/Library/Application Support/`, switches to UUID-named recording folders with sidecar metadata, relocates the audit log, and introduces the Return Machine wipe flow. Phase 1 (Graph API upload to Teams/SharePoint) follows, blocked on Azure AD app registration.
+
+**Parallel external-dependency tracks (kicked off 2026-04-14):**
+- MDM sync exclusion for `~/Library/Application Support/AudioRecordingManager/` — mac-fleet admin
+- FileVault mandate confirmation on library machines — NAV IT
+- Azure AD / Entra ID app registration — NAV IT (long lead time, blocks Phase 1)
+
+**Parallel research track:**
+- Researcher discovery interviews — product owner conducting. Blocks Phase 2 (project concept, destination picker UX). See interview guide prepared in the planning conversation.
+
+---
 
 ### 🔴 BLOCKED - Awaiting DSS Player License
 

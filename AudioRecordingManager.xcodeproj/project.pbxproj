@@ -52,6 +52,18 @@
 		DA1B2C3D4E5F60001020EC02 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1B2C3D4E5F60001020EC01 /* TranscriptEditorView.swift */; };
 		DA1B2C3D4E5F60001020ED02 /* AnonymizationSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1B2C3D4E5F60001020ED01 /* AnonymizationSectionView.swift */; };
 		DA1B2C3D4E5F60001020EE02 /* AnalyseSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1B2C3D4E5F60001020EE01 /* AnalyseSectionView.swift */; };
+		EA1B2C3D4E5F60001020FA02 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1B2C3D4E5F60001020FA01 /* AudioRecorder.swift */; };
+		EA1B2C3D4E5F60001020FB02 /* RecordingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1B2C3D4E5F60001020FB01 /* RecordingItem.swift */; };
+		EA1B2C3D4E5F60001020FC02 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1B2C3D4E5F60001020FC01 /* AudioPlayer.swift */; };
+		EA1B2C3D4E5F60001020FD02 /* RecordingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA1B2C3D4E5F60001020FD01 /* RecordingsManager.swift */; };
+		FA1B2C3D4E5F600010200A02 /* RecordingExpiryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200A01 /* RecordingExpiryManager.swift */; };
+		FA1B2C3D4E5F600010200B02 /* ExpiryWarningBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200B01 /* ExpiryWarningBanner.swift */; };
+		FA1B2C3D4E5F600010200C02 /* ProjectConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200C01 /* ProjectConfig.swift */; };
+		FA1B2C3D4E5F600010200D02 /* ProjectSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200D01 /* ProjectSetupView.swift */; };
+		FA1B2C3D4E5F600010200E02 /* ComplianceChecklistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200E01 /* ComplianceChecklistView.swift */; };
+		FA1B2C3D4E5F600010200F02 /* UploadNamingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F600010200F01 /* UploadNamingService.swift */; };
+		FA1B2C3D4E5F60001020A002 /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F60001020A001 /* UploadService.swift */; };
+		FA1B2C3D4E5F60001020B102 /* AuditLogViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1B2C3D4E5F60001020B101 /* AuditLogViewer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +113,18 @@
 		DA1B2C3D4E5F60001020EC01 /* TranscriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEditorView.swift; sourceTree = "<group>"; };
 		DA1B2C3D4E5F60001020ED01 /* AnonymizationSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationSectionView.swift; sourceTree = "<group>"; };
 		DA1B2C3D4E5F60001020EE01 /* AnalyseSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyseSectionView.swift; sourceTree = "<group>"; };
+		EA1B2C3D4E5F60001020FA01 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		EA1B2C3D4E5F60001020FB01 /* RecordingItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingItem.swift; sourceTree = "<group>"; };
+		EA1B2C3D4E5F60001020FC01 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
+		EA1B2C3D4E5F60001020FD01 /* RecordingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsManager.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200A01 /* RecordingExpiryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingExpiryManager.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200B01 /* ExpiryWarningBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpiryWarningBanner.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200C01 /* ProjectConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConfig.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200D01 /* ProjectSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectSetupView.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200E01 /* ComplianceChecklistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplianceChecklistView.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F600010200F01 /* UploadNamingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadNamingService.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F60001020A001 /* UploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		FA1B2C3D4E5F60001020B101 /* AuditLogViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogViewer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -153,6 +177,10 @@
 				BA1B2C3D4E5F60001020BE01 /* LegacyStorageScanner.swift */,
 				BA1B2C3D4E5F60001020BF01 /* StorageMigrator.swift */,
 				BA1B2C3D4E5F60001020C001 /* LegacyMetadataMigrator.swift */,
+				FA1B2C3D4E5F600010200A01 /* RecordingExpiryManager.swift */,
+				FA1B2C3D4E5F600010200C01 /* ProjectConfig.swift */,
+				FA1B2C3D4E5F600010200F01 /* UploadNamingService.swift */,
+				FA1B2C3D4E5F60001020A001 /* UploadService.swift */,
 			);
 			name = Storage;
 			path = Storage;
@@ -189,6 +217,14 @@
 				DA1B2C3D4E5F60001020EC01 /* TranscriptEditorView.swift */,
 				DA1B2C3D4E5F60001020ED01 /* AnonymizationSectionView.swift */,
 				DA1B2C3D4E5F60001020EE01 /* AnalyseSectionView.swift */,
+				EA1B2C3D4E5F60001020FA01 /* AudioRecorder.swift */,
+				EA1B2C3D4E5F60001020FB01 /* RecordingItem.swift */,
+				EA1B2C3D4E5F60001020FC01 /* AudioPlayer.swift */,
+				EA1B2C3D4E5F60001020FD01 /* RecordingsManager.swift */,
+				FA1B2C3D4E5F600010200B01 /* ExpiryWarningBanner.swift */,
+				FA1B2C3D4E5F600010200D01 /* ProjectSetupView.swift */,
+				FA1B2C3D4E5F600010200E01 /* ComplianceChecklistView.swift */,
+				FA1B2C3D4E5F60001020B101 /* AuditLogViewer.swift */,
 				F9E8D7C6B5A4F3E2D1C0B9A8 /* anonymize_bridge.py */,
 				F883F771229D40CBA3F54A52 /* Assets.xcassets */,
 				5EDE4216E900AF93831AB195 /* AnonymizationModal.swift */,
@@ -313,6 +349,18 @@
 				DA1B2C3D4E5F60001020EC02 /* TranscriptEditorView.swift in Sources */,
 				DA1B2C3D4E5F60001020ED02 /* AnonymizationSectionView.swift in Sources */,
 				DA1B2C3D4E5F60001020EE02 /* AnalyseSectionView.swift in Sources */,
+				EA1B2C3D4E5F60001020FA02 /* AudioRecorder.swift in Sources */,
+				EA1B2C3D4E5F60001020FB02 /* RecordingItem.swift in Sources */,
+				EA1B2C3D4E5F60001020FC02 /* AudioPlayer.swift in Sources */,
+				EA1B2C3D4E5F60001020FD02 /* RecordingsManager.swift in Sources */,
+				FA1B2C3D4E5F600010200A02 /* RecordingExpiryManager.swift in Sources */,
+				FA1B2C3D4E5F600010200B02 /* ExpiryWarningBanner.swift in Sources */,
+				FA1B2C3D4E5F600010200C02 /* ProjectConfig.swift in Sources */,
+				FA1B2C3D4E5F600010200D02 /* ProjectSetupView.swift in Sources */,
+				FA1B2C3D4E5F600010200E02 /* ComplianceChecklistView.swift in Sources */,
+				FA1B2C3D4E5F600010200F02 /* UploadNamingService.swift in Sources */,
+				FA1B2C3D4E5F60001020A002 /* UploadService.swift in Sources */,
+				FA1B2C3D4E5F60001020B102 /* AuditLogViewer.swift in Sources */,
 				C2BDD8B2B068C31C9BE0B93B /* AudioRecordingManagerLib.swift in Sources */,
 				92F62F8A972C02576CB2D9B8 /* AuditLogger.swift in Sources */,
 				4FF5785E464C096FD42B86DE /* RecordingDetailView.swift in Sources */,

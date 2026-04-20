@@ -69,64 +69,6 @@ These stories are buildable today and do not depend on researcher interviews, Az
 
 ---
 
-### US-FM-04: The app knows when my recording is ready to hand in
-
-**As a** researcher about to return the machine,
-**I want** the app to check whether all my local data has been safely uploaded,
-**so that** I don't accidentally wipe files that weren't backed up.
-
-#### Acceptance Criteria
-- [ ] A "Return Machine" view surfaces a pre-check report: total recordings, artifacts per recording, processing status, upload status
-- [ ] Incomplete transcriptions block the Return Machine flow with a clear "wait for transcription to finish or discard this draft" message
-- [ ] In Phase 0, upload verification is **stubbed behind a feature flag** (default: treat all uploads as confirmed). When the flag is enabled in Phase 1, unuploaded artifacts block the flow.
-- [ ] The report and blocking states are fully rendered in all branches
-- [ ] Audit entry `returnMachineStarted` is emitted when the researcher opens the flow
-
----
-
-### US-FM-05: The wipe cannot be triggered accidentally
-
-**As a** researcher,
-**I want** the wipe action to require deliberate, typed confirmation,
-**so that** I cannot delete all my research data by clicking through a familiar confirmation dialog.
-
-#### Acceptance Criteria
-- [ ] Wipe button is disabled until a fixed Norwegian phrase (e.g., `SLETT ALLE FILER`) is typed exactly (case-sensitive)
-- [ ] Typos, lowercase variants, or extra whitespace do not unlock the button
-- [ ] Unlocking the button emits an audit event
-- [ ] No keyboard shortcut, context menu, or other path can trigger the wipe without the typed phrase
-
----
-
-### US-FM-06: The wipe leaves no research data behind
-
-**As a** researcher returning the machine,
-**I want** the wipe to remove all local ARM data completely and verifiably,
-**so that** the next user of this machine cannot recover interview material.
-
-#### Acceptance Criteria
-- [ ] After wipe, `~/Library/Application Support/AudioRecordingManager/recordings/` contains zero files
-- [ ] File contents are zero-overwritten before unlink (one pass — APFS/SSD, not multi-pass)
-- [ ] The audit log is deleted last, after the final `returnMachineCompleted` entry is flushed
-- [ ] A receipt file is written to `~/Documents/ARM_wipe_receipt_<timestamp>.txt` containing: timestamp, `NSUserName()`, machine hostname, count of recordings wiped, total bytes wiped, SHA-256 of the final audit log
-- [ ] The receipt survives the wipe (lives outside the ARM data root)
-
----
-
-### US-FM-07: I cannot forget to run Return Machine before handing in
-
-**As a** researcher,
-**I want** a persistent reminder when local research data still exists on the machine,
-**so that** I cannot forget to clean up before handoff.
-
-#### Acceptance Criteria
-- [ ] A banner is visible in the main UI whenever `recordings/` is non-empty
-- [ ] The banner cannot be dismissed without running Return Machine
-- [ ] Clicking the banner opens the Return Machine flow
-- [ ] The banner hides automatically once the recordings folder is empty
-
----
-
 ### US-FM-08: My actions are auditable
 
 **As a** compliance-responsible researcher,
@@ -136,9 +78,40 @@ These stories are buildable today and do not depend on researcher interviews, Az
 #### Acceptance Criteria
 - [ ] Audit log lives at `~/Library/Application Support/AudioRecordingManager/audit/audit-YYYY-MM.jsonl`
 - [ ] Events are append-only JSONL with timestamp, actor, event type, structured payload
-- [ ] Events logged in Phase 0: `recordingCreated`, `recordingFinalized`, `transcriptCompleted`, `transcriptFailed`, `migrationCompleted`, `returnMachineStarted`, `returnMachineCompleted`, `wipeReceiptWritten`
+- [ ] Events logged in Phase 0: `recordingCreated`, `recordingFinalized`, `transcriptCompleted`, `transcriptFailed`, `recordingExpiryWarning`, `recordingExpired`, `migrationCompleted`
 - [ ] Log rotates monthly (new file on first write of each month)
 - [ ] Hash-chained tamper evidence deferred (`// TODO(audit-tamper)`); addressed after NAV compliance answer
+
+---
+
+### US-FM-17: Local recordings are automatically deleted after 30 days
+
+**Added:** 2026-04-20
+**Rationale:** Interview data is sensitive personal data and should not reside on the researcher's machine beyond what is necessary. 30 days is sufficient time to upload, review, and annotate — retaining data longer than this increases privacy risk without benefit.
+
+**As a** researcher,
+**I want** recordings to be automatically deleted from my machine after 30 days,
+**so that** sensitive interview data does not linger on my machine longer than necessary.
+
+#### Acceptance Criteria
+
+**Countdown and warnings:**
+- [ ] Each recording tracks a 30-day expiry based on `createdAt` in its sidecar — clock is never reset
+- [ ] At day 23 (7 days remaining): a persistent per-recording banner appears in the recording list and detail view: «Opptaket slettes automatisk om 7 dager»
+- [ ] At day 29 (1 day remaining): the banner escalates with urgent styling: «Opptaket slettes i morgen»
+- [ ] If the recording has not been uploaded, an additional warning is shown alongside the countdown: «Dette opptaket er ikke lastet opp — last opp før det slettes automatisk»
+- [ ] Warning banners cannot be dismissed — they resolve only when the recording is deleted
+
+**Automatic deletion:**
+- [ ] On app launch, ARM checks all recordings for expired entries (`createdAt + 30 days ≤ now`)
+- [ ] Expired recordings are deleted: entire `recordings/<uuid>/` folder — audio, transcript, anonymized transcript, analysis, and sidecar
+- [ ] Deletion is not blocked by upload state — the warning is informational, not a gate
+- [ ] Audit event `recordingExpired` is emitted with `recordingId`, `createdAt`, `deletedAt`, and upload status at time of deletion
+- [ ] Audit event `recordingExpiryWarning` is emitted at day 23 and day 29 with `recordingId` and `daysRemaining`
+
+#### Out of scope
+- Extending the 30-day clock based on user activity (no snooze or extension mechanism)
+- Per-recording opt-out of automatic deletion
 
 ---
 
@@ -180,34 +153,6 @@ These stories become buildable once NAV IT has granted the Entra ID app registra
 - [ ] Resumable session URL is persisted in the sidecar
 - [ ] On app restart, any recording with a pending upload and a stored session URL continues where it left off
 - [ ] If the session has expired on Graph's side, ARM falls back to starting a fresh upload, logged as a `uploadFailed` with reason `sessionExpired`, then re-queued
-
----
-
-### US-FM-11: Return Machine verifies real upload state
-
-**As a** researcher about to wipe the machine,
-**I want** the Return Machine pre-check to verify that Teams actually has each artifact,
-**so that** I can't accidentally wipe files that only *appeared* to upload.
-
-#### Acceptance Criteria
-- [ ] Feature flag `uploadVerificationEnabled` defaults to `true` in this phase
-- [ ] Pre-check queries Graph for each artifact's expected `driveItem` and confirms size + checksum match
-- [ ] Any artifact that fails verification blocks the Return Machine flow with a clear remediation
-- [ ] Pre-check is cancellable (researcher can abort if Graph is slow) but cannot be bypassed
-
----
-
-### US-FM-12: Network is only on when I'm uploading
-
-**As a** security-conscious researcher,
-**I want** network access to be enabled only during upload windows,
-**so that** the default state of the machine is air-gapped.
-
-#### Acceptance Criteria
-- [ ] `NetworkManager` is engaged for the duration of an upload attempt only
-- [ ] Network is disabled again when the upload completes, fails, or is cancelled
-- [ ] Multiple concurrent uploads share a single network-enabled window
-- [ ] A safety timeout disables the network if no upload progress is observed for N seconds (existing zero-trust policy)
 
 ---
 
@@ -309,10 +254,7 @@ These stories depend on operational answers that researcher interviews and conve
 | 2 | US-FM-03 | Foundation — UUID identity replaces stem coupling |
 | 3 | US-FM-08 | Foundation — audit log infrastructure everything else depends on |
 | 4 | US-FM-02 | Migration — required before shipping to existing users |
-| 5 | US-FM-07 | Safety — reminder that Return Machine exists |
-| 6 | US-FM-04 | Handoff — pre-check logic |
-| 7 | US-FM-05 | Handoff — friction gate |
-| 8 | US-FM-06 | Handoff — secure delete + receipt |
+| 5 | US-FM-17 | Compliance — 30-day local retention with automatic expiry and warnings |
 
 Phase 1 stories sequence after US-FM-08 infrastructure is in place and Azure AD registration is approved. US-FM-15 and US-FM-16 are Phase 1 prerequisites — US-FM-09 depends on both.
 
@@ -325,7 +267,13 @@ The following stories from the prior draft of this document do not apply to the 
 - ~~US-1: Select files for upload~~ — replaced by automatic per-artifact upload (US-FM-09)
 - ~~US-2: Choose destination folder in OneDrive~~ — replaced by per-project Teams destination (US-FM-13)
 - ~~US-3: Copy files to OneDrive with progress~~ — replaced by Graph API direct upload (US-FM-09, US-FM-10)
-- ~~US-4: Post-upload cleanup~~ — replaced by decoupled local-lifecycle + Return Machine (US-FM-06)
+- ~~US-4: Post-upload cleanup~~ — replaced by 30-day automatic expiry (US-FM-17)
 - ~~US-5: Track upload status in metadata~~ — subsumed into US-FM-09 (upload state lives in sidecar)
 - ~~US-6: Audit logging for uploads~~ — subsumed into US-FM-08
-- ~~US-7: Anonymization gate before upload~~ — removed; anonymization is post-upload on OneDrive (see ADR-1014)
+- ~~US-7: Anonymization gate before upload~~ — removed; anonymization runs inside ARM before upload (see ADR-1014)
+- ~~US-FM-04: Return Machine pre-check~~ — removed; Return Machine feature dropped
+- ~~US-FM-05: Typed wipe confirmation~~ — removed; Return Machine feature dropped
+- ~~US-FM-06: Secure delete + receipt~~ — removed; Return Machine feature dropped
+- ~~US-FM-07: Handoff reminder banner~~ — removed; Return Machine feature dropped
+- ~~US-FM-11: Return Machine upload verification~~ — removed; Return Machine feature dropped
+- ~~US-FM-12: Network only on during upload~~ — removed; ARM no longer manages network state

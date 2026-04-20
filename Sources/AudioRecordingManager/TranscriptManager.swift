@@ -42,7 +42,7 @@ struct TranscriptItem: Identifiable, Equatable, Hashable {
 //
 // As of Phase 0 (ADR-1014), transcripts live inside per-recording folders
 // at `~/Library/Application Support/AudioRecordingManager/recordings/<uuid>/transcript.txt`,
-// not in `~/Desktop/tekstfiler/`. This class is now a thin adapter that
+// Transcripts live inside per-recording UUID folders. This class is a thin adapter that
 // surfaces the store's transcripts as `[TranscriptItem]` for the UI.
 //
 // Folder watching has been replaced by subscription to

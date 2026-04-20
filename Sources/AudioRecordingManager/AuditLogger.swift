@@ -83,23 +83,32 @@ enum AuditValue: Codable, Equatable {
 
 /// Phase 0 event-type identifiers. Kept as a plain enum with `rawValue: String`
 /// so unknown strings in a replayed log don't crash decoding.
+///
+/// Canonical event list (must match `FILE_MANAGEMENT_AND_TEAMS_SYNC.md` § Audit Log):
+///   recordingCreated, recordingFinalized,
+///   transcriptCompleted, transcriptFailed, transcriptEdited, transcriptAnonymized, transcriptAnalysed,
+///   anonymizationStarted, anonymizationDiscarded,
+///   complianceCheckConfirmed,
+///   uploadQueued, uploadCompleted, uploadFailed,
+///   recordingExpiryWarning, recordingExpired,
+///   migrationCompleted
 enum AuditEventType: String {
     case recordingCreated
     case recordingFinalized
     case transcriptCompleted
     case transcriptFailed
-    case anonymizationStarted
-    case anonymizationDiscarded
-    case uploadQueued
-    case uploadCompleted
-    case uploadFailed
-    case migrationCompleted
-    case returnMachineStarted
-    case returnMachineCompleted
-    case wipeReceiptWritten
     case transcriptEdited
     case transcriptAnonymized
     case transcriptAnalysed
+    case anonymizationStarted
+    case anonymizationDiscarded
+    case complianceCheckConfirmed
+    case uploadQueued
+    case uploadCompleted
+    case uploadFailed
+    case recordingExpiryWarning
+    case recordingExpired
+    case migrationCompleted
 
     // Legacy
     case anonymizationRun
@@ -116,6 +125,8 @@ enum AuditEventType: String {
 ///   - timestamps, recording IDs, redaction counts, event types — NEVER actual text content.
 ///
 /// All writes are serialised through a private queue.
+/// Use the typed convenience helpers (e.g. `logExpiryWarning`, `logExpired`, `logComplianceCheckConfirmed`)
+/// in preference to the raw `log(_:payload:)` method wherever the payload shape is known.
 class AuditLogger {
     static let shared = AuditLogger()
 
@@ -178,6 +189,40 @@ class AuditLogger {
         queue.async { [self] in
             appendEvent(event)
         }
+    }
+
+    // MARK: - Typed helpers (B5, B6)
+
+    /// Emitted on each app launch for recordings in `.sevenDays` or `.oneDay` warning state.
+    /// Deduplication (one per calendar day) is the caller's responsibility — see `RecordingExpiryManager`.
+    func logExpiryWarning(recordingId: UUID, daysRemaining: Int) {
+        log(.recordingExpiryWarning, payload: [
+            "recordingId": .string(recordingId.uuidString),
+            "daysRemaining": .int(daysRemaining)
+        ])
+    }
+
+    /// Emitted immediately before `RecordingStore.delete()` is called for an expired recording.
+    func logExpired(
+        recordingId: UUID,
+        createdAt: Date,
+        deletedAt: Date,
+        uploadStatus: String
+    ) {
+        log(.recordingExpired, payload: [
+            "recordingId": .string(recordingId.uuidString),
+            "createdAt": .string(ISO8601DateFormatter().string(from: createdAt)),
+            "deletedAt": .string(ISO8601DateFormatter().string(from: deletedAt)),
+            "uploadStatus": .string(uploadStatus)
+        ])
+    }
+
+    /// Emitted when the researcher confirms the compliance checklist before the first upload
+    /// in a project (US-FM-15). `projectId` is the local project identifier from `state/app.json`.
+    func logComplianceCheckConfirmed(projectId: String) {
+        log(.complianceCheckConfirmed, payload: [
+            "projectId": .string(projectId)
+        ])
     }
 
     // MARK: - Private

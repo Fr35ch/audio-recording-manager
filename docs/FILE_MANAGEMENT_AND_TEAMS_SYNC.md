@@ -30,7 +30,7 @@ The earlier version of this spec assumed Desktop storage + a user-driven OneDriv
 - Audit log in the same data root, monthly-rotated, append-only JSONL
 - **Direct Graph API upload** to a per-project Teams/SharePoint location — no Finder dragging
 - **Per-artifact automatic upload** when each artifact reaches a stable final state
-- **Return Machine flow** is the only path that deletes local data
+- **Local data automatically deleted after 30 days** from recording creation; no manual wipe flow
 
 ---
 
@@ -98,10 +98,10 @@ We rely on the OS and fleet configuration, not our own crypto:
 
 | Layer | Mechanism | Owner |
 |-------|-----------|-------|
-| Per-user isolation on shared library machines | macOS user account permissions | OS |
+| Per-user isolation | macOS user account permissions | OS |
 | At-rest encryption | FileVault (mandated by NAV IT) | NAV IT |
 | Non-replication to other NAV-issued machines | MDM excludes `~/Library/Application Support/AudioRecordingManager/` from the roaming profile sync | NAV IT (mac-fleet admin) |
-| Machine cleanliness on return | ARM's Return Machine flow + IT account deprovisioning | ARM + NAV IT |
+| Time-bounded local retention | ARM's 30-day automatic expiry | ARM |
 
 The **MDM sync exclusion** is the single load-bearing configuration item outside ARM's source tree. If it is not in place, this entire plan's threat model fails. Confirm before Phase 0F ships.
 
@@ -127,11 +127,23 @@ Triggers:
 
 No manual "upload" button. The researcher never chooses *when* to upload an individual file.
 
-### Local lifecycle — bounded only by Return Machine
+### Local lifecycle — 30-day retention with automatic expiry
 
-Local files **persist independently of upload state**. They are not deleted when upload succeeds. They are deleted only when the researcher runs the Return Machine flow. Local retention is bounded by the researcher's use of the machine, not by upload or clock.
+Local files are governed by a **30-day retention clock** starting at `createdAt` in the recording's sidecar. The clock is not reset by transcription, editing, anonymization, or upload — it runs from the moment the recording is created.
 
-There is **no local 30-day cap**. OneDrive enforces the 30-day retention on the uploaded copies; that is NAV's existing policy.
+**Warning schedule:**
+
+| Day | Action |
+|-----|--------|
+| Day 23 (7 days left) | Persistent in-app banner per recording: «Opptaket slettes automatisk om 7 dager» |
+| Day 29 (1 day left) | Elevated warning with urgent styling: «Opptaket slettes i morgen» |
+| Day 30+ | Automatic deletion on next app launch |
+
+**What is deleted:** the entire `recordings/<uuid>/` folder — audio, transcript, anonymized transcript, analysis output, and sidecar. Nothing is retained locally after expiry.
+
+**Upload gate:** automatic deletion is not blocked by upload state. If a recording's artifacts have not been uploaded at the time of expiry, ARM shows an additional warning alongside the countdown: «Dette opptaket er ikke lastet opp — last opp før det slettes automatisk.» Uploading before expiry is the researcher's responsibility.
+
+**Audit events:** `recordingExpiryWarning` emitted at day 23 and day 29; `recordingExpired` emitted at automatic deletion.
 
 ---
 
@@ -185,7 +197,7 @@ The researcher sets the `neutralCode` for a recording (or it defaults to a seque
 
 ### Network control
 
-Existing `NetworkManager` zero-trust model still applies: network is enabled only for the duration of an upload attempt. Between uploads, network returns to the default-off state.
+ARM does not manage network state. Standard macOS networking applies. Upload attempts proceed whenever the machine has connectivity.
 
 ---
 
@@ -234,32 +246,12 @@ This acknowledgement is logged as a `complianceCheckConfirmed` audit event with 
 
 ---
 
-## Return Machine Flow
-
-The only path that deletes local ARM data. Researcher-initiated, heavily friction-gated, fully audited.
-
-**Steps:**
-
-1. **Pre-check** — inspect every recording sidecar, report counts, flag any incomplete processing, any uploads not yet confirmed. If anything is incomplete, block the flow with a clear remediation path ("upload these first", "let transcription finish", "discard this draft").
-2. **Friction gate** — researcher types a fixed phrase (e.g., `SLETT ALLE FILER`). Case-exact. Typed, not clicked.
-3. **Secure delete walk** — zero-overwrite then unlink every file under `recordings/`. One pass; on APFS/SSD more passes are security theatre. Remove directory structure.
-4. **Receipt** — write `~/Documents/ARM_wipe_receipt_<timestamp>.txt` with: timestamp, `NSUserName()`, machine hostname, count wiped, total bytes wiped, SHA-256 of the final audit log before deletion.
-5. **Final audit entry** — append `returnMachineCompleted` to the audit log.
-6. **Delete audit log last** — after the final entry is flushed to disk.
-
-The receipt file deliberately lives in `~/Documents/` (outside the ARM data root) so it survives the wipe and provides external evidence that the wipe happened.
-
-**Persistent handoff-reminder banner:** when `recordings/` is non-empty, the main UI shows a non-dismissible banner pointing at the Return Machine flow. No dismiss button.
-
----
-
 ## Audit Log
 
 - **Location**: `~/Library/Application Support/AudioRecordingManager/audit/audit-YYYY-MM.jsonl`
 - **Format**: append-only JSONL, one event per line
 - **Rotation**: monthly (new file opened on first write of each month)
-- **Uploaded**: the current month's log is uploaded to OneDrive as the final artifact of Return Machine, before local deletion
-- **Event types** (initial set): `recordingCreated`, `recordingFinalized`, `transcriptCompleted`, `transcriptFailed`, `transcriptEdited`, `transcriptAnonymized`, `transcriptAnalysed`, `anonymizationStarted`, `anonymizationDiscarded`, `complianceCheckConfirmed`, `uploadQueued`, `uploadCompleted`, `uploadFailed`, `migrationCompleted`, `returnMachineStarted`, `returnMachineCompleted`, `wipeReceiptWritten`
+- **Event types** (initial set): `recordingCreated`, `recordingFinalized`, `transcriptCompleted`, `transcriptFailed`, `transcriptEdited`, `transcriptAnonymized`, `transcriptAnalysed`, `anonymizationStarted`, `anonymizationDiscarded`, `complianceCheckConfirmed`, `uploadQueued`, `uploadCompleted`, `uploadFailed`, `recordingExpiryWarning`, `recordingExpired`, `migrationCompleted`
 
 Hash-chained tamper evidence is intentionally out of scope for Phase 0. Track as `// TODO(audit-tamper)` for post-Phase-0 hardening pending NAV compliance answer on log format requirements.
 
@@ -288,7 +280,6 @@ These are deliberately deferred:
 - Microsoft Graph API upload (Phase 1 — blocked on Azure AD app registration)
 - Project concept in the UI (Phase 2 — needs researcher interview findings)
 - Teams/SharePoint destination picker vs. IT-provisioned config decision (Phase 2 — needs operational answer)
-- Researcher-facing UX tuning beyond the minimum needed for Return Machine
 - Hash-chained tamper evidence on audit log
 
 See [PHASE_0_TASKS.md](prd/file-management-teams-sync/PHASE_0_TASKS.md) for the full Phase 0 build order.
@@ -299,8 +290,7 @@ See [PHASE_0_TASKS.md](prd/file-management-teams-sync/PHASE_0_TASKS.md) for the 
 
 | Dependency | Owner | Blocks |
 |------------|-------|--------|
-| MDM sync exclusion of `~/Library/Application Support/AudioRecordingManager/` | mac-fleet admin | Phase 0F (Return Machine ship) |
-| FileVault mandate confirmed and enforced on library machines | NAV IT | Phase 0F |
+| MDM sync exclusion of `~/Library/Application Support/AudioRecordingManager/` | mac-fleet admin | Phase 0 ship |
 | Azure AD / Entra ID app registration with Graph scopes (`Files.ReadWrite`, `Sites.ReadWrite.All`, `User.Read`, `ChannelMessage.Read.All` for channel age check) | NAV IT | Phase 1 (Graph API upload) |
 | Confirmation that the target private channels are already provisioned and backup-excluded for each product area | Team ResearchOps (Ståle Kjone) | Phase 1 (upload can't go live without at least one valid target channel) |
 | Answer: researcher-picked channel vs ARM uses a pre-configured channel per project? | Research ops / mac-fleet admin | Phase 2 (destination UX) |
@@ -313,7 +303,6 @@ See [PHASE_0_TASKS.md](prd/file-management-teams-sync/PHASE_0_TASKS.md) for the 
 
 - Do researchers work one-machine-per-project in practice? (Assumption — validate in researcher interviews; see Round 1 questions B5–B7 in the research guide.)
 - Who owns the Teams destination for a project — researcher, project lead, IT? (Research question E16–18.)
-- Does IT's machine-return process actually wipe the user account home folder, or only delete the account record? (Needs confirmation — belt-and-suspenders with Return Machine either way.)
 - How does ARM know a channel was created less than 24 hours ago? Options: (a) store channel creation time in `state/app.json` when the researcher configures the destination; (b) query Graph for channel metadata at upload time. Option (a) is simpler and doesn't require an extra Graph call. Confirm preferred approach before implementing the 24-hour guard.
 - Does ARM need to handle consent form upload separately, or is the consent channel configured independently by the study lead and ARM just needs to know its ID? Consent forms may not go through ARM at all — clarify with ResearchOps.
 - The NAV routine says "filene slettes automatisk etter 8 måneder." Does ARM need to surface a warning in-app as the 8-month mark approaches for files already uploaded, or is the Teams/M365 notification sufficient? If ARM surfaces its own warning it needs to track `upload.completedAt` precisely.

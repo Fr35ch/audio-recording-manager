@@ -37,7 +37,7 @@ struct RecordingDetailView: View {
     @State private var scrubberTimer: Timer? = nil
 
     private var isCurrentFile: Bool {
-        audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
+        audioPlayer.currentPlayingURL == recording.audioURL
     }
 
     private var displayedProgress: Double {
@@ -100,7 +100,7 @@ struct RecordingDetailView: View {
                     if isCurrentFile {
                         audioPlayer.restart()
                     } else {
-                        audioPlayer.play(url: URL(fileURLWithPath: recording.path))
+                        audioPlayer.play(url: recording.audioURL)
                     }
                 } label: {
                     Image(systemName: "backward.end.fill")
@@ -111,7 +111,7 @@ struct RecordingDetailView: View {
                 .help("Start på nytt")
 
                 Button {
-                    let url = URL(fileURLWithPath: recording.path)
+                    let url = recording.audioURL
                     if isCurrentFile {
                         audioPlayer.togglePlayPause()
                     } else {
@@ -141,7 +141,7 @@ struct RecordingDetailView: View {
                             if isCurrentFile {
                                 audioPlayer.seek(to: scrubberProgress)
                             } else {
-                                let url = URL(fileURLWithPath: recording.path)
+                                let url = recording.audioURL
                                 audioPlayer.play(url: url)
                                 audioPlayer.seek(to: scrubberProgress)
                             }
@@ -469,7 +469,7 @@ struct RecordingDetailView: View {
 
     private func startTranscription() {
         let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
-        let audioURL = URL(fileURLWithPath: recording.path)
+        let audioURL = recording.audioURL
 
         transcriptionTask?.cancel()
         transcriptionState = .inProgress
@@ -494,16 +494,37 @@ struct RecordingDetailView: View {
                 _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
                     meta.transcript.status = .done
                     meta.transcript.completedAt = Date()
+                    meta.transcript.engine = model.rawValue
                 }
 
                 TranscriptionService.shared.saveTranscriptJSONPublic(result, recordingId: recording.id)
 
+                AuditLogger.shared.log(.transcriptCompleted, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "engine": .string(model.rawValue),
+                    "segmentCount": .int(result.segments.count),
+                ])
+
                 transcriptionState = .completed(result)
             } catch let error as TranscriptionError {
                 guard !Task.isCancelled else { return }
+                _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
+                    meta.transcript.status = .failed
+                }
+                AuditLogger.shared.log(.transcriptFailed, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "error": .string(error.errorDescription ?? "unknown"),
+                ])
                 transcriptionState = .failed(error)
             } catch {
                 guard !Task.isCancelled else { return }
+                _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
+                    meta.transcript.status = .failed
+                }
+                AuditLogger.shared.log(.transcriptFailed, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "error": .string(error.localizedDescription),
+                ])
                 transcriptionState = .failed(.processFailed(error.localizedDescription))
             }
         }

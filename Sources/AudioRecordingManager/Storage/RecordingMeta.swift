@@ -121,17 +121,22 @@ struct UploadMeta: Codable, Equatable {
     /// Resumable upload session URL for large-file uploads. Persisted so an
     /// interrupted upload resumes on next launch rather than restarting.
     var sessionUrl: String?
+    /// Human-readable filename used on Teams (e.g. "D01_20260414_audio.m4a").
+    /// Set at upload time from the recording's `neutralCode` + date + artifact type.
+    var remoteName: String?
 
     init(
         status: UploadStatus = .pending,
         uploadedAt: Date? = nil,
         graphItemId: String? = nil,
-        sessionUrl: String? = nil
+        sessionUrl: String? = nil,
+        remoteName: String? = nil
     ) {
         self.status = status
         self.uploadedAt = uploadedAt
         self.graphItemId = graphItemId
         self.sessionUrl = sessionUrl
+        self.remoteName = remoteName
     }
 }
 
@@ -170,6 +175,13 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
     var transcript: TranscriptMeta
     var anonymization: AnonymizationMeta
     var upload: UploadState
+    /// Last date an expiry warning audit event was emitted for this recording.
+    /// Used to deduplicate warnings to one per calendar day.
+    var lastWarningDate: Date?
+    /// Neutral participant code for this recording (e.g. "D01", "T03").
+    /// Set by the researcher before upload. Used to generate the Teams
+    /// filename. Upload is blocked if this is nil or empty.
+    var neutralCode: String?
 
     // MARK: - Factory
 
@@ -192,7 +204,8 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
             audio: AudioMeta(),
             transcript: TranscriptMeta(),
             anonymization: AnonymizationMeta(),
-            upload: UploadState()
+            upload: UploadState(),
+            lastWarningDate: nil
         )
     }
 
@@ -215,6 +228,8 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         case transcript
         case anonymization
         case upload
+        case lastWarningDate
+        case neutralCode
     }
 
     init(from decoder: Decoder) throws {
@@ -230,6 +245,8 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         anonymization = try c.decodeIfPresent(AnonymizationMeta.self, forKey: .anonymization)
             ?? AnonymizationMeta()
         upload = try c.decodeIfPresent(UploadState.self, forKey: .upload) ?? UploadState()
+        lastWarningDate = try c.decodeIfPresent(Date.self, forKey: .lastWarningDate)
+        neutralCode = try c.decodeIfPresent(String.self, forKey: .neutralCode)
     }
 
     init(
@@ -241,7 +258,8 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         audio: AudioMeta,
         transcript: TranscriptMeta,
         anonymization: AnonymizationMeta,
-        upload: UploadState
+        upload: UploadState,
+        lastWarningDate: Date? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -252,5 +270,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         self.transcript = transcript
         self.anonymization = anonymization
         self.upload = upload
+        self.lastWarningDate = lastWarningDate
     }
 }

@@ -32,17 +32,22 @@ struct AppState: Codable, Equatable {
     /// the first-pass-only version still get their legacy metadata migrated
     /// on next launch without needing a manual reset.
     var legacyMetadataCleanedAt: Date?
+    /// Current project configuration (Teams channels, neutral codes, compliance).
+    /// `nil` when no project is configured — upload is blocked.
+    var currentProject: ProjectConfig?
 
     init(
         schemaVersion: Int = AppState.currentSchemaVersion,
         migrationCompletedAt: Date? = nil,
         migrationRecordingCount: Int? = nil,
-        legacyMetadataCleanedAt: Date? = nil
+        legacyMetadataCleanedAt: Date? = nil,
+        currentProject: ProjectConfig? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.migrationCompletedAt = migrationCompletedAt
         self.migrationRecordingCount = migrationRecordingCount
         self.legacyMetadataCleanedAt = legacyMetadataCleanedAt
+        self.currentProject = currentProject
     }
 
     // MARK: - Forward-compat Codable
@@ -52,6 +57,7 @@ struct AppState: Codable, Equatable {
         case migrationCompletedAt
         case migrationRecordingCount
         case legacyMetadataCleanedAt
+        case currentProject
     }
 
     init(from decoder: Decoder) throws {
@@ -60,6 +66,7 @@ struct AppState: Codable, Equatable {
         migrationCompletedAt = try c.decodeIfPresent(Date.self, forKey: .migrationCompletedAt)
         migrationRecordingCount = try c.decodeIfPresent(Int.self, forKey: .migrationRecordingCount)
         legacyMetadataCleanedAt = try c.decodeIfPresent(Date.self, forKey: .legacyMetadataCleanedAt)
+        currentProject = try c.decodeIfPresent(ProjectConfig.self, forKey: .currentProject)
     }
 }
 

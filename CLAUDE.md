@@ -17,10 +17,10 @@ This file gives future Claude sessions the context they need to be useful on thi
 Researchers interviewing NAV service recipients and employees. Interview content is **highly sensitive personal data**. The product is installed on **researchers' own NAV-issued machines**. This drives most architectural decisions:
 
 - Files live under `~/Library/Application Support/AudioRecordingManager/` — excluded from roaming profile sync via MDM, never on the Desktop
+- Local recordings are **automatically deleted after 30 days** from creation, with warnings at day 23 and day 29
 - Anonymization runs inside ARM (AnonymizationSectionView in the transcript editor) before upload
 - Data uploads to **backup-excluded private Teams channels** per the NAV routine for temporary storage of insight data (ref. PVK 25/35628)
 - Teams enforces 8-month automatic deletion; ARM surfaces this retention window prominently but does not enforce it locally
-- The **Return Machine flow** lets researchers verifiably wipe all local interview data at the end of a project, producing a timestamped receipt
 
 ## Current architectural state (as of 2026-04-14)
 
@@ -28,7 +28,7 @@ Researchers interviewing NAV service recipients and employees. Interview content
 
 **Today's code** still stores files on the Desktop at `~/Desktop/lydfiler/` (audio) and `~/Desktop/tekstfiler/` (transcripts), linked by filename stem. The audit log is a hidden dotfile inside the audio folder.
 
-**Target (Phase 0, planned)** moves all data to `~/Library/Application Support/AudioRecordingManager/` with UUID-named per-recording folders containing audio + transcript + metadata sidecar. MDM excludes this path from roaming profile sync. Egress moves from manual-drag-into-Teams to direct Graph API upload (Phase 1). Local files are only ever deleted via an explicit Return Machine flow.
+**Target (Phase 0, planned)** moves all data to `~/Library/Application Support/AudioRecordingManager/` with UUID-named per-recording folders containing audio + transcript + metadata sidecar. MDM excludes this path from roaming profile sync. Egress moves from manual-drag-into-Teams to direct Graph API upload (Phase 1). Local files are automatically deleted after 30 days.
 
 If you are asked to add features that interact with file storage, **check which world the task belongs to**:
 
@@ -93,7 +93,7 @@ All Swift sources live under `Sources/AudioRecordingManager/`. The file `main.sw
 ## Conventions
 
 - **File references in Markdown:** use `[filename.swift:line](path)` format for IDE clickability — the VS Code extension context requires it.
-- **Norwegian in UI, English in code and comments.** Exception: phrases the user types verbatim (e.g., `SLETT ALLE FILER` friction gate).
+- **Norwegian in UI, English in code and comments.**
 - **ADRs** go under `docs/decisions/adr/` using the template at `docs/decisions/adr/TEMPLATE-FOR-ADR-FILES.md`. Use the next available `ADR-1xxx` number.
 - **PRDs / user stories** go under `docs/prd/<epic-name>/USER_STORIES.md`. One epic per folder.
 - **Never write to the Desktop from new code.** Existing Desktop writes are being removed, not augmented.
@@ -103,8 +103,8 @@ All Swift sources live under `Sources/AudioRecordingManager/`. The file `main.sw
 
 1. **Compliance, not polish.** This app handles personal data belonging to vulnerable people. Correctness and auditability beat cleverness and features.
 2. **The 8-month Teams retention is not decorative.** Files on the backup-excluded private channels are auto-deleted by M365 after 8 months with no recovery path. Do not design features that assume data lives indefinitely on Teams. ARM must surface this retention window clearly.
-3. **The Return Machine flow is a researcher-initiated data hygiene step.** It lets researchers verifiably wipe all local interview data at end-of-project. Wipe is auditable by design (receipt file + final audit log). It is not a machine-handoff or library-return contract.
-4. **Anonymization is optional but in-scope.** It runs inside ARM via AnonymizationSectionView (transcript editor) before upload. Never make anonymization status a blocker for upload or Return Machine — it is the researcher's responsibility, not a gate ARM enforces.
+3. **Local data has a hard 30-day shelf life.** Recordings are automatically deleted 30 days after creation. There is no manual wipe flow. Do not design features that assume local files persist indefinitely.
+4. **Anonymization is optional but in-scope.** It runs inside ARM via AnonymizationSectionView (transcript editor) before upload. Never make anonymization status a blocker for upload — it is the researcher's responsibility, not a gate ARM enforces.
 5. **Researcher interviews haven't happened yet.** Some UX decisions are deliberately deferred until the product owner completes discovery. Check whether a task you're given depends on those answers; if so, flag it rather than inventing a design.
 
 ## When in doubt

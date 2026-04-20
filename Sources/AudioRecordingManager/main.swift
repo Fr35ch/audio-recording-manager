@@ -6,12 +6,6 @@ import DiskArbitration
 import Foundation
 import SwiftUI
 
-// MARK: - Configuration
-struct AppConfig {
-    /// Set to true for demo/testing, false for production
-    static let DEMO_MODE = true  // TODO: Set to false when deploying to production
-}
-
 // MARK: - Design System
 // Design tokens (AppColors, AppSpacing, AppRadius) have been extracted to
 // `Design/DesignTokens.swift`. Glass styles (GlassButtonStyle,
@@ -49,6 +43,12 @@ struct VirginProjectApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .help) {
+                Button("Loggvisning") {
+                    NotificationCenter.default.post(name: .init("ARMShowLogViewer"), object: nil)
+                }
+                .keyboardShortcut("l", modifiers: .command)
+            }
         }
         .defaultSize(width: 1200, height: 800)
     }
@@ -56,107 +56,30 @@ struct VirginProjectApp: App {
 
 // MARK: - App Delegate for Launch Configuration
 class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Surfaces the most recent migration outcome to the UI (e.g. a splash
-    /// screen or toast). `nil` if migration was skipped because it had
-    /// already run on this machine.
-    static var migrationOutcome: MigrationOutcome?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("✅ App delegate did finish launching")
 
-        // Phase 0: Run the one-shot legacy-Desktop → Application Support migration
-        // synchronously, before any other code touches files. Idempotent —
-        // subsequent launches no-op via `AppState.migrationCompletedAt`.
-        //
-        // See ADR-1014 and docs/prd/file-management-teams-sync/PHASE_0_TASKS.md
-        // task 0C3.
-        runPhase0MigrationIfNeeded()
+        // Ensure storage directories exist
+        try? StorageLayout.ensureDirectoriesExist()
+
+        // 30-day retention: DISABLED until grace period logic is added.
+        // Enabling this without a grace period would retroactively delete
+        // all pre-existing recordings whose createdAt is older than 30 days,
+        // which is destructive for migrated recordings that were never
+        // subject to a 30-day policy. The expiry manager itself is ready
+        // (RecordingExpiryManager.swift) — it just needs a "policy start
+        // date" check so recordings created before the feature was enabled
+        // get a fresh 30-day window from their first launch under the new
+        // policy, not from their original createdAt.
+        // RecordingExpiryManager.shared.checkAndExpire()
 
         // Ensure the app appears in the Dock and App Switcher
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // The unified window chrome from .windowToolbarStyle(.unified(showsTitle: false))
-        // already provides the transparent titlebar and proper corner radius.
-        // No manual window configuration needed - SwiftUI handles it correctly.
-
         // Auto-install no-transcribe in the background if not already present
         Task {
             await TranscriptionService.shared.setupIfNeeded()
-        }
-    }
-
-    /// Runs the legacy-Desktop migration and logs the outcome to the audit log.
-    /// Failures are logged but do not block app launch; the migration will be
-    /// retried on the next launch.
-    ///
-    /// This is in two independent passes, each idempotent and gated by its
-    /// own marker in `AppState`:
-    ///   1. **Primary** (`StorageMigrator`): moves `.m4a` and `.txt` files
-    ///      into UUID-named recording folders. Gated by `migrationCompletedAt`.
-    ///   2. **Follow-up** (`LegacyMetadataMigrator`): processes legacy
-    ///      `.metadata.json` sidecars (extract inline transcripts), moves
-    ///      non-`.m4a` Desktop audio (DS2/MP3/WAV), and removes the legacy
-    ///      `.audit_log.jsonl` dotfile. Gated by `legacyMetadataCleanedAt`.
-    ///
-    /// Two passes rather than one schema version so users upgrading from a
-    /// build that only had pass 1 still get pass 2 on next launch without a
-    /// manual reset.
-    private func runPhase0MigrationIfNeeded() {
-        // Pass 1 — primary audio/transcript move.
-        do {
-            let outcome = try StorageMigrator.runIfNeeded()
-            AppDelegate.migrationOutcome = outcome
-            if outcome.wasSkipped {
-                print("ℹ️  Phase 0 primary migration: already completed on a previous launch; skipping.")
-            } else {
-                print("✅ Phase 0 primary migration: moved \(outcome.filesMoved) files across \(outcome.recordingsCreated) recordings (errors: \(outcome.errorCount)).")
-                AuditLogger.shared.log(
-                    .migrationCompleted,
-                    payload: [
-                        "pass": .string("primary"),
-                        "recordingsCreated": .int(outcome.recordingsCreated),
-                        "filesMoved": .int(outcome.filesMoved),
-                        "errorCount": .int(outcome.errorCount),
-                    ]
-                )
-            }
-        } catch {
-            print("❌ Phase 0 primary migration failed: \(error). Will retry on next launch.")
-        }
-
-        // Pass 2 — follow-up for legacy metadata + non-m4a audio + audit log.
-        do {
-            let outcome = try LegacyMetadataMigrator.runIfNeeded()
-            if outcome.wasSkipped {
-                print("ℹ️  Phase 0 follow-up migration: already completed on a previous launch; skipping.")
-            } else {
-                print("""
-                    ✅ Phase 0 follow-up migration:
-                       transcripts migrated: \(outcome.transcriptsMigrated)
-                       anonymized transcripts migrated: \(outcome.anonymizedMigrated)
-                       orphan recordings created: \(outcome.orphanRecordingsCreated)
-                       non-m4a audio migrated: \(outcome.nonM4AAudioMigrated)
-                       legacy metadata files removed: \(outcome.metadataFilesRemoved)
-                       legacy audit log removed: \(outcome.legacyAuditLogRemoved)
-                       errors: \(outcome.errorCount)
-                    """)
-                AuditLogger.shared.log(
-                    .migrationCompleted,
-                    payload: [
-                        "pass": .string("legacyMetadata"),
-                        "transcriptsMigrated": .int(outcome.transcriptsMigrated),
-                        "anonymizedMigrated": .int(outcome.anonymizedMigrated),
-                        "orphanRecordingsCreated": .int(outcome.orphanRecordingsCreated),
-                        "nonM4AAudioMigrated": .int(outcome.nonM4AAudioMigrated),
-                        "metadataFilesRemoved": .int(outcome.metadataFilesRemoved),
-                        "legacyAuditLogRemoved": .bool(outcome.legacyAuditLogRemoved),
-                        "errorCount": .int(outcome.errorCount),
-                    ]
-                )
-            }
-        } catch {
-            print("❌ Phase 0 follow-up migration failed: \(error). Will retry on next launch.")
         }
     }
 
@@ -172,924 +95,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - File Manager
-class AudioFileManager: ObservableObject {
-    static let shared = AudioFileManager()
+// AudioFileManager deleted — all storage now goes through RecordingStore.
+// See ADR-1014 and Phase 0 tasks D5/D6.
 
-    let audioFolderPath: String
 
-    private init() {
-        // Create lydfiler folder on Desktop
-        let desktopPath = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)
-            .first!
-        audioFolderPath = desktopPath.appendingPathComponent("lydfiler").path
 
-        createAudioFolder()
-    }
 
-    /// Create the lydfiler folder if it doesn't exist
-    func createAudioFolder() {
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: audioFolderPath) {
-            do {
-                try fileManager.createDirectory(
-                    atPath: audioFolderPath, withIntermediateDirectories: true)
-                print("Created lydfiler folder at: \(audioFolderPath)")
-            } catch {
-                print("Failed to create lydfiler folder: \(error)")
-            }
-        }
-    }
 
-    /// Generate timestamped filename: lydfil_YYYYMMDD_HHMMSS
-    func generateFilename(extension ext: String = "m4a") -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let timestamp = formatter.string(from: Date())
-        return "lydfil_\(timestamp).\(ext)"
-    }
 
-    /// Get full path for a new audio file
-    func getNewFilePath(extension ext: String = "m4a") -> String {
-        let filename = generateFilename(extension: ext)
-        return (audioFolderPath as NSString).appendingPathComponent(filename)
-    }
-}
 
-// MARK: - Speech Activity Detector (VAD)
-// Must inherit NSObject to support block-based notification observation via stored token.
-private final class SpeechActivityDetector: NSObject {
-    private let fftSize = 1024
-    // Speech bins calculated from actual hardware sample rate in start()
-    private var speechBinLow = 7
-    private var speechBinHigh = 79
 
-    // Adaptive noise floor
-    private let noiseWindowCount = 30
-    private var energyHistory: [Float] = []
-    private var noiseFloor: Float = 1e-6
-
-    // Temporal debounce
-    private let speechOnsetDuration: TimeInterval = 1.5
-    private let speechOffsetGrace: TimeInterval = 0.5
-    private var speechOnsetAccumulator: TimeInterval = 0
-    private var speechOffsetAccumulator: TimeInterval = 0
-    private(set) var isSpeechActive = false
-
-    private let engine = AVAudioEngine()
-    private var tapInstalled = false
-    private var configChangeToken: NSObjectProtocol?
-    private var actualSampleRate: Double = 44100
-
-    // PCM accumulation ring — pre-allocated to avoid heap allocs on audio thread
-    private var sampleAccumulator: [Float] = []
-
-    // Pre-allocated FFT work buffers (reused every window — no heap alloc on audio thread)
-    private let halfN: Int
-    private var hannWindow: [Float]
-    private var windowed: [Float]
-    private var realPart: [Float]
-    private var imagPart: [Float]
-    private var mags: [Float]
-    private var fftSetup: FFTSetup?
-
-    var onSpeechStateChanged: ((Bool) -> Void)?
-
-    // isPaused: written on main thread, read on Core Audio real-time thread.
-    // Using a plain Bool — a single aligned store/load is effectively atomic on ARM64/x86_64.
-    // The worst case is processing one extra audio window after pause, which is harmless.
-    var isPaused: Bool = false
-
-    override init() {
-        halfN = fftSize / 2
-        hannWindow = [Float](repeating: 0, count: fftSize)
-        windowed   = [Float](repeating: 0, count: fftSize)
-        realPart   = [Float](repeating: 0, count: fftSize / 2)
-        imagPart   = [Float](repeating: 0, count: fftSize / 2)
-        mags       = [Float](repeating: 0, count: fftSize / 2)
-        let log2n = vDSP_Length(log2(Double(fftSize)))
-        fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))
-        super.init()
-        vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
-        sampleAccumulator.reserveCapacity(fftSize * 4)
-    }
-
-    deinit {
-        if let s = fftSetup { vDSP_destroy_fftsetup(s) }
-        stopEngine()
-    }
-
-    func start() {
-        guard fftSetup != nil else { return }
-        stopEngine()
-        let inputNode = engine.inputNode
-        // Use the hardware's native format — avoids sample-rate conversion overhead
-        // and ensures speech bin indices are correct for this device.
-        let nativeFormat = inputNode.outputFormat(forBus: 0)
-        let sr = Float(nativeFormat.sampleRate > 0 ? nativeFormat.sampleRate : 44100)
-        actualSampleRate = Double(sr)
-        speechBinLow  = max(0,          Int((300.0  * Float(fftSize)) / sr))
-        speechBinHigh = min(halfN - 1,  Int((3400.0 * Float(fftSize)) / sr))
-
-        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(fftSize),
-                             format: nativeFormat) { [weak self] buf, _ in
-            self?.processTap(buf)
-        }
-        tapInstalled = true
-        engine.prepare()
-        do {
-            try engine.start()
-        } catch {
-            print("SAD: engine start failed: \(error)")
-            inputNode.removeTap(onBus: 0)
-            tapInstalled = false
-            return
-        }
-        // Block-based observer — no @objc / #selector needed
-        configChangeToken = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
-        ) { [weak self] _ in
-            guard self?.tapInstalled == true else { return }
-            self?.stopEngine()
-            self?.start()
-        }
-    }
-
-    func stop()   { stopEngine(); fullReset() }  // stopEngine() removes tap before reset — no race
-    func pause()  { isPaused = true }            // audio thread exits on next callback via isPaused guard
-    func resume() { isPaused = false }
-
-    private func stopEngine() {
-        if let token = configChangeToken {
-            NotificationCenter.default.removeObserver(token)
-            configChangeToken = nil
-        }
-        guard tapInstalled else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        tapInstalled = false
-    }
-
-    private func fullReset() {
-        sampleAccumulator.removeAll(keepingCapacity: true)
-        energyHistory.removeAll(keepingCapacity: true)
-        noiseFloor = 1e-6
-        speechOnsetAccumulator = 0
-        speechOffsetAccumulator = 0
-        isSpeechActive = false
-    }
-
-    // MARK: - Core Audio real-time thread (no locks, no heap allocation)
-
-    private func processTap(_ buffer: AVAudioPCMBuffer) {
-        guard !isPaused, let ch = buffer.floatChannelData?[0] else { return }
-        sampleAccumulator.append(
-            contentsOf: UnsafeBufferPointer(start: ch, count: Int(buffer.frameLength)))
-        // Safety cap against stalls
-        if sampleAccumulator.count > fftSize * 8 {
-            sampleAccumulator.removeFirst(sampleAccumulator.count - fftSize * 4)
-        }
-        while sampleAccumulator.count >= fftSize {
-            processWindow()
-            sampleAccumulator.removeFirst(fftSize)
-        }
-    }
-
-    private func processWindow() {
-        guard let fftSetup = fftSetup else { return }
-        // Apply Hann window (pre-computed, no alloc)
-        vDSP_vmul(sampleAccumulator, 1, hannWindow, 1, &windowed, 1, vDSP_Length(fftSize))
-
-        // Pack real signal as split complex: even→real, odd→imag
-        windowed.withUnsafeBytes { rawPtr in
-            let ptr = rawPtr.bindMemory(to: DSPComplex.self).baseAddress!
-            var split = DSPSplitComplex(realp: &realPart, imagp: &imagPart)
-            vDSP_ctoz(ptr, 2, &split, 1, vDSP_Length(halfN))
-        }
-
-        // Forward FFT
-        var split = DSPSplitComplex(realp: &realPart, imagp: &imagPart)
-        let log2n = vDSP_Length(log2(Double(fftSize)))
-        vDSP_fft_zrip(fftSetup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
-
-        // Squared magnitudes
-        vDSP_zvmags(&split, 1, &mags, 1, vDSP_Length(halfN))
-
-        // Speech band energy (no Array slice alloc — index into pre-allocated mags)
-        var speechEnergy: Float = 0
-        let binCount = vDSP_Length(speechBinHigh - speechBinLow)
-        withUnsafePointer(to: mags[speechBinLow]) { ptr in
-            vDSP_sve(ptr, 1, &speechEnergy, binCount)
-        }
-
-        // Adaptive noise floor
-        energyHistory.append(speechEnergy)
-        if energyHistory.count > noiseWindowCount { energyHistory.removeFirst() }
-        if energyHistory.count >= 5, let minE = energyHistory.min(), minE > 0 {
-            noiseFloor = 0.85 * noiseFloor + 0.15 * minE
-        }
-
-        // Classify + temporal debounce
-        let isSpeech = speechEnergy > noiseFloor * 8.0
-        let windowDur = Double(fftSize) / actualSampleRate  // ≈ 0.023 s @ 44100 Hz
-
-        if isSpeech {
-            speechOnsetAccumulator  += windowDur
-            speechOffsetAccumulator  = 0
-            if speechOnsetAccumulator >= speechOnsetDuration, !isSpeechActive {
-                isSpeechActive = true
-                DispatchQueue.main.async { [weak self] in self?.onSpeechStateChanged?(true) }
-            }
-        } else {
-            speechOffsetAccumulator += windowDur
-            speechOnsetAccumulator   = 0
-            if speechOffsetAccumulator >= speechOffsetGrace, isSpeechActive {
-                isSpeechActive = false
-                DispatchQueue.main.async { [weak self] in self?.onSpeechStateChanged?(false) }
-            }
-        }
-
-    }
-}
-
-// MARK: - Audio Recorder
-
-/// Manages microphone access, recording lifecycle, and real-time audio level visualization.
-///
-/// ## Visualization pipeline
-/// A 20 Hz `Timer` (`startLevelMonitoring`) reads `AVAudioRecorder.updateMeters()` during
-/// both the pre-recording monitoring phase and active recording. This is the single source
-/// of truth for all visualization data — `frequencyBands`, `audioLevel`, and `waveformHistory`
-/// are all populated exclusively by this timer.
-///
-/// `SpeechActivityDetector` runs an `AVAudioEngine` FFT tap in parallel for voice-activity
-/// detection only; it does **not** drive any visualization properties.
-class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
-    static let shared = AudioRecorder()
-
-    // MARK: - Published state
-
-    @Published var isRecording = false
-    @Published var isPaused = false
-    @Published var recordingDuration: TimeInterval = 0
-
-    /// Current audio level, normalized 0–1. Updated at 20 Hz by the metering timer.
-    @Published var audioLevel: Float = 0
-
-    @Published var lastSavedFile: String?
-    @Published var showSaveConfirmation = false
-
-    /// Smoothed per-band energy for 32 frequency bands, each normalized 0–1.
-    /// Updated at 20 Hz. Lower bands carry more weight to reflect natural speech distribution.
-    @Published var frequencyBands: [Float] = Array(repeating: 0, count: 32)
-
-    @Published var isMonitoring = false
-
-    /// Ring buffer of amplitude samples for the waveform timeline, ordered oldest-first.
-    /// Capped at `maxHistoryLength` entries (~50 s at 20 Hz). Each entry has a stable `id`
-    /// so `ScrollingWaveformView` can match bars correctly as the buffer scrolls.
-    @Published var waveformHistory: [WaveformEntry] = []
-
-    @Published var showNamingDialog = false
-    @Published var pendingRecordingURL: URL?
-    @Published var showSilenceWarning = false
-
-    // MARK: - Private state
-
-    /// Monotonically-increasing counter stamped onto each `WaveformEntry` at append time.
-    private var waveformCounter: UInt64 = 0
-
-    // MARK: - Silence Detection (VAD-driven)
-    private let vad = SpeechActivityDetector()
-    private var isSpeechActive = false
-    private var silenceDuration: TimeInterval = 0
-    private var lastSilenceCheckTime: Date?
-    private let silenceAlertInterval: TimeInterval = 120  // 2 minutes
-    private var silenceCooldownActive = false
-    private let silenceCooldownDuration: TimeInterval = 300  // 5-min cooldown after dismiss
-
-    /// Maximum number of waveform samples to retain (~15 s at 20 Hz).
-    // 1000 samples at 20 Hz = 50 seconds of history, enough to fill the waveform
-    // even on wide windows (stride is 4 pt/bar, so 1000 bars cover ~4000 pt).
-    private let maxHistoryLength = 1000
-    private var audioRecorder: AVAudioRecorder?
-    private var recordingTimer: Timer?
-    private var levelTimer: Timer?
-    private var currentRecordingURL: URL?
-    /// UUID of the in-progress recording in `RecordingStore`. Set in
-    /// `startRecording()`, used in `saveRecordingWithName()` to finalize
-    /// the sidecar's `displayName` and `durationSeconds`.
-    private var currentRecordingId: UUID?
-    private var monitorRecorder: AVAudioRecorder?
-
-    private override init() {
-        super.init()
-        vad.onSpeechStateChanged = { [weak self] active in
-            self?.isSpeechActive = active
-        }
-        print("✅ Audio recorder initialized")
-    }
-
-    // MARK: - Audio Monitoring (for visualization before recording)
-
-    func startMonitoring() {
-        guard !isMonitoring else { return }
-
-        // Always start with a clean slate so a previous recording's waveform
-        // doesn't carry into the next session's monitoring phase.
-        waveformHistory.removeAll()
-        frequencyBands = Array(repeating: 0, count: 32)
-        audioLevel = 0
-
-        // Create a temporary URL for monitoring (won't save)
-        let tempURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(
-            "monitor.m4a")
-
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100.0,
-            AVNumberOfChannelsKey: 2,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
-
-        do {
-            monitorRecorder = try AVAudioRecorder(url: tempURL, settings: settings)
-            monitorRecorder?.isMeteringEnabled = true
-            monitorRecorder?.prepareToRecord()
-            monitorRecorder?.record()
-
-            isMonitoring = true
-            startLevelMonitoring()
-            print("🎤 Started audio monitoring")
-        } catch {
-            print("❌ Error starting monitoring: \(error)")
-        }
-    }
-
-    func stopMonitoring(clearHistory: Bool = true) {
-        guard isMonitoring else { return }
-
-        monitorRecorder?.stop()
-        monitorRecorder = nil
-        isMonitoring = false
-        stopLevelMonitoring()
-
-        // Clear visualization
-        frequencyBands = Array(repeating: 0, count: 32)
-        audioLevel = 0
-        if clearHistory {
-            waveformHistory.removeAll()
-        }
-
-        print("🛑 Stopped audio monitoring")
-    }
-
-    private func startLevelMonitoring() {
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-
-            // Single source of truth for visualization: AVAudioRecorder metering.
-            // Works reliably for both monitoring and recording phases.
-            let avRecorder = self.isRecording ? self.audioRecorder : self.monitorRecorder
-            guard let avRecorder else { return }
-
-            avRecorder.updateMeters()
-            let averagePower = avRecorder.averagePower(forChannel: 0)
-            let peakPower    = avRecorder.peakPower(forChannel: 0)
-
-            // -44 dB floor: ambient room noise typically sits at -55 to -45 dBFS.
-            // Anything quieter than -44 dB maps to zero so the display is silent
-            // unless actual speech or deliberate sound is present.
-            let minDB: Float = -44.0
-            let maxDB: Float = -5.0
-            let normalizedLevel = max(0, (max(minDB, min(maxDB, averagePower)) - minDB) / (maxDB - minDB))
-            self.audioLevel = normalizedLevel
-
-            // Silence detection (VAD speech state + amplitude fallback)
-            if self.isRecording, !self.isPaused, !self.silenceCooldownActive {
-                let now = Date()
-                let elapsed = self.lastSilenceCheckTime.map { now.timeIntervalSince($0) } ?? 0.05
-                self.lastSilenceCheckTime = now
-                if !(self.isSpeechActive || self.audioLevel > 0.1) {
-                    self.silenceDuration += elapsed
-                    if self.silenceDuration >= self.silenceAlertInterval, !self.showSilenceWarning {
-                        self.showSilenceWarning = true
-                    }
-                } else {
-                    self.silenceDuration = 0
-                }
-            } else if !self.isRecording || self.isPaused {
-                self.silenceDuration = 0
-                self.lastSilenceCheckTime = nil
-            }
-
-            // Frequency band visualization — deterministic per-band weighting, no random noise.
-            // Lower bands are weighted louder to reflect natural speech energy distribution.
-            let powerVariance = max(0, (max(minDB, min(maxDB, peakPower)) - minDB) / (maxDB - minDB))
-            let smoothing: Float = 0.75
-            for i in 0..<32 {
-                let frequencyWeight = 1.0 - (Float(i) / 32.0 * 0.6)
-                let bandLevel = normalizedLevel * frequencyWeight * powerVariance * 1.4
-                self.frequencyBands[i] = self.frequencyBands[i] * smoothing + bandLevel * (1 - smoothing)
-            }
-
-            // Waveform timeline history
-            self.waveformCounter &+= 1
-            self.waveformHistory.append(WaveformEntry(id: self.waveformCounter, level: normalizedLevel))
-            if self.waveformHistory.count > self.maxHistoryLength {
-                self.waveformHistory.removeFirst()
-            }
-        }
-    }
-
-    private func stopLevelMonitoring() {
-        levelTimer?.invalidate()
-        levelTimer = nil
-    }
-
-    private func resetSilenceTracking() {
-        silenceDuration = 0
-        lastSilenceCheckTime = nil
-    }
-
-    func dismissSilenceWarning() {
-        showSilenceWarning = false
-        resetSilenceTracking()
-        silenceCooldownActive = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + silenceCooldownDuration) { [weak self] in
-            self?.silenceCooldownActive = false
-        }
-    }
-
-    // MARK: - Recording Control
-
-    func startRecording() {
-        // Stop monitoring when actual recording starts with a clean waveform slate.
-        if isMonitoring {
-            stopMonitoring(clearHistory: true)
-        }
-
-        // Create a new recording in RecordingStore and record to its audio path.
-        do {
-            let handle = try RecordingStore.shared.create()
-            currentRecordingId = handle.id
-            currentRecordingURL = handle.audioURL
-        } catch {
-            print("❌ Failed to create recording in store: \(error)")
-            return
-        }
-
-        guard let url = currentRecordingURL else {
-            print("❌ Failed to create recording URL")
-            return
-        }
-
-        // Configure recording settings
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100.0,
-            AVNumberOfChannelsKey: 2,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-        ]
-
-        do {
-            audioRecorder = try AVAudioRecorder(url: url, settings: settings)
-            audioRecorder?.delegate = self
-            audioRecorder?.isMeteringEnabled = true
-            audioRecorder?.prepareToRecord()
-
-            if audioRecorder?.record() == true {
-                isRecording = true
-                isPaused = false
-                recordingDuration = 0
-
-                // Start timers (level monitoring continues)
-                startRecordingTimer()
-                if !isMonitoring {
-                    startLevelMonitoring()
-                }
-                vad.start()
-
-                print("✅ Started recording to: \(url.lastPathComponent)")
-            } else {
-                print("❌ Failed to start recording")
-            }
-        } catch {
-            print("❌ Error creating audio recorder: \(error)")
-        }
-    }
-
-    func pauseRecording() {
-        guard isRecording, !isPaused else { return }
-        audioRecorder?.pause()
-        isPaused = true
-        stopRecordingTimer()
-        resetSilenceTracking()
-        showSilenceWarning = false
-        silenceCooldownActive = false
-        vad.pause()
-
-        print("⏸️ Recording paused")
-    }
-
-    func resumeRecording() {
-        guard isRecording, isPaused else { return }
-        audioRecorder?.record()
-        isPaused = false
-        startRecordingTimer()
-        resetSilenceTracking()
-        silenceCooldownActive = false
-        vad.resume()
-
-        print("▶️ Recording resumed")
-    }
-
-    func stopRecording() {
-        guard isRecording else { return }
-
-        audioRecorder?.stop()
-        isRecording = false
-        isPaused = false
-        stopRecordingTimer()
-        stopLevelMonitoring()
-        resetSilenceTracking()
-        showSilenceWarning = false
-        silenceCooldownActive = false
-        vad.stop()
-        isSpeechActive = false
-
-        // Store the recording URL for naming
-        if let url = currentRecordingURL {
-            pendingRecordingURL = url
-            showNamingDialog = true
-            print("⏸️ Recording stopped, waiting for filename...")
-        }
-
-        audioRecorder = nil
-        currentRecordingURL = nil
-    }
-
-    /// Save the pending recording with a custom name + timestamp.
-    /// The audio file already lives in `RecordingStore` at
-    /// `recordings/<uuid>/audio.m4a` — this method just updates the
-    /// sidecar's `displayName` and finalizes the recording.
-    func saveRecordingWithName(_ customName: String) {
-        guard let id = currentRecordingId else {
-            print("❌ No pending recording to save")
-            return
-        }
-
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd_HHmmss"
-        let timestamp = formatter.string(from: Date())
-
-        let cleanName = customName
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "/", with: "-")
-            .replacingOccurrences(of: ":", with: "-")
-
-        let displayName: String
-        if cleanName.isEmpty {
-            displayName = "lydfil_\(timestamp)"
-        } else {
-            displayName = "\(cleanName)_\(timestamp)"
-        }
-
-        // Finalize the sidecar: set displayName, duration, audio size + status.
-        let audioURL = StorageLayout.audioURL(id: id)
-        let size = (try? FileManager.default.attributesOfItem(atPath: audioURL.path)[.size] as? Int64) ?? 0
-
-        do {
-            try RecordingStore.shared.finalize(
-                id: id,
-                durationSeconds: recordingDuration,
-                sizeBytes: size
-            )
-            try RecordingStore.shared.updateMeta(id: id) { meta in
-                meta.displayName = displayName
-            }
-        } catch {
-            print("❌ Error finalizing recording: \(error)")
-        }
-
-        lastSavedFile = displayName
-        showNamingDialog = false
-        showSaveConfirmation = true
-        print("✅ Recording saved: \(displayName)")
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-            self.showSaveConfirmation = false
-            self.recordingDuration = 0
-        }
-
-        pendingRecordingURL = nil
-        currentRecordingId = nil
-        startMonitoring()
-    }
-
-    /// Cancel/discard the pending recording
-    func cancelPendingRecording() {
-        if let id = currentRecordingId {
-            try? RecordingStore.shared.delete(id: id)
-            print("🗑️ Pending recording discarded")
-        }
-        pendingRecordingURL = nil
-        currentRecordingId = nil
-        showNamingDialog = false
-        recordingDuration = 0
-
-        startMonitoring()
-    }
-
-    func deleteCurrentRecording() {
-        if isRecording {
-            stopRecording()
-        }
-
-        if let id = currentRecordingId {
-            try? RecordingStore.shared.delete(id: id)
-            print("🗑️ Recording deleted")
-        }
-
-        recordingDuration = 0
-        audioLevel = 0
-        currentRecordingURL = nil
-        currentRecordingId = nil
-    }
-
-    // MARK: - Recording Timer (duration only)
-
-    private func startRecordingTimer() {
-        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) {
-            [weak self] _ in
-            guard let self = self, let recorder = self.audioRecorder else { return }
-            self.recordingDuration = recorder.currentTime
-        }
-    }
-
-    private func stopRecordingTimer() {
-        recordingTimer?.invalidate()
-        recordingTimer = nil
-    }
-
-    // MARK: - AVAudioRecorderDelegate
-
-    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        if flag {
-            print("✅ Recording finished successfully")
-        } else {
-            print("❌ Recording failed")
-        }
-    }
-
-    func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
-        if let error = error {
-            print("❌ Recording error: \(error)")
-        }
-    }
-}
-
-// MARK: - Recording Item Model
-struct RecordingItem: Identifiable, Equatable, Hashable {
-    let id: UUID
-    let filename: String
-    let path: String
-    let date: Date
-    let size: Int64
-    let duration: TimeInterval
-
-    var formattedDate: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, HH:mm"
-        return formatter.string(from: date)
-    }
-
-    var formattedSize: String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: size)
-    }
-
-    var formattedDuration: String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-// MARK: - Audio Player
-class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
-    static let shared = AudioPlayer()
-
-    @Published var isPlaying = false
-    @Published var currentPlayingFile: String?
-    @Published var currentPlayingURL: URL?
-    @Published var playbackProgress: Double = 0
-    @Published var duration: TimeInterval = 0
-
-    private var audioPlayer: AVAudioPlayer?
-    private var progressTimer: Timer?
-
-    private override init() {
-        super.init()
-    }
-
-    func play(url: URL) {
-        // Stop current playback if any
-        stop()
-
-        do {
-            audioPlayer = try AVAudioPlayer(contentsOf: url)
-            audioPlayer?.delegate = self
-            audioPlayer?.prepareToPlay()
-
-            if let player = audioPlayer {
-                duration = player.duration
-                player.play()
-                isPlaying = true
-                currentPlayingFile = url.lastPathComponent
-                currentPlayingURL = url
-                startProgressTimer()
-                print("▶️ Playing: \(url.lastPathComponent)")
-            }
-        } catch {
-            print("❌ Error playing audio: \(error)")
-        }
-    }
-
-    func stop() {
-        audioPlayer?.stop()
-        audioPlayer = nil
-        isPlaying = false
-        currentPlayingFile = nil
-        currentPlayingURL = nil
-        playbackProgress = 0
-        stopProgressTimer()
-    }
-
-    func togglePlayPause() {
-        guard let player = audioPlayer else { return }
-
-        if player.isPlaying {
-            player.pause()
-            isPlaying = false
-            stopProgressTimer()
-        } else {
-            player.play()
-            isPlaying = true
-            startProgressTimer()
-        }
-    }
-
-    /// Seek to a specific position (0.0 – 1.0 progress fraction).
-    func seek(to progress: Double) {
-        guard let player = audioPlayer else { return }
-        let clamped = max(0, min(1, progress))
-        player.currentTime = clamped * player.duration
-        playbackProgress = clamped
-    }
-
-    /// Restart playback from the beginning.
-    func restart() {
-        guard let player = audioPlayer else { return }
-        player.currentTime = 0
-        playbackProgress = 0
-        if !player.isPlaying {
-            player.play()
-            isPlaying = true
-            startProgressTimer()
-        }
-    }
-
-    private func startProgressTimer() {
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) {
-            [weak self] _ in
-            guard let self = self, let player = self.audioPlayer else { return }
-            guard player.duration > 0 else { return }
-            self.playbackProgress = player.currentTime / player.duration
-        }
-    }
-
-    private func stopProgressTimer() {
-        progressTimer?.invalidate()
-        progressTimer = nil
-    }
-
-    // MARK: - AVAudioPlayerDelegate
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        isPlaying = false
-        currentPlayingFile = nil
-        currentPlayingURL = nil
-        playbackProgress = 0
-        stopProgressTimer()
-    }
-}
-
-// MARK: - Recordings Manager
-//
-// As of Phase 0 (ADR-1014), recordings live in `RecordingStore` under
-// `~/Library/Application Support/AudioRecordingManager/recordings/<uuid>/`,
-// not on the Desktop. This class is a thin adapter that exposes the store's
-// contents as `[RecordingItem]` for the existing UI.
-//
-// The `RecordingItem` model is unchanged; `path` is the absolute audio file
-// path (now under Application Support), and `filename` is the human-readable
-// `displayName` from the sidecar — not the opaque UUID on disk.
-class RecordingsManager: ObservableObject {
-    static let shared = RecordingsManager()
-
-    @Published var recordings: [RecordingItem] = []
-
-    /// Subscription to `RecordingStore.didChangeNotification` so the list
-    /// stays in sync with sidecar writes.
-    private var changeObserver: NSObjectProtocol?
-    private var reloadWorkItem: DispatchWorkItem?
-
-    private init() {
-        loadRecordings()
-        subscribeToStoreChanges()
-    }
-
-    deinit {
-        if let token = changeObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-    }
-
-    /// Subscribe to RecordingStore notifications so the recordings list
-    /// updates when sidecars change (create, finalize, updateMeta, delete).
-    private func subscribeToStoreChanges() {
-        changeObserver = NotificationCenter.default.addObserver(
-            forName: RecordingStore.didChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Debounce so a burst of writes doesn't trigger many reloads.
-            self?.reloadWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak self] in
-                self?.loadRecordings()
-            }
-            self?.reloadWorkItem = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
-        }
-    }
-
-    func loadRecordings() {
-        let metas = RecordingStore.shared.loadAll()
-        var items: [RecordingItem] = []
-
-        for meta in metas {
-            // Skip recordings whose audio is not on disk (e.g. orphan
-            // metadata records) — they shouldn't appear in the recordings
-            // list. They remain in the store and surface elsewhere later.
-            guard meta.audio.status == .done else { continue }
-
-            let audioURL = StorageLayout.recordingFolder(id: meta.id)
-                .appendingPathComponent(meta.audio.filename)
-            guard FileManager.default.fileExists(atPath: audioURL.path) else { continue }
-
-            let size = meta.audio.sizeBytes
-                ?? (try? FileManager.default
-                    .attributesOfItem(atPath: audioURL.path)[.size] as? Int64)
-                ?? 0
-
-            let duration: TimeInterval
-            if let stored = meta.durationSeconds, stored > 0 {
-                duration = stored
-            } else if let f = try? AVAudioFile(forReading: audioURL) {
-                let d = Double(f.length) / f.processingFormat.sampleRate
-                duration = d.isNaN ? 0 : d
-            } else {
-                duration = 0
-            }
-
-            items.append(
-                RecordingItem(
-                    id: meta.id,
-                    filename: meta.displayName,
-                    path: audioURL.path,
-                    date: meta.createdAt,
-                    size: size,
-                    duration: duration
-                )
-            )
-        }
-
-        recordings = items.sorted { $0.date > $1.date }
-        print("📋 Loaded \(recordings.count) recordings from RecordingStore")
-    }
-
-    func deleteRecording(_ item: RecordingItem) {
-        do {
-            try RecordingStore.shared.delete(id: item.id)
-            print("🗑️ Deleted: \(item.filename)")
-            // RecordingStore posts didChangeNotification; subscriber will reload.
-        } catch {
-            print("❌ Error deleting recording: \(error)")
-        }
-    }
-}
 
 // MARK: - Glass Effect Helpers
 // `glassEffectIfAvailable`, `GlassButtonStyle`, and `HoverButtonStyle` have
@@ -1862,7 +877,7 @@ class FolderManager: ObservableObject {
         let fileManager = FileManager.default
         let previousFolderCount = folderStructure.count
 
-        // Get all items in lydfiler folder
+        // Get all items in recordings folder
         guard
             let items = try? fileManager.contentsOfDirectory(
                 at: baseURL, includingPropertiesForKeys: [.isDirectoryKey],
@@ -2041,7 +1056,7 @@ struct FolderTreeView: View {
 
                             RecordingRowView(
                                 recording: recording,
-                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
+                                isPlaying: audioPlayer.currentPlayingURL == recording.audioURL && audioPlayer.isPlaying,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager
                             )
@@ -2367,44 +1382,20 @@ struct NavPanel: View {
 
 struct RecordingsListColumn: View {
     @ObservedObject var recordingsManager: RecordingsManager
-    @ObservedObject var folderManager: FolderManager
     @ObservedObject var audioPlayer: AudioPlayer
     @Binding var selectedRecording: RecordingItem?
 
     var body: some View {
         List(selection: $selectedRecording) {
-            ForEach(folderManager.folderStructure) { folder in
-                Section(folder.name) {
-                    ForEach(folder.recordings) { recording in
-                        RecordingListRow(
-                            recording: recording,
-                            isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
-                            audioPlayer: audioPlayer,
-                            recordingsManager: recordingsManager
-                        )
-                        .tag(recording)
-                        .listRowSeparator(.visible)
-                    }
-                }
-            }
-
-            let rootRecordings = recordingsManager.recordings.filter { recording in
-                !folderManager.folderStructure.contains { folder in
-                    folder.recordings.contains { $0.path == recording.path }
-                }
-            }
-
-            if !rootRecordings.isEmpty {
-                ForEach(rootRecordings) { recording in
-                    RecordingListRow(
-                        recording: recording,
-                        isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
-                        audioPlayer: audioPlayer,
-                        recordingsManager: recordingsManager
-                    )
-                    .tag(recording)
-                    .listRowSeparator(.visible)
-                }
+            ForEach(recordingsManager.recordings) { recording in
+                RecordingListRow(
+                    recording: recording,
+                    isPlaying: audioPlayer.currentPlayingURL == recording.audioURL && audioPlayer.isPlaying,
+                    audioPlayer: audioPlayer,
+                    recordingsManager: recordingsManager
+                )
+                .tag(recording)
+                .listRowSeparator(.visible)
             }
         }
     }
@@ -2448,7 +1439,7 @@ struct RecordingListRow: View {
         }
         .contextMenu {
             Button {
-                let url = URL(fileURLWithPath: recording.path)
+                let url = recording.audioURL
                 if isPlaying {
                     audioPlayer.togglePlayPause()
                 } else {
@@ -2459,12 +1450,6 @@ struct RecordingListRow: View {
             }
 
             Divider()
-
-            Button {
-                NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
-            } label: {
-                Label("Vis i Finder", systemImage: "folder")
-            }
 
             Divider()
 
@@ -2529,7 +1514,7 @@ struct RecordingPlayerNative: View {
     @State private var ollamaIsInstalled = false
 
     private var isCurrentFile: Bool {
-        audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
+        audioPlayer.currentPlayingURL == recording.audioURL
     }
 
     var body: some View {
@@ -2551,7 +1536,7 @@ struct RecordingPlayerNative: View {
 
                     // Play/pause button
                     Button {
-                        let url = URL(fileURLWithPath: recording.path)
+                        let url = recording.audioURL
                         if isCurrentFile {
                             audioPlayer.togglePlayPause()
                         } else {
@@ -2635,14 +1620,6 @@ struct RecordingPlayerNative: View {
                     diarizationSection
                     analysisSection
 
-                    Section("Handlinger") {
-                        Button {
-                            NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
-                        } label: {
-                            Label("Vis i Finder", systemImage: "folder")
-                        }
-                    }
-
                     Section("Fil informasjon") {
                         LabeledContent("Filnavn") {
                             Text(recording.filename)
@@ -2664,12 +1641,6 @@ struct RecordingPlayerNative: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button {
-                        NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
-                    } label: {
-                        Label("Vis i Finder", systemImage: "folder")
-                    }
-                    Divider()
                     Button {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(recording.path, forType: .string)
@@ -3046,7 +2017,7 @@ struct RecordingPlayerNative: View {
 
     private func startTranscription() {
         let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
-        let audioURL = URL(fileURLWithPath: recording.path)
+        let audioURL = recording.audioURL
 
         transcriptionTask?.cancel()
         transcriptionError = nil
@@ -3081,15 +2052,36 @@ struct RecordingPlayerNative: View {
                 _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
                     meta.transcript.status = .done
                     meta.transcript.completedAt = Date()
+                    meta.transcript.engine = model.rawValue
                 }
+
+                AuditLogger.shared.log(.transcriptCompleted, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "engine": .string(model.rawValue),
+                    "segmentCount": .int(result.segments.count),
+                ])
             } catch let error as TranscriptionError {
                 guard !Task.isCancelled else { return }
                 transcriptionError = error
                 isTranscribing = false
+                _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
+                    meta.transcript.status = .failed
+                }
+                AuditLogger.shared.log(.transcriptFailed, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "error": .string(error.errorDescription ?? "unknown"),
+                ])
             } catch {
                 guard !Task.isCancelled else { return }
                 transcriptionError = .processFailed(error.localizedDescription)
                 isTranscribing = false
+                _ = try? RecordingStore.shared.updateMeta(id: recording.id) { meta in
+                    meta.transcript.status = .failed
+                }
+                AuditLogger.shared.log(.transcriptFailed, payload: [
+                    "recordingId": .string(recording.id.uuidString),
+                    "error": .string(error.localizedDescription),
+                ])
             }
         }
     }
@@ -3107,7 +2099,7 @@ struct RecordingPlayerNative: View {
         diarizationTask = Task {
             do {
                 let updated = try await TranscriptionService.shared.diarize(
-                    audioFile: URL(fileURLWithPath: recording.path),
+                    audioFile: recording.audioURL,
                     existingResult: result,
                     hfToken: hfToken,
                     speakers: defaultSpeakers
@@ -3132,7 +2124,7 @@ struct RecordingPlayerNative: View {
         analysisTask = Task {
             do {
                 let analysis = try await TranscriptionService.shared.analyze(
-                    audioFile: URL(fileURLWithPath: recording.path),
+                    audioFile: recording.audioURL,
                     existingResult: result,
                     llmModel: llmModel
                 )
@@ -3201,7 +2193,7 @@ struct RecordingsSidebar: View {
                         ForEach(rootRecordings) { recording in
                             RecordingRowView(
                                 recording: recording,
-                                isPlaying: audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path) && audioPlayer.isPlaying,
+                                isPlaying: audioPlayer.currentPlayingURL == recording.audioURL && audioPlayer.isPlaying,
                                 audioPlayer: audioPlayer,
                                 recordingsManager: recordingsManager,
                                 isSelected: selectedRecording?.id == recording.id,
@@ -3290,6 +2282,21 @@ struct RecordingRowView: View {
         ProcessingStateCache.shared.state(for: recording.path).analysis.status == .completed
     }
 
+    private var expiryState: ExpiryWarningState {
+        guard let meta = loadMeta() else { return .none }
+        return RecordingExpiryManager.shared.warningState(for: meta)
+    }
+
+    private var isAudioUploaded: Bool {
+        guard let meta = loadMeta() else { return false }
+        return meta.upload.audio.status == .uploaded
+    }
+
+    private func loadMeta() -> RecordingMeta? {
+        do { return try RecordingStore.shared.load(id: recording.id) }
+        catch { return nil }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -3346,6 +2353,12 @@ struct RecordingRowView: View {
             .contentShape(Rectangle())
             .onTapGesture { onSelect?() }
 
+            if expiryState != .none {
+                ExpiryWarningBanner(warningState: expiryState, isUploaded: isAudioUploaded)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
+            }
+
             Divider().background(Color.gray.opacity(0.25))
         }
         .onHover { isHovering = $0 }
@@ -3366,7 +2379,7 @@ struct RecordingRowView: View {
         }
         .contextMenu {
             Button(action: {
-                let url = URL(fileURLWithPath: recording.path)
+                let url = recording.audioURL
                 if isPlaying {
                     audioPlayer.togglePlayPause()
                 } else {
@@ -3377,12 +2390,6 @@ struct RecordingRowView: View {
             }
 
             Divider()
-
-            Button(action: {
-                NSWorkspace.shared.selectFile(recording.path, inFileViewerRootedAtPath: "")
-            }) {
-                Label("Vis i Finder", systemImage: "folder")
-            }
 
             Divider()
 
@@ -3839,7 +2846,7 @@ struct RecordingPlayerPanel: View {
     @ObservedObject var audioPlayer: AudioPlayer
 
     private var isCurrentFile: Bool {
-        audioPlayer.currentPlayingURL == URL(fileURLWithPath: recording.path)
+        audioPlayer.currentPlayingURL == recording.audioURL
     }
 
     var body: some View {
@@ -3855,7 +2862,7 @@ struct RecordingPlayerPanel: View {
 
                 // Play/pause button
                 Button(action: {
-                    let url = URL(fileURLWithPath: recording.path)
+                    let url = recording.audioURL
                     if isCurrentFile {
                         audioPlayer.togglePlayPause()
                     } else {
@@ -4233,15 +3240,12 @@ struct SidebarMenuItem: View {
 
 // MARK: - Main View
 struct MainView: View {
-    @StateObject private var fileManager = AudioFileManager.shared
     @StateObject private var sdCardManager = SDCardManager.shared
     @StateObject private var audioRecorder = AudioRecorder.shared
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
     @StateObject private var folderManager: FolderManager = {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let lydfilerPath = homeDir.appendingPathComponent("Desktop/lydfiler").path
-        return FolderManager(basePath: lydfilerPath)
+        return FolderManager(basePath: StorageLayout.recordingsRoot.path)
     }()
     @State private var showSuccessMessage = false
     @State private var successMessage = ""
@@ -4255,6 +3259,7 @@ struct MainView: View {
     @State private var selectedRecording: RecordingItem? = nil
     @State private var selectedTranscript: TranscriptItem? = nil
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showLogViewer = false
     @State private var showAnonymizationDialog = false
 
     var body: some View {
@@ -4279,7 +3284,6 @@ struct MainView: View {
                 case .recordings:
                     RecordingsListColumn(
                         recordingsManager: recordingsManager,
-                        folderManager: folderManager,
                         audioPlayer: audioPlayer,
                         selectedRecording: $selectedRecording
                     )
@@ -4384,6 +3388,12 @@ struct MainView: View {
         .onAppear {
             recordingsManager.loadRecordings()
             folderManager.loadFolderStructure()
+        }
+        .sheet(isPresented: $showLogViewer) {
+            PasswordGateView(isPresented: $showLogViewer)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .init("ARMShowLogViewer"))) { _ in
+            showLogViewer = true
         }
     }
 
@@ -4644,8 +3654,8 @@ struct MainView: View {
             print("Microsoft Teams not found")
         }
 
-        // Open Finder to lydfiler folder
-        let folderURL = URL(fileURLWithPath: fileManager.audioFolderPath)
+        // Open Finder to recordings folder
+        let folderURL = StorageLayout.recordingsRoot
         workspace.selectFile(nil, inFileViewerRootedAtPath: folderURL.path)
 
         // Also open OneDrive folder in a separate window
@@ -4846,29 +3856,32 @@ struct SDCardImportView: View {
         importProgress = 0
 
         let filesToImport = Array(selectedFiles)
-        let fileManager = FileManager.default
-        let audioFolder = AudioFileManager.shared.audioFolderPath
+        let fm = FileManager.default
 
         for file in filesToImport {
-            // Use ORIGINAL filename, not a generated timestamp
-            var destinationPath = (audioFolder as NSString).appendingPathComponent(file.name)
-
-            // If file already exists, add a number suffix
-            var counter = 1
-            while fileManager.fileExists(atPath: destinationPath) {
-                let nameWithoutExt = (file.name as NSString).deletingPathExtension
-                let ext = (file.name as NSString).pathExtension
-                let newName = "\(nameWithoutExt)_\(counter).\(ext)"
-                destinationPath = (audioFolder as NSString).appendingPathComponent(newName)
-                counter += 1
-            }
-
             do {
-                // Copy file with original name
-                try fileManager.copyItem(atPath: file.path, toPath: destinationPath)
-                let finalName = (destinationPath as NSString).lastPathComponent
-                print("✅ Imported: \(file.name) → \(finalName)")
+                // Create a new recording in RecordingStore
+                let displayName = (file.name as NSString).deletingPathExtension
+                let handle = try RecordingStore.shared.create(displayName: displayName)
 
+                // Determine destination filename preserving original extension
+                let ext = (file.name as NSString).pathExtension
+                let destFilename = ext.isEmpty ? "audio.m4a" : "audio.\(ext)"
+                let destURL = handle.folder.appendingPathComponent(destFilename)
+
+                // Copy audio file into the recording folder
+                try fm.copyItem(atPath: file.path, toPath: destURL.path)
+
+                // Finalize sidecar
+                let attrs = try? fm.attributesOfItem(atPath: destURL.path)
+                let size = attrs?[.size] as? Int64
+                _ = try RecordingStore.shared.updateMeta(id: handle.id) { meta in
+                    meta.audio.filename = destFilename
+                    meta.audio.status = .done
+                    meta.audio.sizeBytes = size
+                }
+
+                print("✅ Imported: \(file.name) → \(handle.id.uuidString)/\(destFilename)")
                 importedCount += 1
                 importProgress = Double(importedCount)
             } catch {

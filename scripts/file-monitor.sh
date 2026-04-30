@@ -53,12 +53,12 @@ log_separator() {
 # ─────────────────────────────────────────────
 
 take_snapshot() {
+    # Only track audio files (.m4a, .mp3, .wav) and text files (.txt)
     find "$ARM_ROOT" -type f \
-        -not -path "*/audit/.snapshot*" \
-        -not -path "*/audit/.text-cache/*" \
+        \( -name "*.m4a" -o -name "*.mp3" -o -name "*.wav" -o -name "*.aac" -o -name "*.ds2" -o -name "*.txt" \) \
+        -not -path "*/audit/*" \
         -not -path "*/no-transcribe-venv/*" \
         -not -path "*/.build/*" \
-        -not -name ".DS_Store" \
         2>/dev/null | sort | while IFS= read -r filepath; do
 
         local relpath="${filepath#$ARM_ROOT/}"

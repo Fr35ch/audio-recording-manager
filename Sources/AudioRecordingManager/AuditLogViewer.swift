@@ -7,6 +7,7 @@
 import SwiftUI
 
 struct AuditLogViewer: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var auditLines: [String] = []
     @State private var changeLines: [String] = []
     @State private var selectedTab = 0
@@ -24,6 +25,10 @@ struct AuditLogViewer: View {
                 Button("Oppdater") { loadLogs() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                Button("Lukk") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -66,14 +71,28 @@ struct AuditLogViewer: View {
 
     private func loadLogs() {
         auditLines = loadTail(url: StorageLayout.currentMonthAuditLog)
-        changeLines = loadTail(url: StorageLayout.auditRoot.appendingPathComponent("file-changes.log"))
+        changeLines = loadTail(
+            url: StorageLayout.auditRoot.appendingPathComponent("file-changes.log"),
+            filter: filterAudioAndText
+        )
     }
 
-    private func loadTail(url: URL) -> [String] {
+    private func loadTail(url: URL, filter: ((String) -> Bool)? = nil) -> [String] {
         guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        let all = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
-        if all.count <= lineLimit { return all }
-        return Array(all.suffix(lineLimit))
+        var lines = content.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        if let filter { lines = lines.filter(filter) }
+        if lines.count <= lineLimit { return lines }
+        return Array(lines.suffix(lineLimit))
+    }
+
+    private func filterAudioAndText(_ line: String) -> Bool {
+        // Keep separator lines, CHECK lines, and INIT lines for context
+        if line.contains("────") || line.contains("CHECK") || line.contains("INIT") { return true }
+        // Keep lines about audio and text files only
+        let audioExts = [".m4a", ".mp3", ".wav", ".aac", ".ds2"]
+        let textExts = [".txt"]
+        let allExts = audioExts + textExts
+        return allExts.contains { line.contains($0) }
     }
 }
 

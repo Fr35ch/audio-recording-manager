@@ -1291,6 +1291,7 @@ struct NavPanel: View {
                 navItem(tab: .record, label: "Ta opp lyd", icon: "mic.fill")
                 navItem(tab: .recordings, label: "Lydopptak", icon: "waveform")
                 navItem(tab: .transcripts, label: "Transkripsjoner", icon: "doc.text.fill")
+                navItem(tab: .d2aImport, label: "Importer D2A", icon: "sdcard")
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
@@ -3292,12 +3293,14 @@ struct MainView: View {
                         transcriptManager: transcriptManager,
                         selectedTranscript: $selectedTranscript
                     )
+                case .d2aImport:
+                    Color.clear
                 }
             }
             .navigationSplitViewColumnWidth(
-                min: selectedTab == .record ? 0 : 240,
-                ideal: selectedTab == .record ? 0 : 280,
-                max: selectedTab == .record ? 0 : 360
+                min: hidesContentColumn(for: selectedTab) ? 0 : 240,
+                ideal: hidesContentColumn(for: selectedTab) ? 0 : 280,
+                max: hidesContentColumn(for: selectedTab) ? 0 : 360
             )
         } detail: {
             // Column 3: tab-dependent detail
@@ -3337,6 +3340,9 @@ struct MainView: View {
                         description: Text("Klikk på en fil til venstre for å vise innhold og kjøre anonymisering.")
                     )
                 }
+            case .d2aImport:
+                D2AImportView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -3344,7 +3350,9 @@ struct MainView: View {
         .onChange(of: selectedTab) { _, newTab in
             if newTab != .recordings { selectedRecording = nil }
             if newTab != .transcripts { selectedTranscript = nil }
-            withAnimation { columnVisibility = (newTab == .record) ? .doubleColumn : .all }
+            withAnimation {
+                columnVisibility = hidesContentColumn(for: newTab) ? .doubleColumn : .all
+            }
         }
         .frame(minWidth: 900, minHeight: 600)
         .sheet(isPresented: $showImportSheet) {
@@ -3398,6 +3406,17 @@ struct MainView: View {
     }
 
     /// Shows the transcript editor if a TranscriptionResult JSON exists for
+    /// Tabs that don't use a list column (the content column collapses to width 0
+    /// and the detail column fills the space). Keep this in sync with the switch
+    /// statements in `body` that render `Color.clear` for those same tabs.
+    private func hidesContentColumn(for tab: AppTab) -> Bool {
+        switch tab {
+        case .record, .d2aImport: return true
+        case .recordings, .transcripts: return false
+        }
+    }
+
+    /// Renders the transcript editor when there is a TranscriptionResult for
     /// this recording, otherwise falls back to the plain TranscriptDetailPanel.
     @ViewBuilder
     private func transcriptDetailOrEditor(for transcript: TranscriptItem) -> some View {

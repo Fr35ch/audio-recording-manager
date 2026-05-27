@@ -135,17 +135,105 @@ final class OllamaManager {
         try? process.run()
         process.waitUntilExit()
         let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        // Model names in `ollama list` output are colon-separated; do a simple substring check.
         return output.localizedCaseInsensitiveContains(modelId)
     }
 
-    /// Pull a model from Ollama Hub (or HuggingFace via `hf.co/` prefix).
-    /// Streams stderr lines to `onProgress`. Throws `PullError` on failure.
-    /// Must be called off the main thread (uses synchronous Process).
-    func pull(modelId: String, onProgress: @escaping (String) -> Void) throws {
-        guard let binary = ollamaBinaryPath else {
-            throw PullError.notInstalled
+    /// Download and register a model. For HuggingFace GGUF models, downloads the file
+    /// directly (bypassing the broken hf.co redirect) then registers via `ollama create`.
+    /// For standard Ollama Hub models, uses `ollama pull`.
+    /// Streams progress strings to `onProgress`. Throws `PullError` on failure.
+    /// Must be called off the main thread.
+    func pull(model: LLMModel, onProgress: @escaping (String) -> Void) throws {
+        guard let binary = ollamaBinaryPath else { throw PullError.notInstalled }
+
+        if let ggufUrl = model.directGGUFUrl {
+            try downloadGGUFAndCreate(
+                url: ggufUrl,
+                ollamaId: model.ollamaId,
+                binary: binary,
+                onProgress: onProgress
+            )
+        } else {
+            try ollamaPull(modelId: model.ollamaId, binary: binary, onProgress: onProgress)
         }
+    }
+
+    // MARK: - Private helpers
+
+    /// Download a GGUF file via curl (with progress), then register it with `ollama create`.
+    private func downloadGGUFAndCreate(
+        url: URL,
+        ollamaId: String,
+        binary: String,
+        onProgress: @escaping (String) -> Void
+    ) throws {
+        let tmpDir = FileManager.default.temporaryDirectory
+        let dest = tmpDir.appendingPathComponent("\(ollamaId).gguf")
+
+        // Download with curl --progress-bar so we can stream simple progress lines.
+        onProgress("Laster ned \(url.lastPathComponent)…")
+        let curlProcess = Process()
+        curlProcess.launchPath = "/usr/bin/curl"
+        curlProcess.arguments = ["-L", "--progress-bar", "-o", dest.path, url.absoluteString]
+        curlProcess.standardOutput = FileHandle.nullDevice
+
+        let stderrPipe = Pipe()
+        curlProcess.standardError = stderrPipe
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else { return }
+            // curl --progress-bar writes lines like "###  3.2%"
+            onProgress(text)
+        }
+
+        try curlProcess.run()
+        curlProcess.waitUntilExit()
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
+
+        guard curlProcess.terminationStatus == 0 else {
+            throw PullError.pullFailed("Nedlastingen feilet (curl exit \(curlProcess.terminationStatus)).")
+        }
+
+        // Register the downloaded GGUF with Ollama via a temporary Modelfile.
+        onProgress("Registrerer modellen i Ollama…")
+        let modelfile = tmpDir.appendingPathComponent("\(ollamaId).Modelfile")
+        try "FROM \(dest.path)\n".write(to: modelfile, atomically: true, encoding: .utf8)
+
+        let createProcess = Process()
+        createProcess.launchPath = binary
+        createProcess.arguments = ["create", ollamaId, "-f", modelfile.path]
+        let createPipe = Pipe()
+        createProcess.standardOutput = createPipe
+        createProcess.standardError = createPipe
+        createPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty,
+                  let text = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty
+            else { return }
+            onProgress(text)
+        }
+
+        try createProcess.run()
+        createProcess.waitUntilExit()
+        createPipe.fileHandleForReading.readabilityHandler = nil
+
+        // Clean up temp files regardless of outcome.
+        try? FileManager.default.removeItem(at: dest)
+        try? FileManager.default.removeItem(at: modelfile)
+
+        guard createProcess.terminationStatus == 0 else {
+            throw PullError.pullFailed("Kunne ikke registrere modellen i Ollama.")
+        }
+    }
+
+    /// Pull a model directly from Ollama Hub via `ollama pull`.
+    private func ollamaPull(modelId: String, binary: String, onProgress: @escaping (String) -> Void) throws {
         let process = Process()
         process.launchPath = binary
         process.arguments = ["pull", modelId]
@@ -169,19 +257,14 @@ final class OllamaManager {
         process.waitUntilExit()
         stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-        // Drain any remaining stderr that the readability handler may not have caught.
         let remainingData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
         if let remaining = String(data: remainingData, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !remaining.isEmpty {
             lastErrorLine = remaining
         }
 
-        // Ollama 0.24.x exits with code 0 even on pull errors, so also check stderr content.
         let failed = process.terminationStatus != 0 || lastErrorLine.hasPrefix("Error:")
         if failed {
-            if lastErrorLine.contains("realm host") || lastErrorLine.contains("does not match") {
-                throw PullError.pullFailed("Ollama er for gammel til å laste ned HuggingFace-modeller. Oppdater Ollama til versjon 0.5 eller nyere.")
-            }
             let detail = lastErrorLine.isEmpty ? "Ukjent feil" : lastErrorLine
             throw PullError.pullFailed(detail)
         }

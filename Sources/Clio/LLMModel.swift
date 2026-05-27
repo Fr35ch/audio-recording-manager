@@ -16,8 +16,28 @@ enum LLMModel: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    /// The Ollama model identifier used in API calls and `ollama pull`.
-    var ollamaId: String { rawValue }
+    /// The Ollama model identifier used in API calls and `ollama list`.
+    /// For HuggingFace-sourced models this is the local name created via `ollama create`.
+    var ollamaId: String {
+        switch self {
+        case .qwen3_8b:    return "qwen3:8b"
+        case .borealis4b:  return "borealis-4b"
+        case .borealis12b: return "borealis-12b"
+        }
+    }
+
+    /// Direct GGUF download URL from HuggingFace (nil for models pulled via Ollama Hub).
+    /// Q4_K_M is the standard quality/size tradeoff.
+    var directGGUFUrl: URL? {
+        switch self {
+        case .qwen3_8b:
+            return nil
+        case .borealis4b:
+            return URL(string: "https://huggingface.co/NbAiLab/borealis-4b-gguf/resolve/main/borealis-4b-Q4_K_M.gguf")
+        case .borealis12b:
+            return URL(string: "https://huggingface.co/NbAiLab/borealis-12b-gguf/resolve/main/borealis-12b-Q4_K_M.gguf")
+        }
+    }
 
     /// Short display name shown in the UI.
     var displayName: String {

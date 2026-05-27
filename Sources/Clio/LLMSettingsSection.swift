@@ -13,8 +13,6 @@ struct LLMSettingsSection: View {
     @State private var pullState: PullState = .idle
     @State private var pullProgress: String = ""
     @State private var modelAvailability: [String: Bool] = [:]
-    @State private var ollamaVersionOk: Bool = true
-    @State private var ollamaVersion: String = ""
 
     private var selectedModel: LLMModel {
         LLMModel.from(storedValue: llmModelRaw)
@@ -90,33 +88,6 @@ struct LLMSettingsSection: View {
                 .background(AppColors.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
             }
 
-            // MARK: Ollama version warning
-            if OllamaManager.shared.isInstalled && !ollamaVersionOk {
-                HStack(alignment: .top, spacing: AppSpacing.sm) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppColors.warning)
-                        .font(.callout)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Ollama \(ollamaVersion) er for gammel")
-                            .font(.callout)
-                            .fontWeight(.medium)
-                        Text("Versjon 0.5 eller nyere er nødvendig for å laste ned Borealis-modeller.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        upgradeInstructionText
-                        Button("Sjekk på nytt") {
-                            Task { await refreshAvailability() }
-                        }
-                        .font(.caption)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(AppColors.accent)
-                        .padding(.top, 2)
-                    }
-                }
-                .padding(AppSpacing.sm)
-                .background(AppColors.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
-            }
-
             // MARK: Pull progress / result
             if case .pulling(let id) = pullState, id == selectedModel.ollamaId {
                 HStack(spacing: AppSpacing.sm) {
@@ -138,16 +109,11 @@ struct LLMSettingsSection: View {
             }
 
             if case .failed(let msg) = pullState {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label(msg, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.warning)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if msg.contains("for gammel") {
-                        upgradeInstructionText
-                    }
-                }
-                .padding(.top, AppSpacing.xs)
+                Label(msg, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(AppColors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, AppSpacing.xs)
             }
         }
         .padding(AppSpacing.lg)
@@ -161,7 +127,6 @@ struct LLMSettingsSection: View {
     private func modelRow(_ model: LLMModel) -> some View {
         let isSelected = selectedModel == model
         let isPulled = modelAvailability[model.ollamaId] ?? false
-        let ollamaTooOld = OllamaManager.shared.isInstalled && !ollamaVersionOk
 
         HStack(alignment: .top, spacing: AppSpacing.md) {
             // Selection radio
@@ -227,10 +192,6 @@ struct LLMSettingsSection: View {
                 } else if isPulled {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(AppColors.success)
-                } else if ollamaTooOld {
-                    Text("Oppdater Ollama")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.warning)
                 } else {
                     Button("Last ned") {
                         pullModel(model)
@@ -265,7 +226,7 @@ struct LLMSettingsSection: View {
         pullProgress = ""
         Task.detached(priority: .utility) {
             do {
-                try OllamaManager.shared.pull(modelId: model.ollamaId) { line in
+                try OllamaManager.shared.pull(model: model) { line in
                     Task { @MainActor in
                         self.pullProgress = line
                     }
@@ -285,36 +246,11 @@ struct LLMSettingsSection: View {
     @MainActor
     private func refreshAvailability() async {
         let models = availableModels
-        async let availability = Task.detached(priority: .utility) {
+        let avail = await Task.detached(priority: .utility) {
             models.reduce(into: [String: Bool]()) { dict, model in
                 dict[model.ollamaId] = OllamaManager.shared.isModelAvailable(model.ollamaId)
             }
         }.value
-        async let versionCheck = Task.detached(priority: .utility) {
-            (OllamaManager.shared.installedVersion() ?? "", OllamaManager.shared.supportsHuggingFacePull())
-        }.value
-        let (avail, (version, versionOk)) = await (availability, versionCheck)
         modelAvailability = avail
-        ollamaVersion = version
-        ollamaVersionOk = versionOk
-    }
-
-    @ViewBuilder
-    private var upgradeInstructionText: some View {
-        switch OllamaManager.shared.installMethod {
-        case .app:
-            Text("Åpne Ollama-ikonet i menylinjen og velg «Check for updates».")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        case .brew:
-            Text("brew upgrade ollama")
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        case .other:
-            Text("Oppdater Ollama til versjon 0.5 eller nyere.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
     }
 }

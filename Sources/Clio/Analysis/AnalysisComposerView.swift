@@ -30,6 +30,7 @@ struct AnalysisComposerView: View {
     @Binding var selectedAnalysisId: UUID?
 
     @AppStorage("analysis.llmModel") private var llmModel = "qwen3:8b"
+    private var ollamaModelId: String { LLMModel.from(storedValue: llmModel).ollamaId }
 
     @State private var researchContext: String = ""
     @State private var availableRecordings: [PickerRecording] = []
@@ -378,7 +379,7 @@ struct AnalysisComposerView: View {
 
         // 2. Render the prompt.
         await MainActor.run {
-            runState = .running(progressText: "Bygger forespørsel til \(llmModel) …")
+            runState = .running(progressText: "Bygger forespørsel til \(ollamaModelId) …")
         }
         let context: PromptRenderContext
         switch kind {
@@ -407,7 +408,7 @@ struct AnalysisComposerView: View {
             kind: kind,
             sources: sources,
             promptTemplateId: template.id,
-            model: llmModel
+            model: ollamaModelId
         )
         try AnalysisStore.shared.create(analysis)
         try AnalysisStore.shared.savePrompt(renderedPrompt, id: analysis.id)
@@ -417,13 +418,13 @@ struct AnalysisComposerView: View {
 
         // 4. Call Ollama.
         await MainActor.run {
-            runState = .running(progressText: "Kjører \(llmModel) lokalt — dette kan ta noen minutter …")
+            runState = .running(progressText: "Kjører \(ollamaModelId) lokalt — dette kan ta noen minutter …")
         }
         do {
             try Task.checkCancellation()
             let result = try await OllamaAnalysisService.shared.analyse(
                 prompt: renderedPrompt,
-                model: llmModel
+                model: ollamaModelId
             )
             try Task.checkCancellation()
 

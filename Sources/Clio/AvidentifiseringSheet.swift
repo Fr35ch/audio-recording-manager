@@ -47,6 +47,7 @@ struct AvidentifiseringSheet: View {
     @Binding var isPresented: Bool
 
     @AppStorage("analysis.llmModel") private var llmModel: String = "qwen3:8b"
+    private var ollamaModelId: String { LLMModel.from(storedValue: llmModel).ollamaId }
 
     @State private var state: AnonymizationState = .idle
     @State private var task: Task<Void, Never>?
@@ -540,7 +541,7 @@ struct AvidentifiseringSheet: View {
                 // LLM. BERT can't reason about full-sentence semantics;
                 // Ollama can. No-ops gracefully if Ollama isn't running.
                 let (result, homographReport) = await HomographDisambiguator.filter(
-                    result: afterExceptions, sourceText: text, model: llmModel)
+                    result: afterExceptions, sourceText: text, model: ollamaModelId)
                 guard !Task.isCancelled else { return }
 
                 // 1. Write de-identified text

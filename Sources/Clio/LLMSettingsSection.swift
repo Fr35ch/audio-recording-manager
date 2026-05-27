@@ -103,10 +103,14 @@ struct LLMSettingsSection: View {
                         Text("Versjon 0.5 eller nyere er nødvendig for å laste ned Borealis-modeller.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("brew upgrade ollama")
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                        upgradeInstructionText
+                        Button("Sjekk på nytt") {
+                            Task { await refreshAvailability() }
+                        }
+                        .font(.caption)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(AppColors.accent)
+                        .padding(.top, 2)
                     }
                 }
                 .padding(AppSpacing.sm)
@@ -296,5 +300,24 @@ struct LLMSettingsSection: View {
         modelAvailability = avail
         ollamaVersion = version
         ollamaVersionOk = versionOk
+    }
+
+    @ViewBuilder
+    private var upgradeInstructionText: some View {
+        switch OllamaManager.shared.installMethod {
+        case .app:
+            Text("Åpne Ollama-ikonet i menylinjen og velg «Check for updates».")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .brew:
+            Text("brew upgrade ollama")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        case .other:
+            Text("Oppdater Ollama til versjon 0.5 eller nyere.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

@@ -55,6 +55,22 @@ final class OllamaManager {
         return parts.last
     }
 
+    /// How Ollama is installed — determines correct upgrade instructions.
+    enum InstallMethod {
+        case app      // Ollama.app → symlink at /usr/local/bin/ollama
+        case brew     // Homebrew → /opt/homebrew/bin/ollama
+        case other
+    }
+
+    var installMethod: InstallMethod {
+        guard let path = ollamaBinaryPath else { return .other }
+        if path == "/opt/homebrew/bin/ollama" { return .brew }
+        // /usr/local/bin/ollama symlinks into Ollama.app on most app installs
+        let resolved = (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) ?? path
+        if resolved.contains("Ollama.app") { return .app }
+        return .other
+    }
+
     /// Returns true if the installed Ollama version supports hf.co/ model pulls.
     /// Minimum known-good version is 0.5.0.
     func supportsHuggingFacePull() -> Bool {

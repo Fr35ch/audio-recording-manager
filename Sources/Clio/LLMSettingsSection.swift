@@ -13,8 +13,6 @@ struct LLMSettingsSection: View {
     @State private var pullState: PullState = .idle
     @State private var pullProgress: String = ""
     @State private var modelAvailability: [String: Bool] = [:]
-    @State private var hfToken: String = ""
-    @State private var hfTokenSaved: Bool = false
 
     private var selectedModel: LLMModel {
         LLMModel.from(storedValue: llmModelRaw)
@@ -58,44 +56,6 @@ struct LLMSettingsSection: View {
 
             Divider()
 
-            // MARK: HuggingFace token
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("HuggingFace-token")
-                            .font(.headline)
-                        Text("Nødvendig for å laste ned Borealis. Opprett token på [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) (Read-tilgang).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if hfTokenSaved {
-                        Label("Lagret", systemImage: "checkmark.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(AppColors.success)
-                    }
-                }
-                HStack(spacing: AppSpacing.sm) {
-                    SecureField("hf_…", text: $hfToken)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(.caption, design: .monospaced))
-                    Button("Lagre") {
-                        let trimmed = hfToken.trimmingCharacters(in: .whitespaces)
-                        if trimmed.isEmpty {
-                            KeychainHelper.delete(for: "hf.token")
-                            hfTokenSaved = false
-                        } else {
-                            KeychainHelper.save(trimmed, for: "hf.token")
-                            hfTokenSaved = true
-                        }
-                        hfToken = ""
-                    }
-                    .disabled(hfToken.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-
-            Divider()
-
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Text("Språkmodell for analyse")
                     .font(.headline)
@@ -127,17 +87,6 @@ struct LLMSettingsSection: View {
                 .background(AppColors.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.small))
             }
 
-            if !isPulled && selectedModel.directGGUFUrl != nil && !hfTokenSaved {
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: "key.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    Text("Legg inn HuggingFace-token over for å laste ned denne modellen.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             // MARK: Pull progress / result
             if case .pulling(let id) = pullState, id == selectedModel.ollamaId {
                 HStack(spacing: AppSpacing.sm) {
@@ -167,10 +116,7 @@ struct LLMSettingsSection: View {
             }
         }
         .padding(AppSpacing.lg)
-        .task {
-            await refreshAvailability()
-            hfTokenSaved = KeychainHelper.load(for: "hf.token") != nil
-        }
+        .task { await refreshAvailability() }
     }
 
 
@@ -277,10 +223,9 @@ struct LLMSettingsSection: View {
     private func pullModel(_ model: LLMModel) {
         pullState = .pulling(modelId: model.ollamaId)
         pullProgress = ""
-        let token = KeychainHelper.load(for: "hf.token")
         Task.detached(priority: .utility) {
             do {
-                try OllamaManager.shared.pull(model: model, hfToken: token) { line in
+                try OllamaManager.shared.pull(model: model) { line in
                     Task { @MainActor in
                         self.pullProgress = line
                     }

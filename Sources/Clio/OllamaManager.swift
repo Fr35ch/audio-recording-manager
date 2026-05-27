@@ -143,7 +143,7 @@ final class OllamaManager {
     /// For standard Ollama Hub models, uses `ollama pull`.
     /// Streams progress strings to `onProgress`. Throws `PullError` on failure.
     /// Must be called off the main thread.
-    func pull(model: LLMModel, onProgress: @escaping (String) -> Void) throws {
+    func pull(model: LLMModel, hfToken: String? = nil, onProgress: @escaping (String) -> Void) throws {
         guard let binary = ollamaBinaryPath else { throw PullError.notInstalled }
 
         if let ggufUrl = model.directGGUFUrl {
@@ -151,6 +151,7 @@ final class OllamaManager {
                 url: ggufUrl,
                 ollamaId: model.ollamaId,
                 binary: binary,
+                hfToken: hfToken,
                 onProgress: onProgress
             )
         } else {
@@ -165,6 +166,7 @@ final class OllamaManager {
         url: URL,
         ollamaId: String,
         binary: String,
+        hfToken: String?,
         onProgress: @escaping (String) -> Void
     ) throws {
         let tmpDir = FileManager.default.temporaryDirectory
@@ -174,7 +176,12 @@ final class OllamaManager {
         onProgress("Laster ned \(url.lastPathComponent)…")
         let curlProcess = Process()
         curlProcess.launchPath = "/usr/bin/curl"
-        curlProcess.arguments = ["-L", "--progress-bar", "-o", dest.path, url.absoluteString]
+        var curlArgs = ["-L", "--progress-bar", "-o", dest.path]
+        if let token = hfToken, !token.isEmpty {
+            curlArgs += ["-H", "Authorization: Bearer \(token)"]
+        }
+        curlArgs.append(url.absoluteString)
+        curlProcess.arguments = curlArgs
         curlProcess.standardOutput = FileHandle.nullDevice
 
         let stderrPipe = Pipe()

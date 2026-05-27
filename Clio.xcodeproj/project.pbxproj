@@ -57,6 +57,7 @@
 		93BB38BF5E431D9C5E512A66 /* TranscriptEditorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E4DB16C7F2DBCBAAD577EB /* TranscriptEditorWindow.swift */; };
 		987374636261AACB80821CA6 /* AnonymizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B42532D49A70085D58FF1E /* AnonymizationService.swift */; };
 		A132A46B3FE88ABDBF95651D /* PillButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F068C655F17F8707229EB9 /* PillButton.swift */; };
+		A8FFC1B627B38CCBE8C24E5F /* KeychainHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BF9E30EF5F6760E41EF0044 /* KeychainHelper.swift */; };
 		AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */; };
 		B68312AE2CD9340004EE100F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E0CED9013697E6080B4188 /* main.swift */; };
 		B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */; };
@@ -146,6 +147,7 @@
 		8B92B85F579E838301EF8207 /* HomographDisambiguator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomographDisambiguator.swift; sourceTree = "<group>"; };
 		96499FFAE0DCFE3516E616AA /* LLMModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMModel.swift; sourceTree = "<group>"; };
 		98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEditorView.swift; sourceTree = "<group>"; };
+		9BF9E30EF5F6760E41EF0044 /* KeychainHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainHelper.swift; sourceTree = "<group>"; };
 		9C43F78395241930AD22D085 /* AnalysisListColumn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisListColumn.swift; sourceTree = "<group>"; };
 		9D6E17FCDBB9EA7283A95993 /* TranscriptHash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHash.swift; sourceTree = "<group>"; };
 		9D82CA89E0B0496F8DF1AF64 /* NameDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NameDetector.swift; sourceTree = "<group>"; };
@@ -239,6 +241,7 @@
 				6BF44AF54A467E9445ED16B3 /* ExpiryWarningBanner.swift */,
 				6A37C20B0212318DB8A52FF4 /* FluidDiarizationService.swift */,
 				8B92B85F579E838301EF8207 /* HomographDisambiguator.swift */,
+				9BF9E30EF5F6760E41EF0044 /* KeychainHelper.swift */,
 				96499FFAE0DCFE3516E616AA /* LLMModel.swift */,
 				1BCC7C69D1A2D884690C14EB /* LLMSettingsSection.swift */,
 				54E0CED9013697E6080B4188 /* main.swift */,
@@ -468,6 +471,7 @@
 				2C8D7F959CC55BDD64BBD625 /* GlassStyles.swift in Sources */,
 				BA144EE247118F5A8DA3C253 /* HomographDisambiguator.swift in Sources */,
 				FEB57F434BC5E5553B980A96 /* HoverCursor.swift in Sources */,
+				A8FFC1B627B38CCBE8C24E5F /* KeychainHelper.swift in Sources */,
 				D41B52C96AD65D0A932410FB /* LLMModel.swift in Sources */,
 				6C05881B1C9BA6A9EA4C15F4 /* LLMSettingsSection.swift in Sources */,
 				E354FC341495DD3C5B125FF3 /* NameDetector.swift in Sources */,

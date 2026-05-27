@@ -143,11 +143,8 @@ struct LLMSettingsSection: View {
                         .font(.caption)
                         .foregroundStyle(AppColors.warning)
                         .fixedSize(horizontal: false, vertical: true)
-                    if msg.contains("brew upgrade ollama") {
-                        Text("Åpne Terminal og kjør: brew upgrade ollama")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                    if msg.contains("for gammel") {
+                        upgradeInstructionText
                     }
                 }
                 .padding(.top, AppSpacing.xs)

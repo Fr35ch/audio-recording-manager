@@ -169,10 +169,18 @@ final class OllamaManager {
         process.waitUntilExit()
         stderrPipe.fileHandleForReading.readabilityHandler = nil
 
-        if process.terminationStatus != 0 {
-            // Give a human-readable error for known Ollama version issues.
+        // Drain any remaining stderr that the readability handler may not have caught.
+        let remainingData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        if let remaining = String(data: remainingData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !remaining.isEmpty {
+            lastErrorLine = remaining
+        }
+
+        // Ollama 0.24.x exits with code 0 even on pull errors, so also check stderr content.
+        let failed = process.terminationStatus != 0 || lastErrorLine.hasPrefix("Error:")
+        if failed {
             if lastErrorLine.contains("realm host") || lastErrorLine.contains("does not match") {
-                throw PullError.pullFailed("Ollama er for gammel til å laste ned HuggingFace-modeller. Kjør: brew upgrade ollama")
+                throw PullError.pullFailed("Ollama er for gammel til å laste ned HuggingFace-modeller. Oppdater Ollama til versjon 0.5 eller nyere.")
             }
             let detail = lastErrorLine.isEmpty ? "Ukjent feil" : lastErrorLine
             throw PullError.pullFailed(detail)

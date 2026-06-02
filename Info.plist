@@ -38,5 +38,16 @@
 	<string>NSApplication</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>This app needs access to SD cards to import audio recordings.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>no.nav.clio.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>arm.nav</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

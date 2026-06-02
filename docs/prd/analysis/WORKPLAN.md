@@ -1,7 +1,21 @@
 # Analyse-seksjonen — arbeidsplan og implementasjonsnotater
 
 **Scope:** `Sources/Clio/Analysis/` + `docs/prd/analysis/`
-**Sist oppdatert:** 2026-05-28
+**Sist oppdatert:** 2026-06-02
+
+---
+
+## Backlog
+
+| ID | Tittel | Status |
+|----|--------|--------|
+| `analysis-streaming` | Add streaming to Ollama analysis calls | pending |
+| `analysis-markdown-render` | Render analysis result as markdown | pending |
+| `analysis-ux-overhaul` | UX overhaul of analysis result view | pending |
+| `analysis-composer-ux` | Composer UX improvements | pending |
+| `analysis-ux` | Analysis section UX overhaul (general) | pending |
+| `analysis-nav-hf-token` | Evaluate NAV shared HuggingFace token | pending |
+| `adr-borealis` | ADR for Borealis-valget | pending |
 
 ---
 

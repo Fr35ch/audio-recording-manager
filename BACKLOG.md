@@ -56,6 +56,4 @@ Omfang ikke fastsatt. Kandidater:
 ## Teknisk gjeld
 
 - `main.swift` er fortsatt svært stor — inkrementell oppsplitting pågår
-- `AudioRecordingManager.xcodeproj` finnes fortsatt i repoet — bør ryddes når branchen merges
 - `RecordingExpiryManager` er implementert men bevisst deaktivert (ingen migrasjonsstrategi for eksisterende opptak ennå)
-

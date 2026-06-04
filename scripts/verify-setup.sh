@@ -82,14 +82,6 @@ else
     WARNINGS=$((WARNINGS + 1))
 fi
 
-# Check pyproject.toml
-echo -n "pyproject.toml: "
-if [ -f "pyproject.toml" ]; then
-    echo "✅ Found"
-else
-    echo "❌ Not found"
-    ERRORS=$((ERRORS + 1))
-fi
 
 # Check gh CLI (optional)
 echo -n "GitHub CLI (gh): "

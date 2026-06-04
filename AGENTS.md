@@ -148,9 +148,8 @@ Model tiers: Opus → premium (complex reasoning); Sonnet → standard; Haiku �
 
 **Build (CLI — for CI or headless):**
 ```bash
-./build.sh
+swift build
 ```
-Targets `arm64-apple-macos15.0`. Reads version from `VERSION`. Note: `build.sh` is legacy; Xcode is the primary build path.
 
 **Run:**
 ```

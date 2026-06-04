@@ -44,10 +44,6 @@ jobs:
       - name: Run Swift tests
         run: swift test -v
 
-      - name: Build app (build.sh)
-        run: |
-          chmod +x build.sh
-          ./build.sh
 
   # SwiftLint check
   swiftlint:

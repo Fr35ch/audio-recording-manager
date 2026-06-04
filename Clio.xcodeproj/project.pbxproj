@@ -213,6 +213,7 @@
 		41DBD494FA09E7D28C89CE81 /* Analysis */ = {
 			isa = PBXGroup;
 			children = (
+				56FD28E5E3C625EECFF14887 /* AnalysisResult.swift */,
 				28ECF97F0A7CD4936A94F370 /* AnalysisComposerView.swift */,
 				DAF675F106EE14770236A384 /* AnalysisDetailColumn.swift */,
 				9C43F78395241930AD22D085 /* AnalysisListColumn.swift */,
@@ -220,6 +221,7 @@
 				DBC9271797220E7692A38D2E /* AnalysisResultDetailView.swift */,
 				7F28C1CD1DFE0DAB7C1C6A33 /* AnalysisResultParser.swift */,
 				062B55D4B8931B8384DE765F /* AnalysisStore.swift */,
+				96499FFAE0DCFE3516E616AA /* LLMModel.swift */,
 				5D7DDCA87095B16D2AF2F2BD /* OllamaAnalysisService.swift */,
 				F9C9484AC2A56CAE0CAD7924 /* PromptTemplate.swift */,
 				53BCB8EAD488E0C91AB6D3BC /* PromptTemplateLibrary.swift */,
@@ -232,13 +234,38 @@
 			isa = PBXGroup;
 			children = (
 				49529CFB20AE46E692A423EF /* AboutView.swift */,
+				3879A692A181A0FB1706694B /* AnonymizationModal.swift */,
+				E056E09D9198F48C6D484127 /* AudioLevelVisualization.swift */,
+				877BD6E28D486BCD0D68A29C /* AuditLogViewer.swift */,
+				0FC4F5E2A28A5F9F8C05CC60 /* AvidentExceptionsView.swift */,
+				3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */,
+				6BF44AF54A467E9445ED16B3 /* ExpiryWarningBanner.swift */,
+				1BCC7C69D1A2D884690C14EB /* LLMSettingsSection.swift */,
 				62D4480B3F604F46A591EA5A /* LibraryScreen.swift */,
 				A1DFBD96E67848828C8165D3 /* MainView.swift */,
 				109D616E44154D5B9A737794 /* NavPanel.swift */,
 				E9B95ACDC9FF403C86DF06F7 /* AnalyzeScreen.swift */,
 				4C48C2C69D3341F98A28BD4F /* RecordScreen.swift */,
+				AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */,
+				98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */,
+				B3E4DB16C7F2DBCBAAD577EB /* TranscriptEditorWindow.swift */,
+				17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */,
+				F9743DAF0BE9C1CF51E55BA7 /* TranscriptsView.swift */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		AA11BB22CC33DD44EE55FF66 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				47885F0D316AA37EB7EB6175 /* ProcessingState.swift */,
+				0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */,
+				3CCF68B04B237C98F3509C43 /* SpeakerAlignment.swift */,
+				F0B6668F23D21197B2C8CACC /* TranscriptEditorState.swift */,
+				7C154C760474D9F33E4983FD /* TranscriptionModel.swift */,
+				E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */,
+			);
+			path = Models;
 			sourceTree = "<group>";
 		};
 		E6B41E34BFA0445690F58380 /* Utils */ = {
@@ -293,32 +320,13 @@
 		6D7D78B28D5E604A4EE21EE9 /* Clio */ = {
 			isa = PBXGroup;
 			children = (
-				56FD28E5E3C625EECFF14887 /* AnalysisResult.swift */,
-				3879A692A181A0FB1706694B /* AnonymizationModal.swift */,
 				B1C2D3E4F5061728394A5B6C /* AppCopy.swift */,
-				E056E09D9198F48C6D484127 /* AudioLevelVisualization.swift */,
-				877BD6E28D486BCD0D68A29C /* AuditLogViewer.swift */,
-				0FC4F5E2A28A5F9F8C05CC60 /* AvidentExceptionsView.swift */,
-				3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */,
-				6BF44AF54A467E9445ED16B3 /* ExpiryWarningBanner.swift */,
-				96499FFAE0DCFE3516E616AA /* LLMModel.swift */,
-				1BCC7C69D1A2D884690C14EB /* LLMSettingsSection.swift */,
 				54E0CED9013697E6080B4188 /* main.swift */,
-				47885F0D316AA37EB7EB6175 /* ProcessingState.swift */,
-				AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */,
-				0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */,
-				3CCF68B04B237C98F3509C43 /* SpeakerAlignment.swift */,
-				F0B6668F23D21197B2C8CACC /* TranscriptEditorState.swift */,
-				98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */,
-				B3E4DB16C7F2DBCBAAD577EB /* TranscriptEditorWindow.swift */,
-				7C154C760474D9F33E4983FD /* TranscriptionModel.swift */,
-				E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */,
-				17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */,
-				F9743DAF0BE9C1CF51E55BA7 /* TranscriptsView.swift */,
 				41DBD494FA09E7D28C89CE81 /* Analysis */,
 				A77D27D26DC75CD2A87BF92F /* Design */,
 				CDDE0C786900465483C35D28 /* Features */,
 				DFE71B136C91302219B3EB92 /* Library */,
+				AA11BB22CC33DD44EE55FF66 /* Models */,
 				AC6B9512843B9831505D1828 /* Playback */,
 				E87C68A76CA1484E955ABBA1 /* Services */,
 				8A4DD4F6B8EE4BC2358F8B42 /* Startup */,

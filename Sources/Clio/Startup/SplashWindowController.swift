@@ -14,6 +14,8 @@ final class SplashWindowController {
         let imageView = NSImageView(frame: container.bounds)
         if let url = Bundle.main.url(forResource: "SplashBackground", withExtension: "svg") {
             imageView.image = NSImage(contentsOf: url)
+        } else {
+            imageView.image = NSImage(named: "Splash")
         }
         imageView.imageScaling     = .scaleAxesIndependently
         imageView.imageAlignment   = .alignCenter

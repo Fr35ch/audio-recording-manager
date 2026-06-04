@@ -92,6 +92,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "transcription.language":        "no",
             "transcription.validateMode":    "warn",
             "transcription.numBeams":        3,
+            "analysis.llmModel":             LLMModel.defaultModel.rawValue,
+            "beta.enabled":                  false,
         ])
 
         // Ensure storage directories exist
@@ -1479,12 +1481,17 @@ struct RecordingPlayerNative: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 16)
                 Divider()
-                TranscriptionSettingsView()
+                ScrollView {
+                    VStack(spacing: 0) {
+                        TranscriptionSettingsView()
+                        Divider()
+                            .padding(.horizontal, AppSpacing.lg)
+                        LLMSettingsSection()
+                    }
+                }
             }
-            .frame(minWidth: 480, minHeight: 400)
+            .frame(minWidth: 520, minHeight: 500)
         }
-        // Transcript modal and analysis modal removed — both now live
-        // in TranscriptEditorView (Transkripsjoner tab).
         .onAppear {
             restoreTranscriptionStateIfNeeded()
             transcriptMeta = loadMeta()?.transcript
@@ -3014,9 +3021,16 @@ struct MainView: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 16)
                 Divider()
-                TranscriptionSettingsView()
+                ScrollView {
+                    VStack(spacing: 0) {
+                        TranscriptionSettingsView()
+                        Divider()
+                            .padding(.horizontal, AppSpacing.lg)
+                        LLMSettingsSection()
+                    }
+                }
             }
-            .frame(minWidth: 480, minHeight: 400)
+            .frame(minWidth: 520, minHeight: 500)
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ClioShowLogViewer"))) { _ in
             showLogViewer = true

@@ -78,6 +78,7 @@ struct TranscriptEditorView: View {
     /// Pre-computed once when anonymizationResult is loaded/updated — never inside the render loop.
     @State private var segmentAnonymizedTexts: [Int: String] = [:]
     @AppStorage("analysis.llmModel") private var llmModel: String = "qwen3:8b"
+    private var ollamaModelId: String { LLMModel.from(storedValue: llmModel).ollamaId }
 
     init(
         recordingId: UUID,
@@ -674,7 +675,7 @@ struct TranscriptEditorView: View {
                 guard !Task.isCancelled else { return }
 
                 let (result, homographReport) = await HomographDisambiguator.filter(
-                    result: afterExceptions, sourceText: text, model: llmModel)
+                    result: afterExceptions, sourceText: text, model: ollamaModelId)
                 guard !Task.isCancelled else { return }
 
                 let anonURL = StorageLayout.anonymizedTranscriptURL(id: recordingId)

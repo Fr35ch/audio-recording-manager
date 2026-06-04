@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.4.1</string>
+	<string>1.5.0-beta.1</string>
 	<key>CFBundleVersion</key>
-	<string>58</string>
+	<string>59</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.6</string>
 	<key>LSUIElement</key>
@@ -38,5 +38,16 @@
 	<string>NSApplication</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>This app needs access to SD cards to import audio recordings.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>no.nav.clio.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>arm.nav</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

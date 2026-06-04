@@ -19,6 +19,16 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Clio
+      - path: Resources/Assets.xcassets
+      - path: Resources/anonymize_bridge.py
+        type: file
+        buildPhase: resources
+      - path: Resources/ssb_fornavn.txt
+        type: file
+        buildPhase: resources
+      - path: Resources/ssb_etternavn.txt
+        type: file
+        buildPhase: resources
     dependencies:
       - package: FluidAudio
         product: FluidAudio

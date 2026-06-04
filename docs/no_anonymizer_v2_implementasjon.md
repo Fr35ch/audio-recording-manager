@@ -12,8 +12,6 @@
 
 `no-anonymizer` er et Python-bibliotek som anonymiserer transkripsjoner av brukerintervjuer for NAV. Det kalles som subprosess fra Clio (Swift/macOS) via `Foundation.Process`, og kommuniserer via temp-filer med JSON-output.
 
-**SpaCy er ikke i bruk.** NER-laget bruker NbAiLab/nb-bert-base-ner via HuggingFace `transformers`. CAPS-normalisering kjøres som preprosessering for å unngå falske positive på all-caps-tekst.
-
 ---
 
 ## 2. Arkitektur
@@ -224,7 +222,7 @@ Dagens implementasjon bruker SpaCy NER (`nb_core_news_lg`) med SSB-navnelister, 
 ## 3. Ikke-mål
 
 - Maskinlæring eller dynamiske vekter
-- UI-arbeid i ARM (kun output-kontrakt)
+- UI-arbeid i Clio (kun output-kontrakt)
 - Endringer i CAPS-normalisering, regex-deteksjon eller adresseoppslag
 - ORG-entiteter — behandles fortsatt som logget men ikke redigert
 

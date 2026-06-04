@@ -1,9 +1,22 @@
 # Changelog
 
-All notable changes to the Audio Recording Manager (ARM) will be documented in this file.
+All notable changes to Clio will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.5.0-beta.1] - 2026-05-27
+
+### Added — Borealis beta
+- **Borealis språkmodell-støtte** — Nav-innsiktsmedarbeidere kan nå prøve Borealis 4B og 12B fra Nasjonalbiblioteket som LLM-motor for analyse og avidentifisering. Borealis er spesielt trent for norsk bokmål.
+- **Beta-tilgang i innstillinger** — Ny seksjon «Språkmodell for analyse» med toggle for beta-tilgang. Borealis-modeller vises kun når beta er aktivert.
+- **Automatisk modell-nedlasting ved oppstart** — Hvis Borealis er valgt og ikke lastet ned, hentes modellen automatisk via `ollama pull` ved oppstart med fremdriftslinje.
+- **Modellkatalog** (`LLMModel`) — Strukturert oversikt over støttede LLM-modeller med RAM-krav, beskrivelse og beta-flagg.
+- **In-app modell-nedlasting** — «Hent modell»-knapp i innstillinger for å laste ned Borealis uten å forlate appen.
+
+### Changed
+- Innstillingsvinduet er nå scrollbart og har fått minimum høyde 500 px for å romme ny LLM-seksjon.
+- `DependencyManager` leser nå valgt LLM-modell fra UserDefaults istedenfor hardkodet `qwen3:8b`.
 
 ## [Unreleased]
 

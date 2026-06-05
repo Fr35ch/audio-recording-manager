@@ -4,20 +4,22 @@
 // Takes a WAV file downloaded from a Clio Recorder iOS device and imports it
 // into the RecordingStore as a proper recording entry.
 //
+// Format conversion
+// -----------------
+// The iOS app sends WAV. The RecordingStore expects audio.m4a (AAC in MPEG-4).
+// The importer converts the staging WAV to M4A using AVAssetExportSession
+// before writing to the recording folder.
+//
 // RODE dual-channel detection
 // ---------------------------
 // The iOS app embeds a `RODE_DUAL_CHANNEL` marker in the WAV INFO chunk /
 // BEXT originator field (spec § 9.4). This importer checks for that marker
-// and sets `mobileImport.isDualChannel` on the resulting RecordingMeta so
-// the transcription pipeline can apply the split → transcribe → merge flow.
-//
-// Staging cleanup
-// ---------------
-// The staging WAV (under mobileInboxURL) is moved — not copied — into the
-// recording folder as `audio.wav`. The staging directory is cleaned up after
-// a successful import.
+// before conversion and sets `mobileImport.isDualChannel` on the resulting
+// RecordingMeta so the transcription pipeline can apply the
+// split → transcribe → merge flow.
 
 import Foundation
+import AVFoundation
 
 // MARK: - Import result
 
@@ -48,8 +50,10 @@ actor MobileTransferImporter {
 
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 
-        let destinationURL = folder.appendingPathComponent("audio.wav")
-        try FileManager.default.moveItem(at: stagingURL, to: destinationURL)
+        // Convert WAV → M4A so the recording is consistent with the store format
+        let destinationURL = StorageLayout.audioURL(id: newId)
+        try await Self.convertToM4A(from: stagingURL, to: destinationURL)
+        try? FileManager.default.removeItem(at: stagingURL)
 
         var meta = RecordingMeta.new(
             id: newId,
@@ -58,7 +62,7 @@ actor MobileTransferImporter {
         )
         meta.durationSeconds = info.durationSeconds
         meta.audio = AudioMeta(
-            filename: "audio.wav",
+            filename: "audio.m4a",
             status: .done,
             sizeBytes: info.sizeBytes
         )
@@ -76,6 +80,17 @@ actor MobileTransferImporter {
     }
 
     // MARK: - Private helpers
+
+    private static func convertToM4A(from source: URL, to destination: URL) async throws {
+        let asset = AVURLAsset(url: source)
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        session.outputURL = destination
+        session.outputFileType = .m4a
+        await session.export()
+        if let error = session.error { throw error }
+    }
 
     /// Scans the first 4 KB of a WAV file for the RODE_DUAL_CHANNEL marker.
     /// The marker is embedded in the BEXT originator field or INFO chunk by

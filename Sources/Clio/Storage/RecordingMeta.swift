@@ -183,7 +183,28 @@ struct UploadState: Codable, Equatable {
     }
 }
 
-// MARK: - RecordingMeta
+// MARK: - MobileImportMeta
+
+/// Provenance metadata written when a recording is imported from the Clio
+/// Recorder iOS app via the Bonjour/USB transfer flow.
+///
+/// `nil` on all recordings created natively on Mac.
+struct MobileImportMeta: Codable, Equatable {
+    /// Human-readable name of the iOS device (from Bonjour service name).
+    var iOSDeviceName: String
+    /// Original filename on the iOS device (e.g. `2026-06-04_14-35-22.wav`).
+    var originalFilename: String
+    /// When Clio Mac imported this recording.
+    var importedAt: Date
+    /// Whether the WAV file contained a `RODE_DUAL_CHANNEL` marker in its
+    /// metadata. When `true`, the transcription pipeline applies the
+    /// split-channel diarization flow (spec § 9.4).
+    var isDualChannel: Bool
+    /// The iOS-side recording ID (opaque string from `GET /recordings`).
+    var iOSRecordingId: String
+}
+
+
 
 /// Sidecar written as `<recording-folder>/meta.json`. Codable for atomic
 /// read-modify-write via `RecordingStore.updateMeta`.
@@ -218,6 +239,9 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
     /// The project this recording belongs to. Nil means unassigned.
     /// Upload is blocked when nil — researcher must assign a project first.
     var projectId: UUID?
+    /// Set when this recording was imported from a Clio Recorder iOS device
+    /// via the Bonjour/USB transfer flow. `nil` for recordings captured on Mac.
+    var mobileImport: MobileImportMeta?
 
     // MARK: - Factory
 
@@ -267,6 +291,7 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         case lastWarningDate
         case neutralCode
         case projectId
+        case mobileImport
     }
 
     init(from decoder: Decoder) throws {
@@ -285,6 +310,7 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         lastWarningDate = try c.decodeIfPresent(Date.self, forKey: .lastWarningDate)
         neutralCode = try c.decodeIfPresent(String.self, forKey: .neutralCode)
         projectId = try c.decodeIfPresent(UUID.self, forKey: .projectId)
+        mobileImport = try c.decodeIfPresent(MobileImportMeta.self, forKey: .mobileImport)
     }
 
     init(
@@ -299,7 +325,8 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         upload: UploadState,
         lastWarningDate: Date? = nil,
         neutralCode: String? = nil,
-        projectId: UUID? = nil
+        projectId: UUID? = nil,
+        mobileImport: MobileImportMeta? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -313,5 +340,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         self.lastWarningDate = lastWarningDate
         self.neutralCode = neutralCode
         self.projectId = projectId
+        self.mobileImport = mobileImport
     }
 }

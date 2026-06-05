@@ -87,6 +87,7 @@ struct NavPanel: View {
                 navItem(tab: .record, label: "Ta opp lyd", icon: "mic.fill")
                 navItem(tab: .recordings, label: "Bibliotek", icon: "books.vertical.fill")
                 navItem(tab: .analyse, label: "Analyser", icon: "brain.head.profile")
+                navItem(tab: .mobileTransfer, label: "Importer fra iPhone", icon: "iphone.and.arrow.forward")
             }
             .padding(.horizontal, 6)
             .padding(.top, 20)

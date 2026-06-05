@@ -99,6 +99,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure storage directories exist
         try? StorageLayout.ensureDirectoriesExist()
 
+        // Start the Bonjour confirmation server so iOS devices can query
+        // whether a transferred file has been received and indexed.
+        BonjourConfirmationServer.shared.start()
+
         // 30-day retention: DISABLED until grace period logic is added.
         // Enabling this without a grace period would retroactively delete
         // all pre-existing recordings whose createdAt is older than 30 days,
@@ -193,6 +197,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        BonjourConfirmationServer.shared.stop()
         return true
     }
 

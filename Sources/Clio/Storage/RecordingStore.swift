@@ -96,6 +96,24 @@ final class RecordingStore {
 
     // MARK: - Create
 
+    /// Creates a recording folder and writes the provided metadata sidecar
+    /// directly. Used by the mobile transfer importer where metadata is
+    /// already fully populated before the folder is created.
+    func create(meta: RecordingMeta) throws {
+        try StorageLayout.ensureDirectoriesExist()
+        let folder = StorageLayout.recordingFolder(id: meta.id)
+        do {
+            try FileManager.default.createDirectory(
+                at: folder,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            throw RecordingStoreError.ioFailed(folder, underlying: error)
+        }
+        try writeMeta(meta)
+        notifyDidChange(id: meta.id)
+    }
+
     /// Creates a new recording folder with an initial sidecar. Caller writes
     /// audio to `handle.audioURL` separately. Returns the handle so the
     /// caller doesn't need to re-derive paths.
@@ -265,6 +283,12 @@ final class RecordingStore {
         } catch {
             throw RecordingStoreError.ioFailed(url, underlying: error)
         }
+    }
+
+    /// `allRecordings()` is an alias for `loadAll()` for use from async contexts
+    /// (e.g. BonjourConfirmationServer) where a throwing signature is convenient.
+    func allRecordings() throws -> [RecordingMeta] {
+        loadAll()
     }
 
     // MARK: - Notifications

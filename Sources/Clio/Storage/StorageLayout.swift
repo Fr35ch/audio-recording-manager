@@ -72,6 +72,14 @@ enum StorageLayout {
         dataRoot.appendingPathComponent("analyses", isDirectory: true)
     }
 
+    /// `<dataRoot>/mobile-inbox/` — temporary staging for WAVs downloaded from
+    /// Clio Recorder iOS before they are imported into `recordingsRoot`.
+    /// Files here are moved (not copied) into recording folders; the directory
+    /// is cleaned up by `MobileTransferImporter` after a successful import.
+    static var mobileInboxURL: URL {
+        dataRoot.appendingPathComponent("mobile-inbox", isDirectory: true)
+    }
+
     // MARK: - Per-recording paths
 
     /// `<recordingsRoot>/<uuid>/`

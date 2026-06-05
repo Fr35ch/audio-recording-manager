@@ -101,6 +101,8 @@ struct MainView: View {
             )
         case .analyse:
             AnalyseScreen(selectedAnalysisId: $selectedAnalysisId)
+        case .mobileTransfer:
+            MobileTransferScreen()
         }
     }
 
@@ -116,6 +118,8 @@ struct MainView: View {
             if selectedAnalysisId == nil {
                 selectedAnalysisId = AnalysisStore.shared.loadAll().first?.id
             }
+        case .mobileTransfer:
+            break
         }
     }
 }

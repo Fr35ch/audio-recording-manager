@@ -6,4 +6,5 @@ enum AppTab {
     case record
     case recordings
     case analyse
+    case mobileTransfer
 }

@@ -192,8 +192,11 @@ struct MobileTransferScreen: View {
     // MARK: - Actions
 
     private func connectTo(device: DiscoverediOSDevice) {
-        if let token = pairing.token(for: device.id) {
-            _ = token
+        // Use token from TXT record if available, otherwise fall back to stored/manual token
+        if let advertisedToken = device.advertisedToken {
+            pairing.confirmPairing(deviceId: device.id, token: advertisedToken)
+            Task { await fetchRecordings(for: device) }
+        } else if pairing.token(for: device.id) != nil {
             Task { await fetchRecordings(for: device) }
         } else {
             enteredToken = ""

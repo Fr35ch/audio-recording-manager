@@ -23,6 +23,7 @@ struct DiscoverediOSDevice: Identifiable, Equatable, Hashable {
     let id: String          // Bonjour service name — stable per device
     let name: String        // Human-readable display name
     let endpoint: NWEndpoint
+    let advertisedToken: String?  // Token from TXT record, used for auth
 }
 
 // MARK: - Browser
@@ -69,10 +70,15 @@ final class MobileTransferBrowser: ObservableObject {
         nb.browseResultsChangedHandler = { [weak self] results, _ in
             let devices = results.compactMap { result -> DiscoverediOSDevice? in
                 guard case let .service(name, _, _, _) = result.endpoint else { return nil }
+                var token: String?
+                if case let .bonjour(txtRecord) = result.metadata {
+                    token = txtRecord.dictionary["token"]
+                }
                 return DiscoverediOSDevice(
                     id: name,
                     name: name,
-                    endpoint: result.endpoint
+                    endpoint: result.endpoint,
+                    advertisedToken: token
                 )
             }
             Task { @MainActor [weak self] in

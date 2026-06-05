@@ -128,7 +128,7 @@ struct MobileTransferScreen: View {
                     if let size = recording.sizeBytes {
                         Label(formatSize(size), systemImage: "internaldrive")
                     }
-                    if recording.isDualChannel {
+                    if recording.isDualChannel == true {
                         Label("RØDE stereo", systemImage: "mic.fill")
                             .foregroundStyle(.orange)
                     }

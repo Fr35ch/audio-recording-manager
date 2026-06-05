@@ -26,7 +26,7 @@ struct MobileRecordingInfo: Codable, Identifiable {
     let durationSeconds: Double?
     let sizeBytes: Int64?
     let recordedAt: Date?
-    let isDualChannel: Bool        // RODE_DUAL_CHANNEL marker present
+    let isDualChannel: Bool?       // RODE_DUAL_CHANNEL marker present
 }
 
 // MARK: - Errors

@@ -42,7 +42,7 @@ actor MobileTransferImporter {
         info: MobileRecordingInfo,
         deviceName: String
     ) async throws -> MobileImportResult {
-        let isDualChannel = info.isDualChannel || (try? Self.detectDualChannelMarker(at: stagingURL)) == true
+        let isDualChannel = (info.isDualChannel == true) || (try? Self.detectDualChannelMarker(at: stagingURL)) == true
         let newId = UUID()
         let folder = StorageLayout.recordingFolder(id: newId)
 

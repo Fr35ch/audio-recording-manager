@@ -1,15 +1,13 @@
 // MobileTransferScreen.swift
 // Clio
 //
-// UI for importing recordings from a paired Clio Recorder iOS device.
+// UI for importing recordings from Clio Recorder iOS devices.
 //
 // Flow
 // ----
 // 1. Screen appears → MobileTransferBrowser starts scanning for `_clio-transfer._tcp`
 // 2. User sees a list of discovered iPhone(s)
-// 3. User selects a device → pairing check
-//    a. If unpaired: show token, instruct user to enter it in iOS app, then tap "Bekrefter"
-//    b. If paired: proceed to recording list
+// 3. User selects a device → recording list is fetched immediately
 // 4. Recording list fetched via `MobileTransferClient.listRecordings()`
 // 5. User taps a recording row → download + import via `MobileTransferImporter`
 // 6. After import, Clio Mac sends `POST /recordings/:id/confirm` to iOS
@@ -20,14 +18,11 @@ import SwiftUI
 struct MobileTransferScreen: View {
 
     @StateObject private var browser = MobileTransferBrowser()
-    @StateObject private var pairing = MobilePairingService()
     @State private var selectedDevice: DiscoverediOSDevice?
     @State private var recordings: [MobileRecordingInfo] = []
     @State private var isFetchingList = false
     @State private var importingId: String?
     @State private var errorMessage: String?
-    @State private var showPairingSheet = false
-    @State private var enteredToken: String = ""
 
     private let importer = MobileTransferImporter()
 
@@ -84,7 +79,6 @@ struct MobileTransferScreen: View {
         .navigationTitle("Importer fra iPhone")
         .onAppear { browser.startBrowsing() }
         .onDisappear { browser.stopBrowsing() }
-        .sheet(isPresented: $showPairingSheet) { pairingSheet }
         .alert("Feil", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -152,83 +146,19 @@ struct MobileTransferScreen: View {
         .padding(.vertical, AppSpacing.xs)
     }
 
-    // MARK: - Pairing sheet
-
-    private var pairingSheet: some View {
-        VStack(spacing: AppSpacing.lg) {
-            Image(systemName: "iphone.and.arrow.forward")
-                .font(.system(size: 48))
-                .foregroundStyle(.blue)
-
-            Text("Par med iPhone")
-                .font(.title2.bold())
-
-            Text("Åpne Clio Recorder på iPhone og kopier koden som vises der:")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-
-            TextField("Lim inn kode fra iPhone", text: $enteredToken)
-                .font(.system(.title3, design: .monospaced))
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 260)
-                .onSubmit { confirmIfValid() }
-
-            HStack {
-                Button("Avbryt") {
-                    enteredToken = ""
-                    showPairingSheet = false
-                }
-                .buttonStyle(HoverButtonStyle())
-                Button("Bekrefter") { confirmIfValid() }
-                    .buttonStyle(GlassButtonStyle())
-                    .disabled(enteredToken.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(AppSpacing.xl)
-        .frame(width: 360)
-    }
-
     // MARK: - Actions
 
     private func connectTo(device: DiscoverediOSDevice) {
-        // Use token from TXT record if available, otherwise fall back to stored/manual token
-        if let advertisedToken = device.advertisedToken {
-            pairing.confirmPairing(deviceId: device.id, token: advertisedToken)
-            Task { await fetchRecordings(for: device) }
-        } else if pairing.token(for: device.id) != nil {
-            Task { await fetchRecordings(for: device) }
-        } else {
-            enteredToken = ""
-            showPairingSheet = true
-        }
-    }
-
-    private func confirmIfValid() {
-        let token = enteredToken.trimmingCharacters(in: .whitespaces)
-        guard !token.isEmpty, let device = selectedDevice else { return }
-        enteredToken = ""
-        showPairingSheet = false
-        pairing.confirmPairing(deviceId: device.id, token: token)
         Task { await fetchRecordings(for: device) }
     }
 
     private func fetchRecordings(for device: DiscoverediOSDevice) async {
-        guard let token = pairing.token(for: device.id) else {
-            NSLog("[MobileTransfer] No token for device \(device.id)")
-            return
-        }
         NSLog("[MobileTransfer] Fetching recordings for \(device.id), endpoint: \(device.endpoint)")
-        let client = MobileTransferClient(deviceId: device.id, token: token, endpoint: device.endpoint)
+        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint)
         isFetchingList = true
         defer { isFetchingList = false }
         do {
             recordings = try await client.listRecordings()
-            NSLog("[MobileTransfer] Got \(recordings.count) recordings")
-        } catch MobileTransferError.unauthorized {
-            NSLog("[MobileTransfer] Unauthorized — revoking")
-            pairing.revoke(deviceId: device.id)
-            errorMessage = "Autentisering feilet. Par enheten på nytt."
         } catch {
             NSLog("[MobileTransfer] Error: \(error)")
             errorMessage = error.localizedDescription
@@ -236,10 +166,8 @@ struct MobileTransferScreen: View {
     }
 
     private func importRecording(_ recording: MobileRecordingInfo) async {
-        guard let device = selectedDevice,
-              let token = pairing.token(for: device.id) else { return }
-
-        let client = MobileTransferClient(deviceId: device.id, token: token, endpoint: device.endpoint)
+        guard let device = selectedDevice else { return }
+        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint)
         importingId = recording.id
         defer { importingId = nil }
 
@@ -251,7 +179,6 @@ struct MobileTransferScreen: View {
                 deviceName: device.name
             )
             try await client.confirmReceipt(id: recording.id)
-            // Remove from list — it's now in the library
             recordings.removeAll { $0.id == recording.id }
         } catch {
             errorMessage = error.localizedDescription

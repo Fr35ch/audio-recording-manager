@@ -32,7 +32,6 @@ struct MobileRecordingInfo: Codable, Identifiable {
 // MARK: - Errors
 
 enum MobileTransferError: LocalizedError {
-    case unauthorized
     case networkError(underlying: Error)
     case unexpectedStatus(Int)
     case decodingFailed(underlying: Error)
@@ -40,8 +39,6 @@ enum MobileTransferError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unauthorized:
-            return "Ugyldig autentiseringstoken. Par enheten på nytt."
         case .networkError(let e):
             return "Nettverksfeil: \(e.localizedDescription)"
         case .unexpectedStatus(let code):
@@ -59,7 +56,6 @@ enum MobileTransferError: LocalizedError {
 actor MobileTransferClient {
 
     private let deviceId: String
-    private let token: String
     private let endpoint: NWEndpoint
     private var resolvedBaseURL: URL?
 
@@ -69,9 +65,8 @@ actor MobileTransferClient {
         return d
     }()
 
-    init(deviceId: String, token: String, endpoint: NWEndpoint) {
+    init(deviceId: String, endpoint: NWEndpoint) {
         self.deviceId = deviceId
-        self.token = token
         self.endpoint = endpoint
     }
 
@@ -190,7 +185,6 @@ actor MobileTransferClient {
 
     private func authenticatedRequest(url: URL) -> URLRequest {
         var req = URLRequest(url: url, timeoutInterval: 30)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         return req
     }
 
@@ -203,8 +197,6 @@ actor MobileTransferClient {
             switch http.statusCode {
             case 200...299:
                 return data
-            case 401:
-                throw MobileTransferError.unauthorized
             default:
                 throw MobileTransferError.unexpectedStatus(http.statusCode)
             }

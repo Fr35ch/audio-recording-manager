@@ -32,18 +32,54 @@ struct MobileTransferScreen: View {
     private let importer = MobileTransferImporter()
 
     var body: some View {
-        NavigationSplitView {
-            deviceSidebar
-        } detail: {
-            if selectedDevice != nil {
-                recordingList
-            } else {
-                ContentUnavailableView(
-                    "Velg en iPhone",
-                    systemImage: "iphone",
-                    description: Text("Koble til iPhone via USB eller samme Wi-Fi-nettverk, og åpne Clio Recorder.")
-                )
+        HStack(spacing: 0) {
+            // Device sidebar
+            VStack(spacing: 0) {
+                List(browser.discoveredDevices, selection: $selectedDevice) { device in
+                    Label(device.name, systemImage: "iphone")
+                        .tag(device)
+                }
+                .overlay {
+                    if browser.isSearching && browser.discoveredDevices.isEmpty {
+                        VStack(spacing: AppSpacing.md) {
+                            ProgressView()
+                            Text("Søker etter iPhone...")
+                                .foregroundStyle(.secondary)
+                                .font(.caption)
+                        }
+                    } else if !browser.isSearching && browser.discoveredDevices.isEmpty {
+                        ContentUnavailableView(
+                            "Ingen iPhone funnet",
+                            systemImage: "iphone.slash",
+                            description: Text("Åpne Clio Recorder og koble til via USB eller Wi-Fi.")
+                        )
+                    }
+                }
+                .onChange(of: selectedDevice) { _, device in
+                    recordings = []
+                    guard let device else { return }
+                    connectTo(device: device)
+                }
             }
+            .frame(width: 220)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .overlay(alignment: .trailing) {
+                Divider()
+            }
+
+            // Detail area
+            Group {
+                if selectedDevice != nil {
+                    recordingList
+                } else {
+                    ContentUnavailableView(
+                        "Velg en iPhone",
+                        systemImage: "iphone",
+                        description: Text("Koble til iPhone via USB eller samme Wi-Fi-nettverk, og åpne Clio Recorder.")
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Importer fra iPhone")
         .onAppear { browser.startBrowsing() }
@@ -56,44 +92,6 @@ struct MobileTransferScreen: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
-        }
-    }
-
-    // MARK: - Device sidebar
-
-    private var deviceSidebar: some View {
-        List(browser.discoveredDevices, selection: $selectedDevice) { device in
-            Label(device.name, systemImage: "iphone")
-                .tag(device)
-        }
-        .overlay {
-            if browser.isSearching && browser.discoveredDevices.isEmpty {
-                VStack(spacing: AppSpacing.md) {
-                    ProgressView()
-                    Text("Søker etter iPhone...")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                }
-            } else if !browser.isSearching && browser.discoveredDevices.isEmpty {
-                ContentUnavailableView(
-                    "Ingen iPhone funnet",
-                    systemImage: "iphone.slash",
-                    description: Text("Åpne Clio Recorder og koble til via USB eller Wi-Fi.")
-                )
-            }
-        }
-        .onChange(of: selectedDevice) { _, device in
-            recordings = []
-            guard let device else { return }
-            connectTo(device: device)
-        }
-        .navigationTitle("iPhone")
-        .toolbar {
-            ToolbarItem {
-                if browser.isSearching {
-                    ProgressView().scaleEffect(0.7)
-                }
-            }
         }
     }
 

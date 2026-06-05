@@ -131,10 +131,12 @@ actor MobileTransferClient {
 
     /// Connects briefly via NWConnection to resolve a .service endpoint to host:port.
     private func resolveServiceEndpoint() async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
+        NSLog("[MobileTransferClient] Resolving service endpoint: \(endpoint)")
+        return try await withCheckedThrowingContinuation { continuation in
             let conn = NWConnection(to: endpoint, using: .tcp)
             var resumed = false
             conn.stateUpdateHandler = { state in
+                NSLog("[MobileTransferClient] Connection state: \(state)")
                 guard !resumed else { return }
                 switch state {
                 case .ready:

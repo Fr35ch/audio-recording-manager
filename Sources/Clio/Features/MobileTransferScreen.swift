@@ -214,16 +214,23 @@ struct MobileTransferScreen: View {
     }
 
     private func fetchRecordings(for device: DiscoverediOSDevice) async {
-        guard let token = pairing.token(for: device.id) else { return }
+        guard let token = pairing.token(for: device.id) else {
+            NSLog("[MobileTransfer] No token for device \(device.id)")
+            return
+        }
+        NSLog("[MobileTransfer] Fetching recordings for \(device.id), endpoint: \(device.endpoint)")
         let client = MobileTransferClient(deviceId: device.id, token: token, endpoint: device.endpoint)
         isFetchingList = true
         defer { isFetchingList = false }
         do {
             recordings = try await client.listRecordings()
+            NSLog("[MobileTransfer] Got \(recordings.count) recordings")
         } catch MobileTransferError.unauthorized {
+            NSLog("[MobileTransfer] Unauthorized — revoking")
             pairing.revoke(deviceId: device.id)
             errorMessage = "Autentisering feilet. Par enheten på nytt."
         } catch {
+            NSLog("[MobileTransfer] Error: \(error)")
             errorMessage = error.localizedDescription
         }
     }

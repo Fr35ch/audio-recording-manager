@@ -115,25 +115,74 @@ actor MobileTransferClient {
 
     private func baseURL() async throws -> URL {
         if let cached = resolvedBaseURL { return cached }
-        guard case let .hostPort(host, port) = endpoint else {
-            throw MobileTransferError.noEndpointResolved
-        }
-        let hostString: String
-        switch host {
-        case .ipv4(let addr):
-            hostString = "\(addr)"
-        case .ipv6(let addr):
-            hostString = "[\(addr)]"
-        case .name(let name, _):
-            hostString = name
-        @unknown default:
-            throw MobileTransferError.noEndpointResolved
-        }
-        let portInt = Int(port.rawValue)
-        guard let url = URL(string: "http://\(hostString):\(portInt)") else {
+
+        let url: URL
+        switch endpoint {
+        case .hostPort(let host, let port):
+            url = try urlFrom(host: host, port: port)
+        case .service:
+            url = try await resolveServiceEndpoint()
+        default:
             throw MobileTransferError.noEndpointResolved
         }
         resolvedBaseURL = url
+        return url
+    }
+
+    /// Connects briefly via NWConnection to resolve a .service endpoint to host:port.
+    private func resolveServiceEndpoint() async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let conn = NWConnection(to: endpoint, using: .tcp)
+            var resumed = false
+            conn.stateUpdateHandler = { state in
+                guard !resumed else { return }
+                switch state {
+                case .ready:
+                    resumed = true
+                    if let remote = conn.currentPath?.remoteEndpoint,
+                       case let .hostPort(host, port) = remote {
+                        conn.cancel()
+                        let hostString: String
+                        switch host {
+                        case .ipv4(let a): hostString = "\(a)"
+                        case .ipv6(let a): hostString = "[\(a)]"
+                        case .name(let n, _): hostString = n
+                        @unknown default:
+                            continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                            return
+                        }
+                        if let url = URL(string: "http://\(hostString):\(port.rawValue)") {
+                            continuation.resume(returning: url)
+                        } else {
+                            continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                        }
+                    } else {
+                        conn.cancel()
+                        continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                    }
+                case .failed(let error):
+                    resumed = true
+                    conn.cancel()
+                    continuation.resume(throwing: MobileTransferError.networkError(underlying: error))
+                default:
+                    break
+                }
+            }
+            conn.start(queue: DispatchQueue(label: "no.nav.clio.endpoint-resolver"))
+        }
+    }
+
+    private func urlFrom(host: NWEndpoint.Host, port: NWEndpoint.Port) throws -> URL {
+        let hostString: String
+        switch host {
+        case .ipv4(let addr): hostString = "\(addr)"
+        case .ipv6(let addr): hostString = "[\(addr)]"
+        case .name(let name, _): hostString = name
+        @unknown default: throw MobileTransferError.noEndpointResolved
+        }
+        guard let url = URL(string: "http://\(hostString):\(port.rawValue)") else {
+            throw MobileTransferError.noEndpointResolved
+        }
         return url
     }
 

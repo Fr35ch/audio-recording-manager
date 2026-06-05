@@ -26,7 +26,6 @@ import Security
 
 enum PairingState: Equatable {
     case unpaired
-    case pendingConfirmation(token: String)   // token shown, not yet verified
     case paired(deviceId: String)
 }
 
@@ -39,17 +38,7 @@ final class MobilePairingService: ObservableObject {
 
     // MARK: - Token management
 
-    /// Generates a new random 24-character hex token and moves into
-    /// `.pendingConfirmation`. Display this token in the UI.
-    func beginPairing() -> String {
-        var bytes = [UInt8](repeating: 0, count: 12)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        let token = bytes.map { String(format: "%02x", $0) }.joined()
-        state = .pendingConfirmation(token: token)
-        return token
-    }
-
-    /// Called after a successful authenticated request to an iOS device.
+    /// Called after the user pastes the token shown by the iOS app.
     /// Persists the token in Keychain and marks the device as paired.
     func confirmPairing(deviceId: String, token: String) {
         saveToken(token, for: deviceId)

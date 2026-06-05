@@ -27,7 +27,7 @@ struct MobileTransferScreen: View {
     @State private var importingId: String?
     @State private var errorMessage: String?
     @State private var showPairingSheet = false
-    @State private var pendingToken: String?
+    @State private var enteredToken: String = ""
 
     private let importer = MobileTransferImporter()
 
@@ -165,32 +165,26 @@ struct MobileTransferScreen: View {
             Text("Par med iPhone")
                 .font(.title2.bold())
 
-            Text("Skriv inn denne koden i Clio Recorder på iPhone:")
+            Text("Åpne Clio Recorder på iPhone og kopier koden som vises der:")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
-            if let token = pendingToken {
-                Text(token)
-                    .font(.system(.title, design: .monospaced).bold())
-                    .padding(AppSpacing.md)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: AppRadius.medium))
-            }
-
-            Text("Trykk «Bekrefter» etter at du har lagt inn koden.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            TextField("Lim inn kode fra iPhone", text: $enteredToken)
+                .font(.system(.title3, design: .monospaced))
                 .multilineTextAlignment(.center)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 260)
+                .onSubmit { confirmIfValid() }
 
             HStack {
-                Button("Avbryt") { showPairingSheet = false }
-                    .buttonStyle(HoverButtonStyle())
-                Button("Bekrefter") {
+                Button("Avbryt") {
+                    enteredToken = ""
                     showPairingSheet = false
-                    guard let device = selectedDevice, let token = pendingToken else { return }
-                    pairing.confirmPairing(deviceId: device.id, token: token)
-                    Task { await fetchRecordings(for: device) }
                 }
-                .buttonStyle(GlassButtonStyle())
+                .buttonStyle(HoverButtonStyle())
+                Button("Bekrefter") { confirmIfValid() }
+                    .buttonStyle(GlassButtonStyle())
+                    .disabled(enteredToken.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
         .padding(AppSpacing.xl)
@@ -204,10 +198,18 @@ struct MobileTransferScreen: View {
             _ = token
             Task { await fetchRecordings(for: device) }
         } else {
-            let token = pairing.beginPairing()
-            pendingToken = token
+            enteredToken = ""
             showPairingSheet = true
         }
+    }
+
+    private func confirmIfValid() {
+        let token = enteredToken.trimmingCharacters(in: .whitespaces)
+        guard !token.isEmpty, let device = selectedDevice else { return }
+        enteredToken = ""
+        showPairingSheet = false
+        pairing.confirmPairing(deviceId: device.id, token: token)
+        Task { await fetchRecordings(for: device) }
     }
 
     private func fetchRecordings(for device: DiscoverediOSDevice) async {

@@ -68,10 +68,7 @@ final class MobileTransferBrowser: ObservableObject {
 
         nb.browseResultsChangedHandler = { [weak self] results, _ in
             let devices = results.compactMap { result -> DiscoverediOSDevice? in
-                guard case let .bonjour(txtRecord) = result.metadata else { return nil }
-                // Use the service name from the endpoint directly
                 guard case let .service(name, _, _, _) = result.endpoint else { return nil }
-                _ = txtRecord
                 return DiscoverediOSDevice(
                     id: name,
                     name: name,

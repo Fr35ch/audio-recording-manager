@@ -15,7 +15,6 @@
 		F609B88F661C44388819B99C /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1DFBD96E67848828C8165D3 /* MainView.swift */; };
 		AA001122334455667788BF01 /* MobileTransferScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788BB01 /* MobileTransferScreen.swift */; };
 		AA001122334455667788BF11 /* BonjourConfirmationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT01 /* BonjourConfirmationServer.swift */; };
-		AA001122334455667788BF12 /* MobilePairingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT02 /* MobilePairingService.swift */; };
 		AA001122334455667788BF13 /* MobileTransferBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT03 /* MobileTransferBrowser.swift */; };
 		AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT04 /* MobileTransferClient.swift */; };
 		AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT05 /* MobileTransferImporter.swift */; };
@@ -117,7 +116,6 @@
 		A1DFBD96E67848828C8165D3 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		AA001122334455667788BB01 /* MobileTransferScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferScreen.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT01 /* BonjourConfirmationServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourConfirmationServer.swift; sourceTree = "<group>"; };
-		AA001122334455667788MT02 /* MobilePairingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePairingService.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT03 /* MobileTransferBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferBrowser.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT04 /* MobileTransferClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferClient.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT05 /* MobileTransferImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferImporter.swift; sourceTree = "<group>"; };
@@ -272,7 +270,6 @@
 			isa = PBXGroup;
 			children = (
 				AA001122334455667788MT01 /* BonjourConfirmationServer.swift */,
-				AA001122334455667788MT02 /* MobilePairingService.swift */,
 				AA001122334455667788MT03 /* MobileTransferBrowser.swift */,
 				AA001122334455667788MT04 /* MobileTransferClient.swift */,
 				AA001122334455667788MT05 /* MobileTransferImporter.swift */,
@@ -623,7 +620,6 @@
 				F609B88F661C44388819B99C /* MainView.swift in Sources */,
 				AA001122334455667788BF01 /* MobileTransferScreen.swift in Sources */,
 				AA001122334455667788BF11 /* BonjourConfirmationServer.swift in Sources */,
-				AA001122334455667788BF12 /* MobilePairingService.swift in Sources */,
 				AA001122334455667788BF13 /* MobileTransferBrowser.swift in Sources */,
 				AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */,
 				AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */,

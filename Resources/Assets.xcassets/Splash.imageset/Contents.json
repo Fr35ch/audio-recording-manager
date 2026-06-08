@@ -6,10 +6,12 @@
       "scale" : "1x"
     },
     {
+      "filename" : "SplashBackground 1.svg",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
+      "filename" : "SplashBackground 2.svg",
       "idiom" : "universal",
       "scale" : "3x"
     }

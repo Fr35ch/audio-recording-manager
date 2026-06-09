@@ -77,8 +77,7 @@ struct TranscriptEditorView: View {
     /// Per-segment anonymized text, keyed by segment.id.
     /// Pre-computed once when anonymizationResult is loaded/updated — never inside the render loop.
     @State private var segmentAnonymizedTexts: [Int: String] = [:]
-    @AppStorage("analysis.llmModel") private var llmModel: String = "qwen3:8b"
-    private var ollamaModelId: String { LLMModel.from(storedValue: llmModel).ollamaId }
+    @AppStorage("analysis.llmModel") private var ollamaModelId: String = "qwen3:8b"
 
     init(
         recordingId: UUID,

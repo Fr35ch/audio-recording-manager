@@ -25,7 +25,6 @@ import SwiftUI
 struct BibliotekView: View {
     @ObservedObject var recordingsManager: RecordingsManager
     @ObservedObject var audioPlayer: AudioPlayer
-    @ObservedObject var analysisStore = AnalysisStore.shared
     @ObservedObject var transcriptionRunner = TranscriptionRunner.shared
     @Binding var selectedRecording: RecordingItem?
     /// `true` when column 3 is visible (a recording is selected); the
@@ -64,7 +63,6 @@ struct BibliotekView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { reload() }
         .onChange(of: recordingsManager.recordings) { _, _ in reload() }
-        .onChange(of: analysisStore.changeToken) { _, _ in reload() }
         .onChange(of: transcriptionRunner.inFlight) { _, _ in reload() }
     }
 
@@ -88,8 +86,7 @@ struct BibliotekView: View {
     private var summaryLine: String {
         let total = bundles.count
         let transcribed = bundles.filter { $0.isTranscribed }.count
-        let analysed = bundles.filter { $0.analyse.label == "Ferdig" }.count
-        return "\(total) opptak · \(transcribed) transkribert · \(analysed) analysert"
+        return "\(total) opptak · \(transcribed) transkribert"
     }
 
     // MARK: - Filter chips
@@ -323,16 +320,9 @@ struct BibliotekView: View {
 
     private func reload() {
         let metas = RecordingStore.shared.loadAll()
-        let allAnalyses = AnalysisStore.shared.loadAll()
 
         bundles = metas.map { meta in
-            let mine = allAnalyses.filter { analysis in
-                analysis.sources.contains { $0.recordingId == meta.id }
-            }
-            return RecordingStatusBundle.make(
-                meta: meta,
-                analyses: mine
-            )
+            RecordingStatusBundle.make(meta: meta)
         }
     }
 
@@ -417,7 +407,6 @@ private struct BibliotekRow<TranscribeButton: View>: View {
 
             if !isCompact {
                 StatusChipView(chip: bundle.avident).frame(width: 110, alignment: .leading)
-                StatusChipView(chip: bundle.analyse).frame(width: 100, alignment: .leading)
                 StatusChipView(chip: bundle.teams).frame(width: 70, alignment: .leading)
             }
             Text(bundle.slettes.label)
@@ -479,7 +468,6 @@ private extension RecordingStatusBundle {
             durationSeconds: nil,
             transcript: StatusChip(label: "—", tone: .neutral),
             avident: StatusChip(label: "—", tone: .neutral),
-            analyse: StatusChip(label: "—", tone: .neutral),
             teams: StatusChip(label: "—", tone: .neutral),
             slettes: StatusChip(label: "—", tone: .neutral),
             isTranscribed: false,

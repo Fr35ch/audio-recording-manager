@@ -143,19 +143,9 @@ final class OllamaManager {
     /// For standard Ollama Hub models, uses `ollama pull`.
     /// Streams progress strings to `onProgress`. Throws `PullError` on failure.
     /// Must be called off the main thread.
-    func pull(model: LLMModel, onProgress: @escaping (String) -> Void) throws {
+    func pull(modelId: String, onProgress: @escaping (String) -> Void) throws {
         guard let binary = ollamaBinaryPath else { throw PullError.notInstalled }
-
-        if let ggufUrl = model.directGGUFUrl {
-            try downloadGGUFAndCreate(
-                url: ggufUrl,
-                ollamaId: model.ollamaId,
-                binary: binary,
-                onProgress: onProgress
-            )
-        } else {
-            try ollamaPull(modelId: model.ollamaId, binary: binary, onProgress: onProgress)
-        }
+        try ollamaPull(modelId: modelId, binary: binary, onProgress: onProgress)
     }
 
     // MARK: - Private helpers

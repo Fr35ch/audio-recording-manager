@@ -95,33 +95,8 @@ class RecordingsManager: ObservableObject {
         print("📋 Loaded \(recordings.count) recordings from RecordingStore")
     }
 
-    /// Hard-deletes a recording and cascades to any analyses that
-    /// reference it. Analyses are first-class entities under
-    /// `<dataRoot>/analyses/`; if they keep referencing a deleted
-    /// recording the result view shows stale data forever. Cascading
-    /// keeps state consistent.
-    ///
-    /// Order matters: analyses are deleted *before* the recording so
-    /// that a partial failure (recording delete throws after analyses
-    /// already gone) leaves the system with a missing recording and no
-    /// dangling analyses, rather than orphan analyses pointing into
-    /// nothing.
+    /// Hard-deletes a recording.
     func deleteRecording(_ item: RecordingItem) {
-        // Find and cascade-delete every analysis that references this
-        // recording. AnalysisSource.recordingId is the link.
-        let analyses = AnalysisStore.shared.loadAll()
-        for analysis in analyses
-            where analysis.sources.contains(where: { $0.recordingId == item.id })
-        {
-            do {
-                try AnalysisStore.shared.delete(id: analysis.id)
-                print("🗑️ Cascade-deleted analyse \(analysis.id.uuidString) (referenced \(item.filename))")
-            } catch {
-                print("⚠️ Could not delete linked analyse \(analysis.id.uuidString): \(error)")
-            }
-        }
-
-        // Now delete the recording itself.
         do {
             try RecordingStore.shared.delete(id: item.id)
             print("🗑️ Deleted: \(item.filename)")

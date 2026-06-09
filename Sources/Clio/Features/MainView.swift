@@ -9,7 +9,6 @@ struct MainView: View {
 
     @State private var selectedTab: AppTab = .record
     @State private var selectedRecording: RecordingItem? = nil
-    @State private var selectedAnalysisId: UUID? = nil
     @State private var showAbout = false
     @State private var showLogViewer = false
     @State private var showDesignShowcase = false
@@ -100,7 +99,7 @@ struct MainView: View {
                 selectedRecording: $selectedRecording
             )
         case .analyse:
-            AnalyseScreen(selectedAnalysisId: $selectedAnalysisId)
+            AnalyseScreen()
         case .mobileTransfer:
             MobileTransferScreen()
         }
@@ -115,9 +114,7 @@ struct MainView: View {
                 selectedRecording = recordingsManager.recordings.first
             }
         case .analyse:
-            if selectedAnalysisId == nil {
-                selectedAnalysisId = AnalysisStore.shared.loadAll().first?.id
-            }
+            break
         case .mobileTransfer:
             break
         }

@@ -1240,10 +1240,6 @@ struct RecordingRowView: View {
         ProcessingStateCache.shared.state(for: recording.path).diarization.status == .completed
     }
 
-    private var hasAnalysis: Bool {
-        ProcessingStateCache.shared.state(for: recording.path).analysis.status == .completed
-    }
-
     private var expiryState: ExpiryWarningState {
         guard let meta = loadMeta() else { return .none }
         return RecordingExpiryManager.shared.warningState(for: meta)
@@ -1296,12 +1292,6 @@ struct RecordingRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.blue.opacity(0.7))
                             .help("Talere identifisert")
-                    }
-                    if hasAnalysis {
-                        Image(systemName: "brain.head.profile")
-                            .font(.caption2)
-                            .foregroundStyle(.purple.opacity(0.7))
-                            .help("Analysert")
                     }
                 }
 

@@ -92,7 +92,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "transcription.language":        "no",
             "transcription.validateMode":    "warn",
             "transcription.numBeams":        3,
-            "analysis.llmModel":             LLMModel.defaultModel.rawValue,
             "beta.enabled":                  false,
         ])
 

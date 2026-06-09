@@ -22,7 +22,6 @@ struct ProcessingStepState: Codable {
 struct RecordingProcessingState: Codable {
     var transcription = ProcessingStepState()
     var diarization  = ProcessingStepState()
-    var analysis     = ProcessingStepState()
 }
 
 // MARK: - Processing step enum
@@ -30,14 +29,11 @@ struct RecordingProcessingState: Codable {
 enum ProcessingStep {
     case transcription
     case diarization
-    case analysis
 }
 
 // MARK: - Cache
 
 /// Thread-safe, disk-backed store for per-step processing status (not result blobs).
-/// Analysis results are persisted by `AnalysisStore` under `<dataRoot>/analyses/<id>/`;
-/// this cache only tracks `notStarted/inProgress/completed/failed` per step.
 final class ProcessingStateCache {
     static let shared = ProcessingStateCache()
     private init() { loadFromDisk() }
@@ -68,10 +64,6 @@ final class ProcessingStateCache {
             s.diarization.status = status
             s.diarization.errorMessage = error
             if status == .completed { s.diarization.completedAt = Date() }
-        case .analysis:
-            s.analysis.status = status
-            s.analysis.errorMessage = error
-            if status == .completed { s.analysis.completedAt = Date() }
         }
         store[path] = s
         lock.unlock()

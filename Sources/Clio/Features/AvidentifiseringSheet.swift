@@ -46,8 +46,7 @@ struct AvidentifiseringSheet: View {
     let isDirty: Bool
     @Binding var isPresented: Bool
 
-    @AppStorage("analysis.llmModel") private var llmModel: String = "qwen3:8b"
-    private var ollamaModelId: String { LLMModel.from(storedValue: llmModel).ollamaId }
+    @AppStorage("analysis.llmModel") private var ollamaModelId: String = "qwen3:8b"
 
     @State private var state: AnonymizationState = .idle
     @State private var task: Task<Void, Never>?

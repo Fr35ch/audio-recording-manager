@@ -29,11 +29,6 @@ class DependencyManager: ObservableObject {
     @Published var overallProgress: Double = 0
     @Published var statusMessage: String = ""
 
-    /// The currently configured LLM model, read from UserDefaults.
-    private var selectedLLMModel: LLMModel {
-        LLMModel.from(storedValue: UserDefaults.standard.string(forKey: "analysis.llmModel"))
-    }
-
     func runAll() async {
         for check in DependencyCheck.allCases {
             currentCheck = check

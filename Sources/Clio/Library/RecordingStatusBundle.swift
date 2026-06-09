@@ -4,10 +4,9 @@
 // Pure-value derivation of every status chip and filter predicate the
 // Bibliotek table needs (US-R13–R18). One place to change the
 // definitions; the view layer reads `bundle.transcript`, `.avident`,
-// `.analyse`, `.teams`, `.slettes` and renders chips from them.
+// `.teams`, `.slettes` and renders chips from them.
 //
-// Built from `RecordingMeta` plus the subset of `Analysis` manifests
-// that reference this recording's id. Pure function — easy to test
+// Built from `RecordingMeta`. Pure function — easy to test
 // without spinning up the storage layer.
 
 import Foundation
@@ -34,12 +33,7 @@ struct StatusChip: Equatable {
 // MARK: - Bundle
 
 /// Everything the Bibliotek table needs about one recording in one
-/// place. Build via `RecordingStatusBundle.make(meta:analyses:now:)`.
-///
-/// `analyses` should be pre-filtered to *only* the analyses that
-/// reference this recording's id (`AnalysisSource.recordingId == meta.id`).
-/// The caller is responsible for that filter so the bundle factory stays
-/// O(1) per recording.
+/// place. Build via `RecordingStatusBundle.make(meta:now:)`.
 struct RecordingStatusBundle: Identifiable, Equatable {
     let id: UUID
     let displayName: String
@@ -49,7 +43,6 @@ struct RecordingStatusBundle: Identifiable, Equatable {
     // Display chips
     let transcript: StatusChip
     let avident: StatusChip
-    let analyse: StatusChip
     let teams: StatusChip
     let slettes: StatusChip
 
@@ -76,7 +69,6 @@ extension RecordingStatusBundle {
     /// Build the bundle from raw inputs. Pure; no side effects.
     static func make(
         meta: RecordingMeta,
-        analyses: [Analysis],
         now: Date = Date()
     ) -> RecordingStatusBundle {
         let days = daysUntilExpiry(createdAt: meta.createdAt, now: now)
@@ -95,7 +87,6 @@ extension RecordingStatusBundle {
             durationSeconds: meta.durationSeconds,
             transcript: transcriptChip(meta.transcript.status),
             avident: avidentChip(meta.anonymization),
-            analyse: analyseChip(analyses),
             teams: teamsChip(klarForTeams: klarForTeams),
             slettes: slettesChip(daysRemaining: days),
             isTranscribed: isTranscribed,
@@ -153,19 +144,6 @@ extension RecordingStatusBundle {
         case .none:
             return StatusChip(label: "Ikke avid.", tone: .neutral)
         }
-    }
-
-    private static func analyseChip(_ analyses: [Analysis]) -> StatusChip {
-        if analyses.contains(where: { $0.status == .completed }) {
-            return StatusChip(label: "Ferdig", tone: .success)
-        }
-        if analyses.contains(where: { $0.status == .running || $0.status == .pending }) {
-            return StatusChip(label: "Venter", tone: .warning)
-        }
-        if analyses.contains(where: { $0.status == .failed }) {
-            return StatusChip(label: "Feilet", tone: .danger)
-        }
-        return StatusChip(label: "—", tone: .neutral)
     }
 
     /// TEAMS column shows only readiness (Klar / låst). No "Teams ✓"

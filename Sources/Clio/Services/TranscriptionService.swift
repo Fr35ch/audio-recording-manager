@@ -40,7 +40,6 @@ enum TranscriptionStage: String {
     case transcribing
     case aligning
     case diarizing
-    case analyzing
     case complete
 
     /// Norwegian display string for the current stage.
@@ -51,7 +50,6 @@ enum TranscriptionStage: String {
         case .transcribing: return "Transkriberer..."
         case .aligning:     return "Justerer tidsstempler..."
         case .diarizing:    return "Identifiserer talere..."
-        case .analyzing:    return "Analyserer..."
         case .complete:     return "Ferdig"
         }
     }
@@ -102,7 +100,6 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
     @Published var progress: Double = 0
     @Published var stage: TranscriptionStage = .idle
     @Published var diarizationProgress: Double = 0
-    @Published var analysisProgress: Double = 0
     @Published var isSettingUp: Bool = false
     @Published var setupError: String? = nil
     /// Human-readable description of the current setup step (e.g. pip download lines).
@@ -784,156 +781,7 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         return result
     }
 
-    // MARK: - Analyze subprocess
-
-    private func runAnalyzeSubprocess(
-        existingResult: TranscriptionResult,
-        llmModel: String
-    ) throws -> AnalysisResult {
-        // Write existing result to a temp JSON file for --transcript-input
-        let tempDir = FileManager.default.temporaryDirectory
-        let tempURL = tempDir.appendingPathComponent("arm-transcript-\(UUID().uuidString).json")
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        let jsonData = try encoder.encode(existingResult)
-        try jsonData.write(to: tempURL)
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-
-        // Ensure Ollama is running — start it if needed
-        if !OllamaManager.shared.isInstalled {
-            throw TranscriptionError.processFailed(
-                "Ollama er ikke installert. Last ned fra ollama.com og prøv igjen."
-            )
-        }
-        if !OllamaManager.shared.isRunning() {
-            DispatchQueue.main.async {
-                self.stage = .analyzing
-                self.analysisProgress = 0.0
-            }
-            OllamaManager.shared.startServer()
-            if !OllamaManager.shared.waitUntilReady(timeout: 20) {
-                throw TranscriptionError.processFailed(
-                    "Ollama startet ikke innen 20 sekunder. Start Ollama manuelt og prøv igjen."
-                )
-            }
-        }
-
-        let python = venvRoot.appendingPathComponent("bin/python3").path
-        let navtScript = navtScriptPath
-        let tempJSONPath = tempURL.path
-        let cmd = "\(python.armShellEscaped) \(navtScript.armShellEscaped) --analyze-only --transcript-input \(tempJSONPath.armShellEscaped) --format json --llm \(llmModel.armShellEscaped)"
-
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
-
-        var env = ProcessInfo.processInfo.environment
-        env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
-        env["TOKENIZERS_PARALLELISM"] = "false"
-        task.environment = env
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
-
-        activeProcess = task
-
-        let stderrHandle = stderrPipe.fileHandleForReading
-        var stderrBuffer = ""
-        var fullStderrLines: [String] = []
-        let bufferLock = NSLock()
-
-        stderrHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            bufferLock.lock()
-            stderrBuffer += chunk
-            var lines = stderrBuffer.components(separatedBy: "\n")
-            stderrBuffer = lines.removeLast()
-            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
-            bufferLock.unlock()
-            for line in lines where !line.isEmpty {
-                self.handleProgressLine(line)
-            }
-        }
-
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        var accumulatedStdout = Data()
-        let stdoutLock = NSLock()
-
-        stdoutHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stdoutLock.lock()
-            accumulatedStdout.append(data)
-            stdoutLock.unlock()
-        }
-
-        do {
-            try task.run()
-        } catch {
-            stderrHandle.readabilityHandler = nil
-            activeProcess = nil
-            throw TranscriptionError.processFailed(error.localizedDescription)
-        }
-
-        // 10-minute ceiling for LLM analysis
-        let deadline = Date().addingTimeInterval(600)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                stderrHandle.readabilityHandler = nil
-                activeProcess = nil
-                throw TranscriptionError.timeout
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-
-        stderrHandle.readabilityHandler = nil
-        stdoutHandle.readabilityHandler = nil
-        activeProcess = nil
-
-        let exitCode = task.terminationStatus
-
-        switch exitCode {
-        case 0:
-            break
-        case 5:
-            throw TranscriptionError.processFailed(
-                "Ollama kjører ikke. Start Ollama og prøv igjen."
-            )
-        default:
-            bufferLock.lock()
-            var allLines = fullStderrLines
-            let tail = stderrBuffer
-            bufferLock.unlock()
-            let extra = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            if !tail.isEmpty { allLines.append(tail) }
-            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
-            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            throw TranscriptionError.processFailed(
-                errText.isEmpty ? "exit code \(exitCode)" : errText
-            )
-        }
-
-        stdoutLock.lock()
-        let stdoutData = accumulatedStdout
-        stdoutLock.unlock()
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .secondsSince1970
-        guard let result = try? decoder.decode(AnalysisResult.self, from: stdoutData) else {
-            throw TranscriptionError.invalidOutput
-        }
-
-        return result
-    }
-
-    // MARK: - Public diarize/analyze API
+    // MARK: - Public diarize API
 
     /// Speaker diarization via FluidAudio (CoreML, on-device).
     ///
@@ -992,45 +840,6 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         }
     }
 
-    func analyze(
-        audioFile: URL,
-        existingResult: TranscriptionResult,
-        llmModel: String
-    ) async throws -> AnalysisResult {
-        await MainActor.run {
-            self.stage = .analyzing
-            self.analysisProgress = 0
-        }
-        ProcessingStateCache.shared.setStep(.analysis, status: .inProgress, for: audioFile.path)
-
-        do {
-            let result = try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    do {
-                        let r = try self.runAnalyzeSubprocess(
-                            existingResult: existingResult,
-                            llmModel: llmModel
-                        )
-                        continuation.resume(returning: r)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
-            ProcessingStateCache.shared.setStep(.analysis, status: .completed, for: audioFile.path)
-            await MainActor.run {
-                self.analysisProgress = 1.0
-                self.stage = .idle
-            }
-            return result
-        } catch {
-            ProcessingStateCache.shared.setStep(.analysis, status: .failed, for: audioFile.path,
-                                                error: error.localizedDescription)
-            await MainActor.run { self.stage = .idle }
-            throw error
-        }
-    }
-
     // MARK: - Transcript JSON persistence
 
     func saveTranscriptJSONPublic(_ result: TranscriptionResult, recordingId: UUID) {
@@ -1066,8 +875,6 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             switch newStage {
             case .diarizing:
                 self.diarizationProgress = progressVal
-            case .analyzing:
-                self.analysisProgress = progressVal
             default:
                 break
             }

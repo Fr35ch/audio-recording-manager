@@ -1,21 +1,15 @@
-import Foundation
+// AnalyzeScreen.swift
+// Clio
+
 import SwiftUI
 
-// MARK: - Analyse Screen
 struct AnalyseScreen: View {
-    @Binding var selectedAnalysisId: UUID?
-
-    private let listColumnWidth: CGFloat = 320
-
     var body: some View {
-        HStack(spacing: 0) {
-            AnalysisListColumn(selectedAnalysisId: $selectedAnalysisId)
-                .frame(width: listColumnWidth)
-
-            Divider()
-
-            AnalysisDetailColumn(selectedAnalysisId: $selectedAnalysisId)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
+        ContentUnavailableView(
+            "Analyse kommer snart",
+            systemImage: "chart.bar.doc.horizontal",
+            description: Text("Analysefunksjonen er under utvikling.")
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -21,7 +21,9 @@
 // Security
 // --------
 // No network access. Reads only from ~/Downloads and writes into the Clio
-// data root via MobileTransferImporter. Honors the no-cloud policy.
+// data root via MobileTransferImporter. Honors the no-cloud policy. The
+// original AirDropped file is deleted from ~/Downloads immediately after a
+// successful import so sensitive interview audio never lingers there.
 
 import Foundation
 
@@ -142,6 +144,12 @@ final class AirDropImportWatcher: @unchecked Sendable {
             do {
                 _ = try await self.importer.importLocalFile(at: url, deviceName: "AirDrop")
                 NSLog("[AirDropImportWatcher] Imported \(url.lastPathComponent)")
+
+                // Privacy: the AirDropped file contains sensitive interview
+                // audio and must not linger in ~/Downloads. Remove it now that
+                // it has been copied into the Clio data root.
+                try? FileManager.default.removeItem(at: url)
+
                 await MainActor.run {
                     NotificationCenter.default.post(
                         name: Self.didImportNotification,

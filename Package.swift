@@ -32,7 +32,10 @@ let package = Package(
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
             ],
-            path: "Sources/Clio"
+            path: "Sources/Clio",
+            linkerSettings: [
+                .linkedFramework("MultipeerConnectivity"),
+            ]
         ),
     ]
 )

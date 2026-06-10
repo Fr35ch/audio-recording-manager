@@ -111,6 +111,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // and import them into the library automatically.
         AirDropImportWatcher.shared.start()
 
+        // Advertise as a Clio receiver for Clio Recorder iOS direct transfer.
+        NearbyTransferAdvertiser.shared.start()
+
         // 30-day retention: DISABLED until grace period logic is added.
         // Enabling this without a grace period would retroactively delete
         // all pre-existing recordings whose createdAt is older than 30 days,
@@ -207,6 +210,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         BonjourConfirmationServer.shared.stop()
         AirDropImportWatcher.shared.stop()
+        NearbyTransferAdvertiser.shared.stop()
         return true
     }
 

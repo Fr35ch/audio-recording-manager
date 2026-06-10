@@ -19,6 +19,7 @@
 		AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT04 /* MobileTransferClient.swift */; };
 		AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT05 /* MobileTransferImporter.swift */; };
 		AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT06 /* AirDropImportWatcher.swift */; };
+		AA001122334455667788BF17 /* NearbyTransferAdvertiser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT07 /* NearbyTransferAdvertiser.swift */; };
 		0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */; };
 		004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */; };
 		016B08B47F6082716F4FE157 /* RTFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */; };
@@ -28,6 +29,7 @@
 		0C98E65F1306C3FA64458777 /* AvidentExceptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC4F5E2A28A5F9F8C05CC60 /* AvidentExceptionsView.swift */; };
 		0FD296B662B20927119CB0CC /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */; };
 		11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 42FCB9B274EC3A52C96EF365 /* FluidAudio */; };
+		AA001122334455667788FW01 /* MultipeerConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA001122334455667788FW02 /* MultipeerConnectivity.framework */; };
 		15398FA9751B16DEC921258B /* RecordingExpiryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46946E8D385F3AFCB3523042 /* RecordingExpiryManager.swift */; };
 		155861C74CBFD44B56ACE200 /* TranscriptionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */; };
 		1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */; };
@@ -108,6 +110,8 @@
 		AA001122334455667788MT04 /* MobileTransferClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferClient.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT05 /* MobileTransferImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferImporter.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT06 /* AirDropImportWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDropImportWatcher.swift; sourceTree = "<group>"; };
+		AA001122334455667788MT07 /* NearbyTransferAdvertiser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyTransferAdvertiser.swift; sourceTree = "<group>"; };
+		AA001122334455667788FW02 /* MultipeerConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MultipeerConnectivity.framework; path = System/Library/Frameworks/MultipeerConnectivity.framework; sourceTree = SDKROOT; };
 		82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewHelpers.swift; sourceTree = "<group>"; };
 		013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTFExporter.swift; sourceTree = "<group>"; };
 		0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingItem.swift; sourceTree = "<group>"; };
@@ -190,6 +194,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */,
+				AA001122334455667788FW01 /* MultipeerConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +235,7 @@
 				AA001122334455667788MT04 /* MobileTransferClient.swift */,
 				AA001122334455667788MT05 /* MobileTransferImporter.swift */,
 				AA001122334455667788MT06 /* AirDropImportWatcher.swift */,
+				AA001122334455667788MT07 /* NearbyTransferAdvertiser.swift */,
 			);
 			path = MobileTransfer;
 			sourceTree = "<group>";
@@ -568,6 +574,7 @@
 				AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */,
 				AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */,
 				AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */,
+				AA001122334455667788BF17 /* NearbyTransferAdvertiser.swift in Sources */,
 				0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

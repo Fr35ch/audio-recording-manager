@@ -416,6 +416,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8FA0609FE167546A547CA038 /* Build configuration list for PBXNativeTarget "Clio" */;
 			buildPhases = (
+				A1B2C3D4E5F60001A1B2C3D4 /* Inject Git Commit Hash */,
 				BA61BE75D51E7198564D984F /* Sources */,
 				D3CB5A1E36CCD9C10CA4B983 /* Resources */,
 				F53B9310441BD6031D40EDF8 /* Frameworks */,
@@ -572,6 +573,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A1B2C3D4E5F60001A1B2C3D4 /* Inject Git Commit Hash */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Inject Git Commit Hash";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
 		0FE4B4B673EBBF2AD94ACF78 /* Debug */ = {

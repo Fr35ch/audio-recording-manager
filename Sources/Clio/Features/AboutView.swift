@@ -244,7 +244,9 @@ struct SidebarPanelContent: View {
                 Text("Clio – Audio Recording Manager")
                     .font(.caption)
                     .fontWeight(.semibold)
-                Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+                let hash = Bundle.main.infoDictionary?["GitCommitHash"] as? String ?? "unknown"
+                Text("Versjon \(version) (\(hash))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -81,6 +81,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !splashShown else { return }   // fix 4
         splashShown = true
+
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        print("🖥️ Clio Desktop v\(version) (build \(build))")
+
         print("✅ App delegate did finish launching")
 
         // Register default values so UserDefaults.standard.integer(forKey:)
@@ -101,6 +106,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start the Bonjour confirmation server so iOS devices can query
         // whether a transferred file has been received and indexed.
         BonjourConfirmationServer.shared.start()
+
+        // Watch ~/Downloads for recordings AirDropped from Clio Recorder iOS
+        // and import them into the library automatically.
+        AirDropImportWatcher.shared.start()
 
         // 30-day retention: DISABLED until grace period logic is added.
         // Enabling this without a grace period would retroactively delete
@@ -197,6 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         BonjourConfirmationServer.shared.stop()
+        AirDropImportWatcher.shared.stop()
         return true
     }
 

@@ -79,6 +79,47 @@ actor MobileTransferImporter {
         return MobileImportResult(recordingId: newId, isDualChannel: isDualChannel)
     }
 
+    /// Imports a recording file that arrived out-of-band (e.g. via AirDrop into
+    /// `~/Downloads`). Metadata is synthesized from the file itself since there
+    /// is no companion list endpoint.
+    /// - Parameters:
+    ///   - fileURL: A `.wav` or `.m4a` file produced by Clio Recorder iOS.
+    ///   - deviceName: Label for the source (e.g. "AirDrop").
+    func importLocalFile(at fileURL: URL, deviceName: String) async throws -> MobileImportResult {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let sizeBytes = (attrs?[.size] as? NSNumber)?.int64Value
+        let createdAt = (attrs?[.creationDate] as? Date)
+            ?? Self.timestamp(fromFilename: fileURL.lastPathComponent)
+            ?? Date()
+
+        let asset = AVURLAsset(url: fileURL)
+        let durationSeconds: Double? = try? await {
+            let duration = try await asset.load(.duration)
+            let seconds = CMTimeGetSeconds(duration)
+            return seconds.isFinite ? seconds : nil
+        }()
+        let dualByChannelCount = (try? await Self.hasTwoAudioChannels(asset)) ?? false
+
+        let info = MobileRecordingInfo(
+            id: UUID().uuidString,
+            filename: fileURL.lastPathComponent,
+            durationSeconds: durationSeconds,
+            sizeBytes: sizeBytes,
+            recordedAt: createdAt,
+            isDualChannel: dualByChannelCount
+        )
+
+        // Stage into mobile-inbox so the importer owns the file lifecycle.
+        try FileManager.default.createDirectory(at: StorageLayout.mobileInboxURL, withIntermediateDirectories: true)
+        let stagingURL = StorageLayout.mobileInboxURL.appendingPathComponent(fileURL.lastPathComponent)
+        if FileManager.default.fileExists(atPath: stagingURL.path) {
+            try? FileManager.default.removeItem(at: stagingURL)
+        }
+        try FileManager.default.copyItem(at: fileURL, to: stagingURL)
+
+        return try await importRecording(stagingURL: stagingURL, info: info, deviceName: deviceName)
+    }
+
     // MARK: - Private helpers
 
     private static func convertToM4A(from source: URL, to destination: URL) async throws {
@@ -113,5 +154,33 @@ actor MobileTransferImporter {
         let stem = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
         let readable = stem.replacingOccurrences(of: "_", with: " ")
         return readable.isEmpty ? RecordingMeta.defaultDisplayName(for: date ?? Date()) : readable
+    }
+
+    /// Parses the `yyyyMMdd_HHmmss` timestamp embedded in the Clio filename
+    /// convention (`<title>_yyyyMMdd_HHmmss.<ext>`). Returns nil if absent.
+    private static func timestamp(fromFilename filename: String) -> Date? {
+        let stem = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        guard let match = stem.range(of: #"\d{8}_\d{6}"#, options: .regularExpression) else {
+            return nil
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: String(stem[match]))
+    }
+
+    /// True when the asset's first audio track carries two channels — a
+    /// best-effort dual-channel signal for M4A files where the WAV marker is
+    /// no longer present after compression.
+    private static func hasTwoAudioChannels(_ asset: AVURLAsset) async throws -> Bool {
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        guard let track = tracks.first else { return false }
+        let descriptions = try await track.load(.formatDescriptions)
+        for description in descriptions {
+            if let basic = CMAudioFormatDescriptionGetStreamBasicDescription(description) {
+                return basic.pointee.mChannelsPerFrame >= 2
+            }
+        }
+        return false
     }
 }

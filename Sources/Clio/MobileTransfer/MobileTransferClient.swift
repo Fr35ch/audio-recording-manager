@@ -57,6 +57,7 @@ actor MobileTransferClient {
 
     private let deviceId: String
     private let endpoint: NWEndpoint
+    private let token: String?
     private var resolvedBaseURL: URL?
 
     private lazy var decoder: JSONDecoder = {
@@ -65,9 +66,10 @@ actor MobileTransferClient {
         return d
     }()
 
-    init(deviceId: String, endpoint: NWEndpoint) {
+    init(deviceId: String, endpoint: NWEndpoint, token: String? = nil) {
         self.deviceId = deviceId
         self.endpoint = endpoint
+        self.token = token
     }
 
     // MARK: - Operations
@@ -106,6 +108,24 @@ actor MobileTransferClient {
         _ = try await perform(request: request)
     }
 
+    /// Lightweight liveness check. Returns false if the device can no longer be
+    /// reached (e.g. USB cable unplugged) — a cable pull sends no Bonjour
+    /// goodbye, so the browser alone cannot detect the disconnect promptly.
+    func probeReachable() async -> Bool {
+        do {
+            // Force a fresh endpoint resolution rather than trusting the cache,
+            // so a previously-resolved-but-now-gone device reports unreachable.
+            resolvedBaseURL = nil
+            let url = try await baseURL().appendingPathComponent("recordings")
+            var request = authenticatedRequest(url: url)
+            request.timeoutInterval = 4
+            _ = try await perform(request: request)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private helpers
 
     private func baseURL() async throws -> URL {
@@ -125,47 +145,60 @@ actor MobileTransferClient {
     }
 
     /// Connects briefly via NWConnection to resolve a .service endpoint to host:port.
+    /// Times out after 8 seconds — avoids an infinite spinner when the service
+    /// advertises but the phone is unreachable (e.g. Clio app just closed).
     private func resolveServiceEndpoint() async throws -> URL {
         NSLog("[MobileTransferClient] Resolving service endpoint: \(endpoint)")
-        return try await withCheckedThrowingContinuation { continuation in
-            let conn = NWConnection(to: endpoint, using: .tcp)
-            var resumed = false
-            conn.stateUpdateHandler = { state in
-                NSLog("[MobileTransferClient] Connection state: \(state)")
-                guard !resumed else { return }
-                switch state {
-                case .ready:
-                    resumed = true
-                    if let remote = conn.currentPath?.remoteEndpoint,
-                       case let .hostPort(host, port) = remote {
-                        conn.cancel()
-                        let hostString: String
-                        switch host {
-                        case .ipv4(let a): hostString = "\(a)"
-                        case .ipv6(let a): hostString = "[\(a)]"
-                        case .name(let n, _): hostString = n
-                        @unknown default:
-                            continuation.resume(throwing: MobileTransferError.noEndpointResolved)
-                            return
+        return try await withThrowingTaskGroup(of: URL.self) { group in
+            group.addTask {
+                try await withCheckedThrowingContinuation { continuation in
+                    let conn = NWConnection(to: self.endpoint, using: .tcp)
+                    var resumed = false
+                    conn.stateUpdateHandler = { state in
+                        NSLog("[MobileTransferClient] Connection state: \(state)")
+                        guard !resumed else { return }
+                        switch state {
+                        case .ready:
+                            resumed = true
+                            if let remote = conn.currentPath?.remoteEndpoint,
+                               case let .hostPort(host, port) = remote {
+                                conn.cancel()
+                                let hostString: String
+                                switch host {
+                                case .ipv4(let a): hostString = "\(a)"
+                                case .ipv6(let a): hostString = "[\(a)]"
+                                case .name(let n, _): hostString = n
+                                @unknown default:
+                                    continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                                    return
+                                }
+                                if let url = URL(string: "http://\(hostString):\(port.rawValue)") {
+                                    continuation.resume(returning: url)
+                                } else {
+                                    continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                                }
+                            } else {
+                                conn.cancel()
+                                continuation.resume(throwing: MobileTransferError.noEndpointResolved)
+                            }
+                        case .failed(let error):
+                            resumed = true
+                            conn.cancel()
+                            continuation.resume(throwing: MobileTransferError.networkError(underlying: error))
+                        default:
+                            break
                         }
-                        if let url = URL(string: "http://\(hostString):\(port.rawValue)") {
-                            continuation.resume(returning: url)
-                        } else {
-                            continuation.resume(throwing: MobileTransferError.noEndpointResolved)
-                        }
-                    } else {
-                        conn.cancel()
-                        continuation.resume(throwing: MobileTransferError.noEndpointResolved)
                     }
-                case .failed(let error):
-                    resumed = true
-                    conn.cancel()
-                    continuation.resume(throwing: MobileTransferError.networkError(underlying: error))
-                default:
-                    break
+                    conn.start(queue: DispatchQueue(label: "no.nav.clio.endpoint-resolver"))
                 }
             }
-            conn.start(queue: DispatchQueue(label: "no.nav.clio.endpoint-resolver"))
+            // Timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: 8_000_000_000)
+                throw MobileTransferError.noEndpointResolved
+            }
+            defer { group.cancelAll() }
+            return try await group.next()!
         }
     }
 
@@ -184,7 +217,10 @@ actor MobileTransferClient {
     }
 
     private func authenticatedRequest(url: URL) -> URLRequest {
-        var req = URLRequest(url: url, timeoutInterval: 30)
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        if let token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         return req
     }
 

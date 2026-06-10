@@ -151,6 +151,31 @@ Model tiers: Opus → premium (complex reasoning); Sonnet → standard; Haiku �
 swift build
 ```
 
+> [!IMPORTANT]
+> **Adding a new Swift source file? You MUST register it in `Clio.xcodeproj`.**
+> This project has TWO build systems: SwiftPM (`swift build`) and the Xcode
+> project (`Clio.xcodeproj`, used by ⌘B and the app the user actually runs).
+> SwiftPM auto-discovers every file under `Sources/`, so `swift build` will
+> compile a brand-new file with no extra steps. **Xcode does not** — its
+> `project.pbxproj` lists file membership explicitly, so a new file that is not
+> added there fails to compile in Xcode with `Cannot find '<Type>' in scope`,
+> even though `swift build` is green.
+>
+> When you create a new `.swift` file, add **four** entries to
+> `Clio.xcodeproj/project.pbxproj` (mirror an existing sibling such as
+> `MobileTransferImporter.swift`):
+> 1. a `PBXBuildFile` entry,
+> 2. a `PBXFileReference` entry,
+> 3. the file in its group's `children` list,
+> 4. the file in the target's `Sources` build phase.
+>
+> Then verify with a real Xcode build — `swift build` passing is NOT sufficient:
+> ```bash
+> plutil -lint Clio.xcodeproj/project.pbxproj
+> xcodebuild -project Clio.xcodeproj -scheme Clio build
+> ```
+
+
 **Run:**
 ```
 ⌘R in Xcode

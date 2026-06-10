@@ -13,6 +13,7 @@ struct MainView: View {
     @State private var showLogViewer = false
     @State private var showDesignShowcase = false
     @State private var showSettings = false
+    @State private var airDropToast: String?
 
     var body: some View {
         // NavigationSplitView wrapper is REQUIRED for SwiftUI's unified
@@ -35,6 +36,18 @@ struct MainView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .toolbar(removing: .sidebarToggle)
+        }
+        .overlay(alignment: .top) {
+            if let toast = airDropToast {
+                Text(toast)
+                    .font(.system(size: 13, weight: .medium))
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.vertical, AppSpacing.sm)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.quaternary))
+                    .padding(.top, AppSpacing.md)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 1100, minHeight: 700)
@@ -79,6 +92,13 @@ struct MainView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .init("ClioShowSettings"))) { _ in
             showSettings = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AirDropImportWatcher.didImportNotification)) { note in
+            let filename = (note.userInfo?["filename"] as? String) ?? ""
+            withAnimation { airDropToast = AppCopy.MobileTransfer.airDropImportedBody(filename) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation { airDropToast = nil }
+            }
         }
         .onChange(of: selectedTab) { _, _ in autoSelectFirst() }
         .onChange(of: recordingsManager.recordings) { _, _ in

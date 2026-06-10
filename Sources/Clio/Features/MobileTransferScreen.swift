@@ -18,69 +18,96 @@ import SwiftUI
 struct MobileTransferScreen: View {
 
     @StateObject private var browser = MobileTransferBrowser()
-    @State private var selectedDevice: DiscoverediOSDevice?
+    @State private var selectedDeviceId: String?
     @State private var recordings: [MobileRecordingInfo] = []
     @State private var isFetchingList = false
     @State private var importingId: String?
     @State private var errorMessage: String?
+    @State private var disconnectedDeviceName: String?
+    @State private var importedIOSIds: Set<String> = []
+    @State private var reachabilityTask: Task<Void, Never>?
+    // Devices we just disconnected from (e.g. unplugged) but that may still
+    // linger in the Bonjour browser until their TTL expires. We must not
+    // auto-reopen them until they have actually left and rejoined the network.
+    @State private var suppressedDeviceIds: Set<String> = []
 
     private let importer = MobileTransferImporter()
 
+    private var selectedDevice: DiscoverediOSDevice? {
+        browser.discoveredDevices.first { $0.id == selectedDeviceId }
+    }
+
+    /// Recording filename with the audio extension stripped for display.
+    private func displayName(_ recording: MobileRecordingInfo) -> String {
+        (recording.filename as NSString).deletingPathExtension
+    }
+
+    private var deviceFoundButNoToken: Bool {
+        !browser.discoveredDevices.filter { !suppressedDeviceIds.contains($0.id) }.isEmpty
+        && browser.discoveredDevices.filter { !suppressedDeviceIds.contains($0.id) }.allSatisfy { $0.advertisedToken == nil }
+    }
+
+    /// USB cable is connected but the Clio app on the phone hasn't advertised yet.
+    private var usbConnectedButAppClosed: Bool {
+        browser.isUSBTethered && browser.discoveredDevices.isEmpty && selectedDeviceId == nil
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            // Device sidebar
-            VStack(spacing: 0) {
-                List(browser.discoveredDevices, selection: $selectedDevice) { device in
-                    Label(device.name, systemImage: "iphone")
-                        .tag(device)
+        Group {
+            if selectedDevice != nil {
+                recordingList
+            } else if let name = disconnectedDeviceName {
+                ContentUnavailableView(
+                    AppCopy.MobileTransfer.disconnectedTitle,
+                    systemImage: "iphone.slash",
+                    description: Text(AppCopy.MobileTransfer.disconnectedDescription(name))
+                )
+            } else if deviceFoundButNoToken || usbConnectedButAppClosed {
+                ContentUnavailableView {
+                    Label(AppCopy.MobileTransfer.openAppTitle, systemImage: "iphone.gen3")
+                } description: {
+                    Text(AppCopy.MobileTransfer.openAppDescription(
+                        browser.discoveredDevices.first(where: { !suppressedDeviceIds.contains($0.id) })?.name ?? "iPhone"
+                    ))
+                } actions: {
+                    ProgressView()
                 }
-                .overlay {
-                    if browser.isSearching && browser.discoveredDevices.isEmpty {
-                        VStack(spacing: AppSpacing.md) {
-                            ProgressView()
-                            Text("Søker etter iPhone...")
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
-                    } else if !browser.isSearching && browser.discoveredDevices.isEmpty {
-                        ContentUnavailableView(
-                            "Ingen iPhone funnet",
-                            systemImage: "iphone.slash",
-                            description: Text("Åpne Clio Recorder og koble til via USB eller Wi-Fi.")
-                        )
+            } else {
+                ContentUnavailableView {
+                    Label(AppCopy.MobileTransfer.waitingTitle, systemImage: "iphone.gen3")
+                } description: {
+                    Text(AppCopy.MobileTransfer.waitingDescription)
+                } actions: {
+                    if browser.isSearching {
+                        ProgressView()
                     }
                 }
-                .onChange(of: selectedDevice) { _, device in
-                    recordings = []
-                    guard let device else { return }
-                    connectTo(device: device)
-                }
             }
-            .frame(width: 220)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .overlay(alignment: .trailing) {
-                Divider()
-            }
-
-            // Detail area
-            Group {
-                if selectedDevice != nil {
-                    recordingList
-                } else {
-                    ContentUnavailableView(
-                        "Velg en iPhone",
-                        systemImage: "iphone",
-                        description: Text("Koble til iPhone via USB eller samme Wi-Fi-nettverk, og åpne Clio Recorder.")
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Importer fra iPhone")
         .onAppear { browser.startBrowsing() }
-        .onDisappear { browser.stopBrowsing() }
+        .onDisappear {
+            browser.stopBrowsing()
+            reachabilityTask?.cancel()
+            reachabilityTask = nil
+        }
+        // Auto-open the library as soon as a phone is detected, and react to
+        // unplug / token-arrival without requiring the user to pick from a list.
+        .onChange(of: browser.discoveredDevices) { _, devices in
+            reconcile(devices)
+        }
+        .onChange(of: selectedDeviceId) { _, id in
+            recordings = []
+            importedIOSIds = []
+            reachabilityTask?.cancel()
+            reachabilityTask = nil
+            guard id != nil else { return }
+            disconnectedDeviceName = nil
+            connectToSelected()
+        }
         .alert("Feil", isPresented: Binding(
-            get: { errorMessage != nil },
+            get: { errorMessage != nil && !recordings.isEmpty },
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("OK") { errorMessage = nil }
@@ -95,6 +122,18 @@ struct MobileTransferScreen: View {
         Group {
             if isFetchingList {
                 ProgressView("Henter opptaksliste...")
+            } else if let err = errorMessage, recordings.isEmpty {
+                ContentUnavailableView {
+                    Label("Kunne ikke hente opptak", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(err)
+                } actions: {
+                    Button("Prøv igjen") {
+                        errorMessage = nil
+                        connectToSelected()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             } else if recordings.isEmpty {
                 ContentUnavailableView(
                     "Ingen opptak",
@@ -111,9 +150,10 @@ struct MobileTransferScreen: View {
     }
 
     private func recordingRow(_ recording: MobileRecordingInfo) -> some View {
-        HStack {
+        let alreadyImported = importedIOSIds.contains(recording.id)
+        return HStack {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(recording.filename)
+                Text(displayName(recording))
                     .font(.body)
                 HStack(spacing: AppSpacing.sm) {
                     if let dur = recording.durationSeconds {
@@ -136,38 +176,121 @@ struct MobileTransferScreen: View {
             if importingId == recording.id {
                 ProgressView()
                     .scaleEffect(0.8)
+            } else if alreadyImported {
+                Label(AppCopy.MobileTransfer.alreadyImported, systemImage: "checkmark.circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+                    .foregroundStyle(.green)
             } else {
-                Button("Importer") {
+                Button(AppCopy.MobileTransfer.importAction) {
                     Task { await importRecording(recording) }
                 }
                 .buttonStyle(GlassButtonStyle())
             }
         }
         .padding(.vertical, AppSpacing.xs)
+        .opacity(alreadyImported ? 0.6 : 1)
     }
 
     // MARK: - Actions
 
-    private func connectTo(device: DiscoverediOSDevice) {
+    /// Decides which device (if any) should be open, based on the current
+    /// Bonjour results. Auto-opens the first reachable phone and clears the
+    /// disconnected state once a previously-unplugged phone truly leaves.
+    private func reconcile(_ devices: [DiscoverediOSDevice]) {
+        let presentIds = Set(devices.map { $0.id })
+
+        // A suppressed device that has finally left the browser can be reopened
+        // if it later returns, so drop it from the suppression set.
+        suppressedDeviceIds.formIntersection(presentIds)
+
+        // Selected device vanished from the network (unplug / Wi-Fi lost).
+        if let id = selectedDeviceId, !presentIds.contains(id) {
+            handleDisconnect(id: id, name: selectedDevice?.name ?? id)
+            return
+        }
+
+        // Nothing open yet: auto-open the first reachable, non-suppressed phone.
+        if selectedDeviceId == nil {
+            if let ready = devices.first(where: {
+                $0.advertisedToken != nil && !suppressedDeviceIds.contains($0.id)
+            }) {
+                disconnectedDeviceName = nil
+                selectedDeviceId = ready.id
+            }
+            return
+        }
+
+        // Selected device's auth token resolved after selection: fetch now.
+        if let device = selectedDevice, device.advertisedToken != nil,
+           recordings.isEmpty, !isFetchingList {
+            connectToSelected()
+        }
+    }
+
+    private func connectToSelected() {
+        guard let device = selectedDevice else { return }
         Task { await fetchRecordings(for: device) }
+        startReachabilityMonitor(for: device)
+    }
+
+    /// Actively probes the selected device on a timer. A USB cable pull sends no
+    /// Bonjour goodbye packet, so the browser would otherwise keep the stale
+    /// device around for ~2 minutes. Polling lets us detect the disconnect and
+    /// block imports against a phone that is no longer there.
+    private func startReachabilityMonitor(for device: DiscoverediOSDevice) {
+        reachabilityTask?.cancel()
+        reachabilityTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                if Task.isCancelled { return }
+                guard selectedDeviceId == device.id else { return }
+                let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint, token: device.advertisedToken)
+                let reachable = await client.probeReachable()
+                if Task.isCancelled { return }
+                if !reachable, selectedDeviceId == device.id {
+                    handleDisconnect(id: device.id, name: device.name)
+                    return
+                }
+            }
+        }
+    }
+
+    private func handleDisconnect(id: String, name: String) {
+        reachabilityTask?.cancel()
+        reachabilityTask = nil
+        suppressedDeviceIds.insert(id)
+        disconnectedDeviceName = name
+        selectedDeviceId = nil
+        recordings = []
+        importedIOSIds = []
     }
 
     private func fetchRecordings(for device: DiscoverediOSDevice) async {
-        NSLog("[MobileTransfer] Fetching recordings for \(device.id), endpoint: \(device.endpoint)")
-        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint)
+        NSLog("[MobileTransfer] Fetching recordings for \(device.id), endpoint: \(device.endpoint), tokenPresent: \(device.advertisedToken != nil)")
+        if let t = device.advertisedToken { NSLog("[MobileTransfer] Token prefix: \(t.prefix(8))") }
+        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint, token: device.advertisedToken)
         isFetchingList = true
         defer { isFetchingList = false }
         do {
             recordings = try await client.listRecordings()
+            importedIOSIds = loadImportedIOSIds()
         } catch {
             NSLog("[MobileTransfer] Error: \(error)")
             errorMessage = error.localizedDescription
         }
     }
 
+    /// Set of iOS recording ids already imported into this Mac's library, used to
+    /// mark rows as "already transferred".
+    private func loadImportedIOSIds() -> Set<String> {
+        guard let all = try? RecordingStore.shared.allRecordings() else { return [] }
+        return Set(all.compactMap { $0.mobileImport?.iOSRecordingId })
+    }
+
     private func importRecording(_ recording: MobileRecordingInfo) async {
         guard let device = selectedDevice else { return }
-        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint)
+        let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint, token: device.advertisedToken)
         importingId = recording.id
         defer { importingId = nil }
 
@@ -179,9 +302,17 @@ struct MobileTransferScreen: View {
                 deviceName: device.name
             )
             try await client.confirmReceipt(id: recording.id)
-            recordings.removeAll { $0.id == recording.id }
+            importedIOSIds.insert(recording.id)
+            RecordingsManager.shared.loadRecordings()
         } catch {
-            errorMessage = error.localizedDescription
+            // A failure mid-import most likely means the cable was pulled. Probe
+            // once to confirm, and surface the disconnected state if unreachable.
+            let stillReachable = await client.probeReachable()
+            if !stillReachable, selectedDeviceId == device.id {
+                handleDisconnect(id: device.id, name: device.name)
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

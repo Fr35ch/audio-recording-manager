@@ -18,6 +18,7 @@
 		AA001122334455667788BF13 /* MobileTransferBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT03 /* MobileTransferBrowser.swift */; };
 		AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT04 /* MobileTransferClient.swift */; };
 		AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT05 /* MobileTransferImporter.swift */; };
+		AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT06 /* AirDropImportWatcher.swift */; };
 		0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */; };
 		004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */; };
 		016B08B47F6082716F4FE157 /* RTFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */; };
@@ -106,6 +107,7 @@
 		AA001122334455667788MT03 /* MobileTransferBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferBrowser.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT04 /* MobileTransferClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferClient.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT05 /* MobileTransferImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileTransferImporter.swift; sourceTree = "<group>"; };
+		AA001122334455667788MT06 /* AirDropImportWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDropImportWatcher.swift; sourceTree = "<group>"; };
 		82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewHelpers.swift; sourceTree = "<group>"; };
 		013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RTFExporter.swift; sourceTree = "<group>"; };
 		0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingItem.swift; sourceTree = "<group>"; };
@@ -227,6 +229,7 @@
 				AA001122334455667788MT03 /* MobileTransferBrowser.swift */,
 				AA001122334455667788MT04 /* MobileTransferClient.swift */,
 				AA001122334455667788MT05 /* MobileTransferImporter.swift */,
+				AA001122334455667788MT06 /* AirDropImportWatcher.swift */,
 			);
 			path = MobileTransfer;
 			sourceTree = "<group>";
@@ -563,6 +566,7 @@
 				AA001122334455667788BF13 /* MobileTransferBrowser.swift in Sources */,
 				AA001122334455667788BF14 /* MobileTransferClient.swift in Sources */,
 				AA001122334455667788BF15 /* MobileTransferImporter.swift in Sources */,
+				AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */,
 				0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

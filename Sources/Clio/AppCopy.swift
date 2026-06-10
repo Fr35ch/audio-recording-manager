@@ -98,4 +98,29 @@ enum AppCopy {
             "\(count) segmenter"
         }
     }
+
+    enum MobileTransfer {
+        static let disconnectedTitle = "iPhone frakoblet"
+
+        static func disconnectedDescription(_ deviceName: String) -> String {
+            "\(deviceName) ble koblet fra. Koble til iPhone igjen via USB eller Wi-Fi for å fortsette."
+        }
+
+        static let importAction = "Importer"
+        static let alreadyImported = "Importert"
+
+        static let waitingTitle = "Venter på iPhone"
+        static let waitingDescription = "Koble iPhonen til med USB-kabel og åpne Clio Recorder. Biblioteket åpnes automatisk."
+
+        static let openAppTitle = "Åpne Clio Recorder"
+        static func openAppDescription(_ deviceName: String) -> String {
+            "\(deviceName) er tilkoblet. Åpne Clio Recorder-appen på iPhone for å gjøre opptakene tilgjengelige."
+        }
+
+        static let airDropImportedTitle = "Opptak importert via AirDrop"
+
+        static func airDropImportedBody(_ filename: String) -> String {
+            "\(filename) er lagt til i biblioteket."
+        }
+    }
 }

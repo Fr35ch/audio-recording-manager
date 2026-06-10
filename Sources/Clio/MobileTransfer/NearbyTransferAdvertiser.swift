@@ -89,8 +89,9 @@ extension NearbyTransferAdvertiser: MCSessionDelegate {
 
         // MultipeerConnectivity deletes localURL as soon as this delegate method returns.
         // Copy to a stable staging path before dispatching the async import.
+        // Use resourceName directly so the display name is clean.
         let stagingURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("clio-mpc-\(UUID().uuidString)-\(resourceName)")
+            .appendingPathComponent(resourceName)
         do {
             try FileManager.default.copyItem(at: localURL, to: stagingURL)
         } catch {

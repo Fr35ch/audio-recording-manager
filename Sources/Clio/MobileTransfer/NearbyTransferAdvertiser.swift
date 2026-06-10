@@ -87,9 +87,20 @@ extension NearbyTransferAdvertiser: MCSessionDelegate {
 
         NSLog("[NearbyTransferAdvertiser] Received '\(resourceName)' from \(peerID.displayName)")
 
+        // MultipeerConnectivity deletes localURL as soon as this delegate method returns.
+        // Copy to a stable staging path before dispatching the async import.
+        let stagingURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clio-mpc-\(UUID().uuidString)-\(resourceName)")
+        do {
+            try FileManager.default.copyItem(at: localURL, to: stagingURL)
+        } catch {
+            NSLog("[NearbyTransferAdvertiser] Failed to stage '\(resourceName)': \(error)")
+            return
+        }
+
         Task {
             do {
-                let result = try await importer.importLocalFile(at: localURL, deviceName: peerID.displayName)
+                let result = try await importer.importLocalFile(at: stagingURL, deviceName: peerID.displayName)
                 NSLog("[NearbyTransferAdvertiser] Imported as recording \(result.recordingId)")
                 await MainActor.run {
                     NotificationCenter.default.post(

@@ -163,27 +163,76 @@ enum StereoSplitter {
     /// bleed copy can be dropped without ever silencing the audio handed to
     /// the transcriber.
     struct ChannelEnergy {
+        enum Side { case left, right }
+
         let windowSeconds: Double
         let left: [Float]
         let right: [Float]
+        /// Absolute RMS floor (linear). Windows below this on both channels are
+        /// treated as silence and never count as anyone's speech.
+        var floorRMS: Float = 0.00316  // ≈ -50 dBFS
 
-        private func meanRMS(_ values: [Float], start: Double, end: Double) -> Float {
-            guard !values.isEmpty, windowSeconds > 0 else { return 0 }
-            let lo = max(0, Int((start / windowSeconds).rounded(.down)))
-            var hi = Int((end / windowSeconds).rounded(.up))
-            hi = min(values.count, max(hi, lo + 1))
-            guard lo < hi else { return values[min(lo, values.count - 1)] }
-            var sum: Float = 0
-            for i in lo..<hi { sum += values[i] }
-            return sum / Float(hi - lo)
-        }
+        /// Determines whether a transcribed segment really belongs to `side`,
+        /// and if so the tightened time range where that side is actually the
+        /// dominant, active speaker within the segment's nominal `[start, end]`.
+        ///
+        /// NB-Whisper segment boundaries are loose: a segment's start often
+        /// reaches back into the *other* speaker's audio (e.g. an informant
+        /// line tagged 18.18–22.86 when the informant only speaks from ~21 s,
+        /// overlapping the interviewer's 18–20 s speech). Averaging energy over
+        /// the whole nominal span therefore misattributes such segments — it
+        /// previously caused real lines to be dropped as if they were cross-talk
+        /// duplicates.
+        ///
+        /// Instead we look window-by-window. A window counts for `side` only
+        /// when that channel is both active (above `floorRMS`) and louder than
+        /// the other (left wins ties, right needs a strict lead, so exactly one
+        /// copy of a duplicated utterance survives). If `side` is dominant for
+        /// at least `minDominantSeconds`, the segment is genuine and we return
+        /// the span from its first to last dominant window — tightening the
+        /// timestamp to the real speech onset. If `side` is never meaningfully
+        /// dominant, the segment is bleed from the other microphone and we
+        /// return `nil` (drop it).
+        func dominantRange(
+            start: Double,
+            end: Double,
+            side: Side,
+            minDominantSeconds: Double = 0.30
+        ) -> ClosedRange<Double>? {
+            guard windowSeconds > 0, !left.isEmpty, left.count == right.count else {
+                // Without analysis data, keep the segment unchanged.
+                return start...max(end, start)
+            }
+            let count = left.count
+            func widx(_ t: Double) -> Int {
+                let raw = Int((t / windowSeconds).rounded())
+                return min(max(raw, 0), count - 1)
+            }
+            let lo = widx(start)
+            let hi = max(widx(end), lo)
 
-        /// `true` if the left channel is at least as loud as the right over
-        /// `[start, end]`. Ties resolve to the left channel so that exactly one
-        /// copy of a duplicated utterance survives (left keeps on `>=`, right
-        /// keeps on strict `>`).
-        func leftDominates(start: Double, end: Double) -> Bool {
-            meanRMS(left, start: start, end: end) >= meanRMS(right, start: start, end: end)
+            var firstDom = -1
+            var lastDom = -1
+            var domWindows = 0
+            for w in lo...hi {
+                let lv = left[w]
+                let rv = right[w]
+                guard max(lv, rv) > floorRMS else { continue }
+                let dominant = (side == .left) ? (lv >= rv) : (rv > lv)
+                if dominant {
+                    if firstDom < 0 { firstDom = w }
+                    lastDom = w
+                    domWindows += 1
+                }
+            }
+
+            guard firstDom >= 0,
+                  Double(domWindows) * windowSeconds >= minDominantSeconds else {
+                return nil
+            }
+            let tightStart = Double(firstDom) * windowSeconds
+            let tightEnd = Double(lastDom + 1) * windowSeconds
+            return tightStart...tightEnd
         }
     }
 

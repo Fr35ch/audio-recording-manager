@@ -699,23 +699,46 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             throw error
         }
 
-        // Step 2b: cross-talk suppression.
+        // Step 2b: cross-talk suppression + timestamp tightening.
         // Both RØDE transmitters pick up both speakers, so each utterance is
         // transcribed on BOTH channels — surfacing as duplicate lines (one per
-        // label) in the merge. Drop the bleed copy by keeping each segment only
-        // on the channel whose microphone dominated during that segment's time
-        // span. Energy ties resolve to the left channel, so exactly one copy of
-        // a duplicated utterance survives. If the analysis fails we keep both
-        // channels unchanged rather than risk dropping content.
+        // label) in the merge. For every segment we ask the energy analysis
+        // whether that segment's own channel is actually the dominant, active
+        // speaker within it: if not, the segment is bleed from the other mic
+        // and is dropped. If it is, we tighten the segment's timestamps to the
+        // real speech onset/offset — NB-Whisper's segment boundaries often
+        // reach into the other speaker's audio, which both misattributes lines
+        // and makes distinct utterances appear at the same time. Working
+        // window-by-window (rather than averaging over the loose nominal span)
+        // is what lets a genuine line survive even when its reported start
+        // overlaps the other speaker. If analysis fails we keep both channels
+        // unchanged rather than risk dropping content.
         if let energy = try? StereoSplitter.analyzeChannelEnergy(sourceURL: audioFile) {
             let leftBefore = left.segments.count
             let rightBefore = right.segments.count
-            left.segments = left.segments.filter {
-                energy.leftDominates(start: $0.start, end: $0.end)
+
+            func tighten(
+                _ segments: [TranscriptionSegment],
+                side: StereoSplitter.ChannelEnergy.Side
+            ) -> [TranscriptionSegment] {
+                segments.compactMap { seg in
+                    guard let range = energy.dominantRange(
+                        start: seg.start, end: seg.end, side: side
+                    ) else { return nil }
+                    return TranscriptionSegment(
+                        id: seg.id,
+                        start: range.lowerBound,
+                        end: range.upperBound,
+                        text: seg.text,
+                        speaker: seg.speaker,
+                        confidence: seg.confidence,
+                        words: seg.words)
+                }
             }
-            right.segments = right.segments.filter {
-                !energy.leftDominates(start: $0.start, end: $0.end)
-            }
+
+            left.segments = tighten(left.segments, side: .left)
+            right.segments = tighten(right.segments, side: .right)
+
             AuditLogger.shared.log(.transcriptionStereoSplitCompleted, payload: [
                 "stage":           .string("crossTalkFilter"),
                 "leftDropped":     .int(leftBefore - left.segments.count),

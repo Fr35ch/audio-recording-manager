@@ -20,6 +20,22 @@ final class NearbyTransferAdvertiser: NSObject {
     private var session: MCSession?
     private let importer = MobileTransferImporter()
 
+    /// Buffers `.meta.json` sidecar bytes received over Multipeer, keyed by the
+    /// audio stem, so they can be matched to the audio resource regardless of
+    /// arrival order. Guarded by `bufferLock` — MCSession callbacks fire on
+    /// arbitrary queues.
+    private var pendingSidecars: [String: Data] = [:]
+    private let bufferLock = NSLock()
+
+    /// Returns the audio stem for both audio resource names (`<stem>.<ext>`)
+    /// and sidecar names (`<stem>.meta.json`) so they map to the same key.
+    private static func audioStem(forResourceName name: String) -> String {
+        if name.hasSuffix(".meta.json") {
+            return String(name.dropLast(".meta.json".count))
+        }
+        return (name as NSString).deletingPathExtension
+    }
+
     /// Posted on the main queue after a recording is successfully received and imported.
     static let didReceiveRecordingNotification = Notification.Name("NearbyTransferAdvertiser.didReceive")
 
@@ -87,6 +103,22 @@ extension NearbyTransferAdvertiser: MCSessionDelegate {
 
         NSLog("[NearbyTransferAdvertiser] Received '\(resourceName)' from \(peerID.displayName)")
 
+        let stem = Self.audioStem(forResourceName: resourceName)
+
+        // Sidecar resource: read its bytes now (localURL is deleted on return),
+        // buffer under the stem key, and wait for the matching audio resource.
+        if resourceName.hasSuffix(".meta.json") {
+            if let data = try? Data(contentsOf: localURL) {
+                bufferLock.lock()
+                pendingSidecars[stem] = data
+                bufferLock.unlock()
+                NSLog("[NearbyTransferAdvertiser] Buffered sidecar for stem '\(stem)'")
+            } else {
+                NSLog("[NearbyTransferAdvertiser] Failed to read sidecar '\(resourceName)'")
+            }
+            return
+        }
+
         // MultipeerConnectivity deletes localURL as soon as this delegate method returns.
         // Copy to a stable staging path before dispatching the async import.
         // Use resourceName directly so the display name is clean.
@@ -97,6 +129,25 @@ extension NearbyTransferAdvertiser: MCSessionDelegate {
         } catch {
             NSLog("[NearbyTransferAdvertiser] Failed to stage '\(resourceName)': \(error)")
             return
+        }
+
+        // If a sidecar for this stem already arrived, write it next to the staged
+        // audio with the matching stem so importLocalFile's co-located lookup
+        // consumes it. If the audio arrived first, import proceeds without a
+        // sidecar — channel-count detection + the transcribe() fallback still
+        // route 2-channel audio to the split.
+        bufferLock.lock()
+        let bufferedSidecar = pendingSidecars.removeValue(forKey: stem)
+        bufferLock.unlock()
+        if let bufferedSidecar {
+            let sidecarStagingURL = stagingURL
+                .deletingPathExtension()
+                .appendingPathExtension("meta.json")
+            do {
+                try bufferedSidecar.write(to: sidecarStagingURL, options: .atomic)
+            } catch {
+                NSLog("[NearbyTransferAdvertiser] Failed to stage sidecar for '\(stem)': \(error)")
+            }
         }
 
         Task {

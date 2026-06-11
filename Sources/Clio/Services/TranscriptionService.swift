@@ -184,6 +184,22 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
                 language: language)
         }
 
+        // Robustness fallback: no ClioMeta sidecar present, but the recording was
+        // imported as dual-channel (mobileImport.isDualChannel). Synthesize a
+        // default ClioMeta and route to the channel split.
+        if ClioMeta.load(for: audioFile) == nil,
+           let recId = StorageLayout.recordingId(from: audioFile.deletingLastPathComponent()),
+           let recMeta = try? RecordingStore.shared.load(id: recId),
+           recMeta.mobileImport?.isDualChannel == true {
+            let synthesized = ClioMeta.rodeDualChannelDefault()
+            return try await runStereoTranscription(
+                audioFile: audioFile,
+                meta: synthesized,
+                model: model,
+                verbatim: verbatim,
+                language: language)
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {

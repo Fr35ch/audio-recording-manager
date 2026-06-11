@@ -37,4 +37,29 @@ extension ClioMeta {
         guard let data = try? Data(contentsOf: sidecarURL) else { return nil }
         return try? JSONDecoder().decode(ClioMeta.self, from: data)
     }
+
+    /// Writes this sidecar as `<stem>.meta.json` next to the given audio file.
+    func write(for audioFileURL: URL) throws {
+        let sidecarURL = audioFileURL
+            .deletingPathExtension()
+            .appendingPathExtension("meta.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(self)
+        try data.write(to: sidecarURL, options: .atomic)
+    }
+
+    /// Default RØDE dual-channel sidecar (INTERVJUER left / INFORMANT right).
+    static func rodeDualChannelDefault() -> ClioMeta {
+        ClioMeta(
+            diarizationRequired: false,
+            channelAssignment: ChannelAssignment(left: "INTERVJUER", right: "INFORMANT"),
+            recordingSource: "ios_rode_wireless_micro",
+            armVersion: nil)
+    }
+
+    /// Decodes a ClioMeta from raw sidecar bytes received over a transfer.
+    static func decode(from data: Data) -> ClioMeta? {
+        try? JSONDecoder().decode(ClioMeta.self, from: data)
+    }
 }

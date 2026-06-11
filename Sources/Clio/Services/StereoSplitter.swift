@@ -31,37 +31,17 @@ enum StereoSplitter {
     /// The output sample rate follows the source file rather than a hardcoded
     /// value, so 44.1 kHz and 48 kHz recordings are both preserved correctly.
     ///
-    /// ## Energy gating (cross-talk suppression)
-    /// The two RØDE Wireless Micro transmitters both pick up *both* speakers
-    /// when the participants sit close together (acoustic bleed). A naive
-    /// per-channel split therefore transcribes every utterance twice — once on
-    /// each channel — which surfaces as duplicated lines in the merged
-    /// transcript (one labelled INTERVJUER, one INFORMANT).
+    /// Each output is a faithful, full-length copy of one source channel — no
+    /// silencing or gating is applied here. Cross-talk between the two RØDE
+    /// transmitters (both mics pick up both speakers) is suppressed *after*
+    /// transcription, at the segment level, by `ChannelEnergy`. Doing it there
+    /// rather than by zero-filling the audio avoids feeding long stretches of
+    /// digital silence to NB-Whisper, which can otherwise hallucinate/loop
+    /// indefinitely on silent input.
     ///
-    /// To prevent this we apply winner-take-all energy gating: the audio is
-    /// processed in short analysis windows, and for each window only the
-    /// channel whose own microphone is dominant keeps its audio — the other
-    /// channel is silenced for that window. The speaker whose lavalier is
-    /// loudest is, by construction, the person actually talking, so this both
-    /// removes the duplicates and attributes speech to the correct channel.
-    /// Real recordings show ~18 dB separation when one person speaks, so the
-    /// decision is unambiguous in practice. Hysteresis avoids flicker at
-    /// window boundaries, and an absolute noise floor silences both channels
-    /// during pauses.
-    ///
-    /// Gating is only applied to genuine stereo (≥2 channel) sources. A mono
-    /// source is duplicated to both outputs unchanged (legacy behaviour).
-    ///
-    /// - Parameters:
-    ///   - sourceURL: stereo source `.m4a`.
-    ///   - gateCrossTalk: when `true` (default), apply the energy gating
-    ///     described above. Pass `false` to get a plain channel split.
     /// - Returns: `(left, right)` temp URLs. The caller is responsible for
     ///   deleting them.
-    static func splitStereoM4A(
-        sourceURL: URL,
-        gateCrossTalk: Bool = true
-    ) async throws -> (left: URL, right: URL) {
+    static func splitStereoM4A(sourceURL: URL) async throws -> (left: URL, right: URL) {
         let inputFile: AVAudioFile
         do {
             inputFile = try AVAudioFile(forReading: sourceURL)
@@ -112,30 +92,13 @@ enum StereoSplitter {
             throw StereoSplitterError.setupFailed(error.localizedDescription)
         }
 
-        // Process one analysis window at a time so the energy gate can switch
-        // ownership on a ~100 ms granularity. A window also spans exactly one
-        // read, which keeps the streaming bookkeeping simple.
-        let applyGate = gateCrossTalk && isStereo
-        let windowFrames = AVAudioFrameCount(max(1, Int((sampleRate * 0.10).rounded())))
-
-        // Gating parameters.
-        let floorDB: Float = -50          // below this, both channels are silent (pause)
-        let switchMarginDB: Float = 6     // a channel must beat the other by this to take over
-
-        enum Owner { case none, left, right }
-        var owner: Owner = .none
-
-        func rms(_ ptr: UnsafePointer<Float>, _ count: AVAudioFrameCount) -> Float {
-            var result: Float = 0
-            vDSP_rmsqv(ptr, 1, &result, vDSP_Length(count))
-            return result
-        }
+        let frameCapacity: AVAudioFrameCount = 16_384
 
         do {
             while inputFile.framePosition < inputFile.length {
                 guard let inputBuffer = AVAudioPCMBuffer(
                     pcmFormat: sourceFormat,
-                    frameCapacity: windowFrames
+                    frameCapacity: frameCapacity
                 ) else {
                     throw StereoSplitterError.processingFailed("Kan ikke allokere lesebuffer")
                 }
@@ -160,44 +123,8 @@ enum StereoSplitter {
                 rightOut.frameLength = frames
 
                 let byteCount = Int(frames) * MemoryLayout<Float>.size
-                let leftDst = leftOut.floatChannelData![0]
-                let rightDst = rightOut.floatChannelData![0]
-
-                if applyGate {
-                    let rmsL = rms(leftSource, frames)
-                    let rmsR = rms(rightSource, frames)
-                    let dbL = 20 * log10(max(rmsL, 1e-9))
-                    let dbR = 20 * log10(max(rmsR, 1e-9))
-
-                    if max(dbL, dbR) < floorDB {
-                        owner = .none
-                    } else {
-                        let diffDB = dbL - dbR  // positive => left louder
-                        switch owner {
-                        case .left:
-                            if diffDB < -switchMarginDB { owner = .right }
-                        case .right:
-                            if diffDB > switchMarginDB { owner = .left }
-                        case .none:
-                            owner = diffDB >= 0 ? .left : .right
-                        }
-                    }
-
-                    switch owner {
-                    case .left:
-                        memcpy(leftDst, leftSource, byteCount)
-                        memset(rightDst, 0, byteCount)
-                    case .right:
-                        memset(leftDst, 0, byteCount)
-                        memcpy(rightDst, rightSource, byteCount)
-                    case .none:
-                        memset(leftDst, 0, byteCount)
-                        memset(rightDst, 0, byteCount)
-                    }
-                } else {
-                    memcpy(leftDst, leftSource, byteCount)
-                    memcpy(rightDst, rightSource, byteCount)
-                }
+                memcpy(leftOut.floatChannelData![0], leftSource, byteCount)
+                memcpy(rightOut.floatChannelData![0], rightSource, byteCount)
 
                 try leftFile?.write(from: leftOut)
                 try rightFile?.write(from: rightOut)
@@ -222,5 +149,90 @@ enum StereoSplitter {
         rightFile = nil
 
         return (leftURL, rightURL)
+    }
+
+    // MARK: - Cross-talk suppression (segment-level)
+
+    /// Per-window RMS energy of both channels of a stereo recording.
+    ///
+    /// Both RØDE Wireless Micro transmitters pick up *both* speakers when the
+    /// participants sit close together (acoustic bleed), so transcribing each
+    /// channel separately yields the same utterance on both channels. This
+    /// type lets the merge step decide, for any time span, which channel's
+    /// microphone was dominant — i.e. who was actually speaking — so the
+    /// bleed copy can be dropped without ever silencing the audio handed to
+    /// the transcriber.
+    struct ChannelEnergy {
+        let windowSeconds: Double
+        let left: [Float]
+        let right: [Float]
+
+        private func meanRMS(_ values: [Float], start: Double, end: Double) -> Float {
+            guard !values.isEmpty, windowSeconds > 0 else { return 0 }
+            let lo = max(0, Int((start / windowSeconds).rounded(.down)))
+            var hi = Int((end / windowSeconds).rounded(.up))
+            hi = min(values.count, max(hi, lo + 1))
+            guard lo < hi else { return values[min(lo, values.count - 1)] }
+            var sum: Float = 0
+            for i in lo..<hi { sum += values[i] }
+            return sum / Float(hi - lo)
+        }
+
+        /// `true` if the left channel is at least as loud as the right over
+        /// `[start, end]`. Ties resolve to the left channel so that exactly one
+        /// copy of a duplicated utterance survives (left keeps on `>=`, right
+        /// keeps on strict `>`).
+        func leftDominates(start: Double, end: Double) -> Bool {
+            meanRMS(left, start: start, end: end) >= meanRMS(right, start: start, end: end)
+        }
+    }
+
+    /// Computes `ChannelEnergy` for a stereo source by reading it once and
+    /// taking the RMS of each channel over fixed windows.
+    ///
+    /// Cheap: a single streaming pass storing a few floats per second. Returns
+    /// `nil` for non-stereo sources (nothing to disambiguate).
+    static func analyzeChannelEnergy(
+        sourceURL: URL,
+        windowSeconds: Double = 0.05
+    ) throws -> ChannelEnergy? {
+        let inputFile = try AVAudioFile(forReading: sourceURL)
+        let format = inputFile.processingFormat
+        guard format.channelCount >= 2 else { return nil }
+
+        let sampleRate = format.sampleRate
+        let windowFrames = max(1, Int((sampleRate * windowSeconds).rounded()))
+        // Read several windows per buffer to keep allocation count low.
+        let chunkWindows = 20
+        let chunkFrames = AVAudioFrameCount(windowFrames * chunkWindows)
+
+        var leftRMS: [Float] = []
+        var rightRMS: [Float] = []
+
+        while inputFile.framePosition < inputFile.length {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunkFrames) else {
+                throw StereoSplitterError.processingFailed("Kan ikke allokere analysebuffer")
+            }
+            try inputFile.read(into: buffer)
+            let frames = Int(buffer.frameLength)
+            if frames == 0 { break }
+            guard let channels = buffer.floatChannelData else { break }
+            let l = channels[0]
+            let r = channels[1]
+
+            var offset = 0
+            while offset < frames {
+                let n = min(windowFrames, frames - offset)
+                var rmsL: Float = 0
+                var rmsR: Float = 0
+                vDSP_rmsqv(l + offset, 1, &rmsL, vDSP_Length(n))
+                vDSP_rmsqv(r + offset, 1, &rmsR, vDSP_Length(n))
+                leftRMS.append(rmsL)
+                rightRMS.append(rmsR)
+                offset += n
+            }
+        }
+
+        return ChannelEnergy(windowSeconds: windowSeconds, left: leftRMS, right: rightRMS)
     }
 }

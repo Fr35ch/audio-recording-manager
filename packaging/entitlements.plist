@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  Hardened Runtime entitlements for Clio.
+
+  These two entitlements are required when bundling a third-party Python
+  interpreter (python-build-standalone) that dlopen()s its own shared
+  libraries and compiled extension modules (.so / .dylib):
+
+  • disable-library-validation: allows loading dylibs/SOs that are not
+    signed by Apple or by the same team as the app bundle. Without this,
+    notarization passes but the app crashes at runtime when Python tries
+    to import any C extension.
+
+  • allow-dyld-environment-variables: permits DYLD_* env vars to be
+    honoured for the process, which some Python extension modules rely on.
+
+  ⚠️  Do NOT add:
+      • com.apple.security.app-sandbox — incompatible with subprocess
+        execution (Process/NSTask) and with Ollama IPC.
+      • com.apple.security.cs.allow-unsigned-executable-memory — only
+        add this if Apple's notarization diagnostics specifically require
+        it. It is not needed for CPython 3.12 itself.
+-->
+<dict>
+    <!-- Required: allow bundled Python C extensions (.so/.dylib) that
+         are not signed by Apple to be loaded without being rejected by
+         the hardened runtime's library-validation check. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!-- Required: allow DYLD_* environment variables to take effect.
+         Some CPython extension modules (notably those built with
+         auditwheel / delocate) embed rpath assumptions that need
+         DYLD_LIBRARY_PATH overrides during the transitional period
+         before full relocation. -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+</dict>
+</plist>

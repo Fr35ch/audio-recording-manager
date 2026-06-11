@@ -100,6 +100,17 @@ actor MobileTransferClient {
         return stagingURL
     }
 
+    /// Fetches the optional `.meta.json` sidecar for a recording.
+    /// Returns nil on 404 or any error — the sidecar is optional.
+    func downloadSidecar(id: String) async -> Data? {
+        do {
+            let url = try await baseURL().appendingPathComponent("recordings/\(id)/meta")
+            return try await perform(request: authenticatedRequest(url: url))
+        } catch {
+            return nil
+        }
+    }
+
     /// Notifies the iOS app that Clio Mac has received and indexed the recording.
     func confirmReceipt(id: String) async throws {
         let url = try await baseURL().appendingPathComponent("recordings/\(id)/confirm")

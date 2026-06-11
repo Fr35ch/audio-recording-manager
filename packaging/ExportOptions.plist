@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Export method: Developer ID distributes outside the Mac App Store -->
+    <key>method</key>
+    <string>developer-id</string>
+
+    <!-- Your 10-character Apple Developer Team ID -->
+    <key>teamID</key>
+    <string>XXXXXXXXXX</string>
+
+    <!-- Hardened Runtime is required for notarization -->
+    <key>hardRuntime</key>
+    <true/>
+
+    <!-- Do NOT enable App Sandbox — Clio spawns subprocesses and accesses
+         arbitrary file paths. Sandbox would break both. -->
+
+    <!-- Strip Swift symbols to reduce binary size -->
+    <key>stripSwiftSymbols</key>
+    <true/>
+
+    <!-- Upload debug symbols to Apple (optional; does not affect distribution) -->
+    <key>uploadSymbols</key>
+    <false/>
+</dict>
+</plist>

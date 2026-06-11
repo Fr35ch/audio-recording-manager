@@ -37,5 +37,13 @@ let package = Package(
                 .linkedFramework("MultipeerConnectivity"),
             ]
         ),
+        // Unit tests for pure, hardware-independent logic (sidecar parsing,
+        // transcript merge, transfer stem matching). Uses `@testable import`
+        // to reach internal symbols on the executable target.
+        .testTarget(
+            name: "ClioTests",
+            dependencies: ["Clio"],
+            path: "tests/ClioTests"
+        ),
     ]
 )

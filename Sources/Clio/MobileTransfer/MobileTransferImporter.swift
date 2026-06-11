@@ -42,9 +42,18 @@ actor MobileTransferImporter {
     func importRecording(
         stagingURL: URL,
         info: MobileRecordingInfo,
-        deviceName: String
+        deviceName: String,
+        sidecarData: Data? = nil
     ) async throws -> MobileImportResult {
-        let isDualChannel = (info.isDualChannel == true) || (try? Self.detectDualChannelMarker(at: stagingURL)) == true
+        // Prefer the authoritative sidecar flag; fall back to detection.
+        let receivedMeta = sidecarData.flatMap(ClioMeta.decode(from:))
+        let isDualChannel: Bool
+        if let receivedMeta {
+            isDualChannel = !receivedMeta.diarizationRequired
+        } else {
+            isDualChannel = (info.isDualChannel == true)
+                || (try? Self.detectDualChannelMarker(at: stagingURL)) == true
+        }
         let newId = UUID()
         let folder = StorageLayout.recordingFolder(id: newId)
 
@@ -54,6 +63,18 @@ actor MobileTransferImporter {
         let destinationURL = StorageLayout.audioURL(id: newId)
         try await Self.convertToM4A(from: stagingURL, to: destinationURL)
         try? FileManager.default.removeItem(at: stagingURL)
+
+        // Write the ClioMeta sidecar (audio.meta.json) next to the converted audio
+        // so transcribe() routes dual-channel recordings to the channel split.
+        if isDualChannel {
+            let metaToWrite = receivedMeta ?? ClioMeta.rodeDualChannelDefault()
+            do {
+                try metaToWrite.write(for: destinationURL)
+            } catch {
+                NSLog("[MobileTransferImporter] Failed to write ClioMeta sidecar: \(error)")
+                // Non-fatal — the transcribe() mobileImport fallback still routes the split.
+            }
+        }
 
         var meta = RecordingMeta.new(
             id: newId,
@@ -117,7 +138,12 @@ actor MobileTransferImporter {
         }
         try FileManager.default.copyItem(at: fileURL, to: stagingURL)
 
-        return try await importRecording(stagingURL: stagingURL, info: info, deviceName: deviceName)
+        // AirDrop may deliver a co-located `<stem>.meta.json` sidecar next to the
+        // original file — pass its bytes through if present.
+        let sidecarCandidate = fileURL.deletingPathExtension().appendingPathExtension("meta.json")
+        let sidecarData = try? Data(contentsOf: sidecarCandidate)
+
+        return try await importRecording(stagingURL: stagingURL, info: info, deviceName: deviceName, sidecarData: sidecarData)
     }
 
     // MARK: - Private helpers

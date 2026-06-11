@@ -296,10 +296,12 @@ struct MobileTransferScreen: View {
 
         do {
             let stagingURL = try await client.downloadRecording(id: recording.id)
+            let sidecarData = await client.downloadSidecar(id: recording.id)
             _ = try await importer.importRecording(
                 stagingURL: stagingURL,
                 info: recording,
-                deviceName: device.name
+                deviceName: device.name,
+                sidecarData: sidecarData
             )
             try await client.confirmReceipt(id: recording.id)
             importedIOSIds.insert(recording.id)

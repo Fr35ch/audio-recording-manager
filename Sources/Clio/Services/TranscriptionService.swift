@@ -688,7 +688,7 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             }
         }
 
-        let (left, right): (TranscriptionResult, TranscriptionResult)
+        var (left, right): (TranscriptionResult, TranscriptionResult)
         do {
             (left, right) = try await (leftResult, rightResult)
         } catch {
@@ -697,6 +697,30 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
                 "errorMessage": .string(error.localizedDescription),
             ])
             throw error
+        }
+
+        // Step 2b: cross-talk suppression.
+        // Both RØDE transmitters pick up both speakers, so each utterance is
+        // transcribed on BOTH channels — surfacing as duplicate lines (one per
+        // label) in the merge. Drop the bleed copy by keeping each segment only
+        // on the channel whose microphone dominated during that segment's time
+        // span. Energy ties resolve to the left channel, so exactly one copy of
+        // a duplicated utterance survives. If the analysis fails we keep both
+        // channels unchanged rather than risk dropping content.
+        if let energy = try? StereoSplitter.analyzeChannelEnergy(sourceURL: audioFile) {
+            let leftBefore = left.segments.count
+            let rightBefore = right.segments.count
+            left.segments = left.segments.filter {
+                energy.leftDominates(start: $0.start, end: $0.end)
+            }
+            right.segments = right.segments.filter {
+                !energy.leftDominates(start: $0.start, end: $0.end)
+            }
+            AuditLogger.shared.log(.transcriptionStereoSplitCompleted, payload: [
+                "stage":           .string("crossTalkFilter"),
+                "leftDropped":     .int(leftBefore - left.segments.count),
+                "rightDropped":    .int(rightBefore - right.segments.count),
+            ])
         }
 
         // Step 3: merge segments sorted by start time, renumber IDs

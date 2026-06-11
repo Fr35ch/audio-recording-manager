@@ -17,6 +17,14 @@ private enum TranscriptionUIState {
     case failed(TranscriptionError)
 }
 
+/// Display-ready summary of how a recording was captured, surfaced in the
+/// detail panel's "Opptakskilde" section.
+private struct RecordingSourceInfo {
+    let sourceLabel: String
+    let channelLabel: String
+    let channelAssignment: String?
+}
+
 // MARK: - Recording Detail View
 //
 // Redesigned per RECORDING_DETAIL_VIEW.md (2026-04-17):
@@ -45,6 +53,10 @@ struct RecordingDetailView: View {
     @State private var scrubberTimer: Timer? = nil
     @State private var transcriptMeta: TranscriptMeta? = nil
 
+    // Recording-source info (RØDE / channel layout) surfaced from the sidecar
+    // (ClioMeta) or, as a fallback, the mobile-import metadata.
+    @State private var sourceInfo: RecordingSourceInfo? = nil
+
     private var isCurrentFile: Bool {
         audioPlayer.currentPlayingURL == recording.audioURL
     }
@@ -70,6 +82,7 @@ struct RecordingDetailView: View {
                 transcriptionSection
                 diarizationSection
                 fileInfoSection
+                recordingSourceSection
                 transcriptionDetailsSection
             }
             .padding(32)
@@ -78,6 +91,7 @@ struct RecordingDetailView: View {
         .onAppear {
             restoreTranscriptionState()
             loadTranscriptMeta()
+            loadSourceInfo()
             startScrubberTimer()
         }
         .onDisappear {
@@ -407,6 +421,34 @@ struct RecordingDetailView: View {
         }
     }
 
+    // MARK: - Opptakskilde
+
+    @ViewBuilder
+    private var recordingSourceSection: some View {
+        if let info = sourceInfo {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Opptakskilde")
+                    .clioSectionLabel()
+
+                VStack(spacing: 0) {
+                    infoRow(label: "Kilde", value: info.sourceLabel)
+                    Divider().background(Color.gray.opacity(0.2))
+                    infoRow(label: "Kanaler", value: info.channelLabel)
+                    if let assignment = info.channelAssignment {
+                        Divider().background(Color.gray.opacity(0.2))
+                        infoRow(label: "Kanalfordeling", value: assignment)
+                    }
+                }
+                .background(Color.gray.opacity(0.04))
+                .cornerRadius(AppRadius.large)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppRadius.large)
+                        .stroke(Color.gray.opacity(0.15), lineWidth: 1)
+                )
+            }
+        }
+    }
+
     @ViewBuilder
     private var transcriptionDetailsSection: some View {
         if let meta = transcriptMeta, meta.status == .done {
@@ -476,6 +518,51 @@ struct RecordingDetailView: View {
         if let meta = try? RecordingStore.shared.load(id: recording.id) {
             transcriptMeta = meta.transcript
         }
+    }
+
+    /// Resolves how this recording was captured (RØDE stereo vs single channel)
+    /// from the `.meta.json` sidecar written by Clio Recorder, falling back to
+    /// the mobile-import metadata. Only sets `sourceInfo` when something is known.
+    private func loadSourceInfo() {
+        let storeMeta = try? RecordingStore.shared.load(id: recording.id)
+        let mobile = storeMeta?.mobileImport
+        let sidecar = ClioMeta.load(for: recording.audioURL)
+
+        // Nothing to show unless we have at least one source of truth.
+        guard sidecar != nil || mobile != nil else {
+            sourceInfo = nil
+            return
+        }
+
+        // Dual-channel if the sidecar says diarization isn't required, or the
+        // mobile import was flagged dual-channel.
+        let isDualChannel = sidecar.map { !$0.diarizationRequired } ?? (mobile?.isDualChannel ?? false)
+
+        let sourceLabel: String
+        switch sidecar?.recordingSource {
+        case "ios_rode_wireless_micro":
+            sourceLabel = "RØDE Wireless Micro"
+        case "ios_builtin_mic":
+            sourceLabel = "Innebygd mikrofon (mobil)"
+        default:
+            // No explicit source string — infer from the dual-channel flag.
+            sourceLabel = isDualChannel ? "RØDE Wireless Micro" : "Mobilopptak"
+        }
+
+        let channelLabel = isDualChannel ? "2 (stereo)" : "1 (mono)"
+
+        var assignment: String? = nil
+        if isDualChannel {
+            let left = (sidecar?.resolvedLeft ?? "INTERVJUER").capitalized
+            let right = (sidecar?.resolvedRight ?? "INFORMANT").capitalized
+            assignment = "Venstre: \(left) · Høyre: \(right)"
+        }
+
+        sourceInfo = RecordingSourceInfo(
+            sourceLabel: sourceLabel,
+            channelLabel: channelLabel,
+            channelAssignment: assignment
+        )
     }
 
     private func infoRow(label: String, value: String) -> some View {

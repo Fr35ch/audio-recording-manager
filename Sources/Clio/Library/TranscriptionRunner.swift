@@ -31,10 +31,6 @@ final class TranscriptionRunner: ObservableObject {
             let v = defaults.integer(forKey: "transcription.numBeams")
             return v == 0 ? 3 : v
         }()
-        let speakers: Int = {
-            let v = defaults.integer(forKey: "transcription.defaultSpeakers")
-            return v == 0 ? 2 : v
-        }()
         let verbatim = defaults.bool(forKey: "transcription.verbatim")
         let language = defaults.string(forKey: "transcription.language") ?? "no"
 
@@ -68,7 +64,7 @@ final class TranscriptionRunner: ObservableObject {
             do {
                 let result = try await TranscriptionService.shared.transcribe(
                     audioFile: audioURL,
-                    speakers: speakers,
+                    speakers: 1,
                     model: model,
                     verbatim: verbatim,
                     language: language

@@ -92,7 +92,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // returns the correct fallback even before the user opens Settings.
         UserDefaults.standard.register(defaults: [
             "transcription.defaultModel":    TranscriptionModel.large.rawValue,
-            "transcription.defaultSpeakers": 2,
             "transcription.verbatim":        false,
             "transcription.language":        "no",
             "transcription.validateMode":    "warn",

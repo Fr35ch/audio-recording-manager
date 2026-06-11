@@ -31,7 +31,11 @@ private func shortSpeakerLabel(_ speaker: String) -> String {
     if speaker.hasPrefix("SPEAKER_"), let num = Int(speaker.dropFirst(8)) {
         return "T\(num + 1)"
     }
-    return speaker
+    switch speaker {
+    case "INTERVJUER": return "Int."
+    case "INFORMANT":  return "Inf."
+    default: return speaker
+    }
 }
 
 // MARK: - AnonymizationState
@@ -520,7 +524,7 @@ struct TranscriptEditorView: View {
                 .font(.clioLabel)
                 .foregroundStyle(.secondary)
         }
-        .frame(width: 36, alignment: .leading)
+        .frame(width: 44, alignment: .leading)
     }
 
     // MARK: - Sign-off bar

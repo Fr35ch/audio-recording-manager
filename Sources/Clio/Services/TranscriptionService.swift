@@ -200,12 +200,15 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
                 language: language)
         }
 
+        // Non-RØDE / mono recordings: force single speaker to skip
+        // probabilistic diarization which is too error-prone on software
+        // audio spectrum alone.
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
                     let result = try self.runSubprocess(
                         audioFile: audioFile,
-                        speakers: speakers,
+                        speakers: 1,
                         model: model,
                         verbatim: verbatim,
                         language: language

@@ -37,6 +37,8 @@
 		1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */; };
 		1993DAF3EF1CCC5A9E3FFEB7 /* anonymize_bridge.py in Resources */ = {isa = PBXBuildFile; fileRef = BBDD5A98F213794984CF6C7D /* anonymize_bridge.py */; };
 		1BC619DAFC4AEA3D636B419D /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */; };
+		AA001122334455CM01 /* ClioMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455CM02 /* ClioMeta.swift */; };
+		AA001122334455SS01 /* StereoSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455SS02 /* StereoSplitter.swift */; };
 		20FA68DA01D9B5740852A653 /* DependencyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E3B184AB414FBCEE5CB44BA /* DependencyManager.swift */; };
 		28B97BA238D29468D2D1A3E1 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC7F9C0FE219DAA75AC0FD9 /* AppState.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* AppCopy.swift */; };
@@ -180,6 +182,8 @@
 		DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntraConfig.swift; sourceTree = "<group>"; };
 		E056E09D9198F48C6D484127 /* AudioLevelVisualization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelVisualization.swift; sourceTree = "<group>"; };
 		E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResult.swift; sourceTree = "<group>"; };
+		AA001122334455CM02 /* ClioMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClioMeta.swift; sourceTree = "<group>"; };
+		AA001122334455SS02 /* StereoSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoSplitter.swift; sourceTree = "<group>"; };
 		E3A2B67087421F36783F71F2 /* CheckResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckResult.swift; sourceTree = "<group>"; };
 		E9EE8D5882CD2DBB99E27BB8 /* RecordingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingsManager.swift; sourceTree = "<group>"; };
 		EFCD87B06F113EFD53A5D5BC /* StartupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupCoordinator.swift; sourceTree = "<group>"; };
@@ -253,6 +257,7 @@
 				F0B6668F23D21197B2C8CACC /* TranscriptEditorState.swift */,
 				7C154C760474D9F33E4983FD /* TranscriptionModel.swift */,
 				E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */,
+				AA001122334455CM02 /* ClioMeta.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -279,6 +284,7 @@
 				6AA92AD03012C8A1061330A2 /* OllamaManager.swift */,
 				E9EE8D5882CD2DBB99E27BB8 /* RecordingsManager.swift */,
 				013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */,
+				AA001122334455SS02 /* StereoSplitter.swift */,
 				A7D9DC657F2709B54C9B527F /* TranscriptionService.swift */,
 			);
 			path = Services;
@@ -559,6 +565,8 @@
 				65F51659423C9E55705D1265 /* TranscriptPlaybackController.swift in Sources */,
 				DFE7330EBE548A47E70C6DF0 /* TranscriptionModel.swift in Sources */,
 				1BC619DAFC4AEA3D636B419D /* TranscriptionResult.swift in Sources */,
+				AA001122334455CM01 /* ClioMeta.swift in Sources */,
+				AA001122334455SS01 /* StereoSplitter.swift in Sources */,
 				155861C74CBFD44B56ACE200 /* TranscriptionRunner.swift in Sources */,
 				BD37FDC476964258943BD4FD /* TranscriptionService.swift in Sources */,
 				1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */,

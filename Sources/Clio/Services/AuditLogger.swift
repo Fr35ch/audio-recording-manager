@@ -113,6 +113,9 @@ enum AuditEventType: String {
     case recordingExpiryWarning
     case recordingExpired
     case migrationCompleted
+    case transcriptionStereoSplitStarted
+    case transcriptionStereoSplitCompleted
+    case transcriptionStereoSplitFailed
 
     // Legacy
     case anonymizationRun

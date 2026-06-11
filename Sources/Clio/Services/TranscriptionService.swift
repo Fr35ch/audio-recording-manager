@@ -173,6 +173,17 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { self.isBusy = true }
         defer { DispatchQueue.main.async { self.isBusy = false } }
 
+        // Check for RØDE stereo sidecar — if present and diarization_required is false,
+        // use the channel-split pipeline instead of probabilistic diarization.
+        if let meta = ClioMeta.load(for: audioFile), !meta.diarizationRequired {
+            return try await runStereoTranscription(
+                audioFile: audioFile,
+                meta: meta,
+                model: model,
+                verbatim: verbatim,
+                language: language)
+        }
+
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 do {
@@ -442,6 +453,345 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         }
 
         return result
+    }
+
+    // MARK: - Mono subprocess (stereo-split path)
+
+    /// Runs no-transcribe on a single mono M4A. Does NOT update activeProcess,
+    /// stage, or progress — those are managed by the outer stereo orchestrator.
+    /// Always passes `--speakers 1`. All returned segments are labelled `speakerLabel`.
+    private func runMonoSubprocess(
+        audioFile: URL,
+        speakerLabel: String,
+        model: TranscriptionModel,
+        verbatim: Bool,
+        language: String
+    ) throws -> TranscriptionResult {
+        let task: Process
+        if PythonRuntime.isEmbedded {
+            var args: [String] = [
+                "--input", audioFile.path,
+                "--format", "json",
+                "--model", model.rawValue,
+                "--speakers", "1",
+                "--language", language,
+            ]
+            if verbatim { args.append("--verbatim") }
+            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
+            if validateMode != "none" { args += ["--validate", validateMode] }
+            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
+            args += ["--num-beams", "\(max(1, min(5, numBeams)))"]
+            task = PythonRuntime.process(module: "no_transcribe", arguments: args)
+        } else {
+            var cmdParts = [
+                noTranscribeExecutable,
+                "--input", audioFile.path.armShellEscaped,
+                "--format", "json",
+                "--model", model.rawValue,
+                "--speakers", "1",
+                "--language", language,
+            ]
+            if verbatim { cmdParts.append("--verbatim") }
+            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
+            if validateMode != "none" { cmdParts += ["--validate", validateMode] }
+            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
+            cmdParts += ["--num-beams", "\(max(1, min(5, numBeams)))"]
+            let cmd = cmdParts.joined(separator: " ")
+
+            let shellTask = Process()
+            shellTask.launchPath = "/bin/sh"
+            shellTask.arguments = ["-lc", cmd]
+
+            var env = ProcessInfo.processInfo.environment
+            env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
+            env["TOKENIZERS_PARALLELISM"] = "false"
+            shellTask.environment = env
+            task = shellTask
+        }
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        task.standardOutput = stdoutPipe
+        task.standardError = stderrPipe
+
+        // Note: activeProcess is intentionally NOT set here — only runSubprocess
+        // and runDiarizeSubprocess manage it to avoid concurrent write races.
+
+        let stderrHandle = stderrPipe.fileHandleForReading
+        var stderrBuffer = ""
+        var fullStderrLines: [String] = []
+        let bufferLock = NSLock()
+
+        stderrHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            bufferLock.lock()
+            stderrBuffer += chunk
+            var lines = stderrBuffer.components(separatedBy: "\n")
+            stderrBuffer = lines.removeLast()
+            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
+            bufferLock.unlock()
+        }
+
+        let stdoutHandle = stdoutPipe.fileHandleForReading
+        var accumulatedStdout = Data()
+        let stdoutLock = NSLock()
+
+        stdoutHandle.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            stdoutLock.lock()
+            accumulatedStdout.append(data)
+            stdoutLock.unlock()
+        }
+
+        do {
+            try task.run()
+        } catch {
+            stderrHandle.readabilityHandler = nil
+            throw TranscriptionError.processFailed(error.localizedDescription)
+        }
+
+        let deadline = Date().addingTimeInterval(7200)
+        while task.isRunning {
+            if Date() > deadline {
+                task.terminate()
+                stderrHandle.readabilityHandler = nil
+                throw TranscriptionError.timeout
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        stderrHandle.readabilityHandler = nil
+        stdoutHandle.readabilityHandler = nil
+
+        let exitCode = task.terminationStatus
+
+        switch exitCode {
+        case 0:
+            break
+        case 3:
+            throw TranscriptionError.notInstalled
+        default:
+            bufferLock.lock()
+            var allLines = fullStderrLines
+            let tail = stderrBuffer
+            bufferLock.unlock()
+            let extra = String(
+                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            if !tail.isEmpty { allLines.append(tail) }
+            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
+            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            throw TranscriptionError.processFailed(
+                errText.isEmpty ? "exit code \(exitCode)" : errText
+            )
+        }
+
+        stdoutLock.lock()
+        let stdoutData = accumulatedStdout
+        stdoutLock.unlock()
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard var decoded = try? decoder.decode(TranscriptionResult.self, from: stdoutData) else {
+            throw TranscriptionError.invalidOutput
+        }
+
+        // Relabel all segments with the assigned speaker label
+        decoded.segments = decoded.segments.map { seg in
+            var s = seg
+            s.speaker = speakerLabel
+            return s
+        }
+        decoded.metadata.diarizationRun = true  // channel split IS our diarization
+
+        return decoded
+    }
+
+    // MARK: - Stereo pipeline orchestrator
+
+    private func runStereoTranscription(
+        audioFile: URL,
+        meta: ClioMeta,
+        model: TranscriptionModel,
+        verbatim: Bool,
+        language: String
+    ) async throws -> TranscriptionResult {
+
+        AuditLogger.shared.log(.transcriptionStereoSplitStarted, payload: [
+            "sourceFile": .string(audioFile.lastPathComponent),
+            "leftLabel":  .string(meta.resolvedLeft),
+            "rightLabel": .string(meta.resolvedRight),
+        ])
+
+        // Step 1: split
+        let (leftURL, rightURL): (URL, URL)
+        do {
+            (leftURL, rightURL) = try await StereoSplitter.splitStereoM4A(sourceURL: audioFile)
+        } catch {
+            AuditLogger.shared.log(.transcriptionStereoSplitFailed, payload: [
+                "errorType":    .string("split"),
+                "errorMessage": .string(error.localizedDescription),
+            ])
+            throw error
+        }
+
+        defer {
+            try? FileManager.default.removeItem(at: leftURL)
+            try? FileManager.default.removeItem(at: rightURL)
+        }
+
+        // Step 2: transcribe each channel — wrapped in continuations on global queue.
+        // NB-Whisper is GPU-bound; the two tasks will naturally serialize on the GPU.
+        // We use async let to express intent; actual parallelism depends on hardware.
+        async let leftResult: TranscriptionResult = withCheckedThrowingContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let r = try self.runMonoSubprocess(
+                        audioFile: leftURL,
+                        speakerLabel: meta.resolvedLeft,
+                        model: model, verbatim: verbatim, language: language)
+                    cont.resume(returning: r)
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+        async let rightResult: TranscriptionResult = withCheckedThrowingContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    let r = try self.runMonoSubprocess(
+                        audioFile: rightURL,
+                        speakerLabel: meta.resolvedRight,
+                        model: model, verbatim: verbatim, language: language)
+                    cont.resume(returning: r)
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+
+        let (left, right): (TranscriptionResult, TranscriptionResult)
+        do {
+            (left, right) = try await (leftResult, rightResult)
+        } catch {
+            AuditLogger.shared.log(.transcriptionStereoSplitFailed, payload: [
+                "errorType":    .string("transcription"),
+                "errorMessage": .string(error.localizedDescription),
+            ])
+            throw error
+        }
+
+        // Step 3: merge segments sorted by start time, renumber IDs
+        let merged = mergeTranscriptionResults(
+            left: left,
+            right: right,
+            leftLabel: meta.resolvedLeft,
+            rightLabel: meta.resolvedRight)
+
+        AuditLogger.shared.log(.transcriptionStereoSplitCompleted, payload: [
+            "leftSegments":   .int(left.segments.count),
+            "rightSegments":  .int(right.segments.count),
+            "mergedSegments": .int(merged.segments.count),
+        ])
+
+        return merged
+    }
+
+    // MARK: - Merge helpers
+
+    /// Merges two single-speaker TranscriptionResults into one by interleaving
+    /// segments sorted by start time. Left wins on timestamp ties.
+    private func mergeTranscriptionResults(
+        left: TranscriptionResult,
+        right: TranscriptionResult,
+        leftLabel: String,
+        rightLabel: String
+    ) -> TranscriptionResult {
+        let segments = (left.segments + right.segments)
+            .sorted { a, b in
+                if a.start == b.start {
+                    // tie-break: left channel first
+                    return a.speaker == leftLabel
+                }
+                return a.start < b.start
+            }
+            .enumerated()
+            .map { idx, seg -> TranscriptionSegment in
+                TranscriptionSegment(
+                    id: idx,
+                    start: seg.start,
+                    end: seg.end,
+                    text: seg.text,
+                    speaker: seg.speaker,
+                    confidence: seg.confidence,
+                    words: seg.words)
+            }
+
+        // Build combined metadata from the left result (representative)
+        var metadata = left.metadata
+        metadata.diarizationRun = true
+
+        return TranscriptionResult(
+            version: left.version,
+            model: left.model,
+            language: left.language,
+            durationSeconds: max(left.durationSeconds, right.durationSeconds),
+            numSpeakers: 2,
+            segments: segments,
+            metadata: metadata)
+    }
+
+    /// Text-level merge of two timestamped plain-text transcripts.
+    /// Each line has the format `[HH:MM:SS] Tekst`.
+    /// Used for plain-text export / display. Speaker labels are injected.
+    ///
+    /// - Returns: merged plain text where each line is `[HH:MM:SS] LABEL: Tekst`
+    static func mergeTranscripts(
+        left: String,
+        right: String,
+        leftLabel: String,
+        rightLabel: String
+    ) -> String {
+        struct TimedLine {
+            let seconds: Int    // parsed timestamp in total seconds
+            let label: String
+            let text: String
+            var formatted: String { "[\(hhmmss(seconds))] \(label): \(text)" }
+        }
+
+        func parseLines(_ transcript: String, label: String) -> [TimedLine] {
+            transcript
+                .components(separatedBy: "\n")
+                .compactMap { line -> TimedLine? in
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    guard trimmed.hasPrefix("["),
+                          let close = trimmed.firstIndex(of: "]") else { return nil }
+                    let tsRange = trimmed.index(trimmed.startIndex, offsetBy: 1)..<close
+                    let ts = String(trimmed[tsRange])
+                    let parts = ts.split(separator: ":").compactMap { Int($0) }
+                    guard parts.count == 3 else { return nil }
+                    let secs = parts[0] * 3600 + parts[1] * 60 + parts[2]
+                    let rest = String(trimmed[trimmed.index(after: close)...])
+                        .trimmingCharacters(in: .whitespaces)
+                    return TimedLine(seconds: secs, label: label, text: rest)
+                }
+        }
+
+        func hhmmss(_ totalSeconds: Int) -> String {
+            let h = totalSeconds / 3600
+            let m = (totalSeconds % 3600) / 60
+            let s = totalSeconds % 60
+            return String(format: "%02d:%02d:%02d", h, m, s)
+        }
+
+        var all = parseLines(left, label: leftLabel) + parseLines(right, label: rightLabel)
+        all.sort {
+            if $0.seconds == $1.seconds { return $0.label == leftLabel }
+            return $0.seconds < $1.seconds
+        }
+        return all.map { $0.formatted }.joined(separator: "\n")
     }
 
     // MARK: - Install / Update / Download

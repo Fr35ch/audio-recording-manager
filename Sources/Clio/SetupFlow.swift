@@ -65,10 +65,10 @@ struct SetupItem: Identifiable {
 final class SetupFlowCoordinator: ObservableObject {
     @Published var phase: SetupPhase = .checking
     @Published var items: [SetupItem] = [
-        SetupItem(id: .nbWhisper,   title: "NB-Whisper (transkripsjon)",        status: .pending, progress: -1, detail: ""),
-        SetupItem(id: .spacy,       title: "spaCy nb_core_news_lg (NLP-modell)", status: .pending, progress: -1, detail: ""),
-        SetupItem(id: .ollama,      title: "Ollama (lokal AI)",                  status: .pending, progress: -1, detail: ""),
-        SetupItem(id: .ollamaModel, title: "qwen3:8b (språkmodell)",             status: .pending, progress: -1, detail: ""),
+        SetupItem(id: .nbWhisper, title: "NB-Whisper (transkripsjon)", status: .pending, progress: -1, detail: ""),
+        SetupItem(id: .spacy, title: "spaCy nb_core_news_lg (NLP-modell)", status: .pending, progress: -1, detail: ""),
+        SetupItem(id: .ollama, title: "Ollama (lokal AI)", status: .pending, progress: -1, detail: ""),
+        SetupItem(id: .ollamaModel, title: "qwen3:8b (språkmodell)", status: .pending, progress: -1, detail: ""),
     ]
 
     // MARK: - Static helpers

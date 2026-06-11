@@ -533,7 +533,6 @@ struct RecordingPlayerNative: View {
     @State private var transcriptionError: TranscriptionError?
     @State private var isTranscribing = false
     @AppStorage("transcription.defaultModel")    private var defaultModelRaw = TranscriptionModel.large.rawValue
-    @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
 
@@ -547,6 +546,19 @@ struct RecordingPlayerNative: View {
 
     private var isCurrentFile: Bool {
         audioPlayer.currentPlayingURL == recording.audioURL
+    }
+
+    /// True only for RØDE dual-channel recordings (ClioMeta sidecar or mobileImport flag).
+    private var isDualChannelRecording: Bool {
+        if let meta = ClioMeta.load(for: recording.audioURL), !meta.diarizationRequired {
+            return true
+        }
+        if let recId = StorageLayout.recordingId(from: recording.audioURL.deletingLastPathComponent()),
+           let recMeta = try? RecordingStore.shared.load(id: recId),
+           recMeta.mobileImport?.isDualChannel == true {
+            return true
+        }
+        return false
     }
 
     var body: some View {
@@ -648,7 +660,9 @@ struct RecordingPlayerNative: View {
 
                 Form {
                     transcriptionSection
-                    diarizationSection
+                    if isDualChannelRecording {
+                        diarizationSection
+                    }
 
                     avidentifiseringBekreftSection
                     teamsUploadSection
@@ -953,7 +967,7 @@ struct RecordingPlayerNative: View {
                             .font(.caption)
                             .foregroundStyle(.orange)
                     } else {
-                        Text("Modell: \(model.displayName) · \(defaultSpeakers) taler\(defaultSpeakers == 1 ? "" : "e")")
+                        Text("Modell: \(model.displayName)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -1045,7 +1059,7 @@ struct RecordingPlayerNative: View {
                         Label(AppCopy.Labels.identifySpeakers, systemImage: "person.2.fill")
                     }
                     .disabled(isTranscribing)
-                    Text("FluidAudio (lokalt, Apple Neural Engine) · \(defaultSpeakers) talere")
+                    Text("FluidAudio (lokalt, Apple Neural Engine) · 2 talere")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     Text("Transkriber lydfilen først")
@@ -1073,7 +1087,7 @@ struct RecordingPlayerNative: View {
             do {
                 let result = try await TranscriptionService.shared.transcribe(
                     audioFile: audioURL,
-                    speakers: defaultSpeakers,
+                    speakers: 1,
                     model: model,
                     verbatim: verbatim,
                     language: language
@@ -1165,7 +1179,7 @@ struct RecordingPlayerNative: View {
                 let updated = try await TranscriptionService.shared.diarize(
                     audioFile: recording.audioURL,
                     existingResult: result,
-                    speakers: defaultSpeakers
+                    speakers: 2
                 )
                 await MainActor.run {
                     transcriptionResult = updated

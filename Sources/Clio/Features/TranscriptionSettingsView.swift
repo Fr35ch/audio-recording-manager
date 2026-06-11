@@ -9,7 +9,7 @@ struct TranscriptionSettingsView: View {
 
     // Persisted defaults
     @AppStorage("transcription.defaultModel")   private var defaultModelRaw = TranscriptionModel.large.rawValue
-    @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
+
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
     @AppStorage("transcription.validateMode")    private var validateMode = "warn"
@@ -174,21 +174,6 @@ struct TranscriptionSettingsView: View {
                         }
                         .labelsHidden()
                         .frame(width: 120)
-                    }
-
-                    Divider()
-
-                    // Number of speakers — minimum is 2 because the
-                    // diarization model would otherwise be told
-                    // "exactly 1 cluster" and collapse all turns into
-                    // a single speaker. For genuine monologue
-                    // recordings, just don't run diarization.
-                    LabeledContent("Antall talere") {
-                        Stepper(value: $defaultSpeakers, in: 2...10) {
-                            Text("\(defaultSpeakers)")
-                                .monospacedDigit()
-                                .frame(width: 24, alignment: .trailing)
-                        }
                     }
 
                     Divider()

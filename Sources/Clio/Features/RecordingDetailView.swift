@@ -43,7 +43,6 @@ struct RecordingDetailView: View {
     @State private var transcriptionState: TranscriptionUIState = .notStarted
     @State private var transcriptionTask: Task<Void, Never>? = nil
     @AppStorage("transcription.defaultModel")    private var defaultModelRaw = TranscriptionModel.large.rawValue
-    @AppStorage("transcription.defaultSpeakers") private var defaultSpeakers = 2
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
 
@@ -80,7 +79,6 @@ struct RecordingDetailView: View {
                 headerSection
                 playbackSection
                 transcriptionSection
-                diarizationSection
                 fileInfoSection
                 recordingSourceSection
                 transcriptionDetailsSection
@@ -242,7 +240,6 @@ struct RecordingDetailView: View {
 
             HStack(spacing: 16) {
                 Label("Modell: \(model.displayName)", systemImage: "cpu")
-                Label("\(defaultSpeakers) taler\(defaultSpeakers == 1 ? "" : "e")", systemImage: "person.2")
             }
             .font(.clioLabel)
             .foregroundStyle(.secondary)
@@ -358,42 +355,6 @@ struct RecordingDetailView: View {
                 .padding(.vertical, 8)
             }
             .buttonStyle(.bordered)
-        }
-    }
-
-    // MARK: - Taleutskilling (diarization placeholder)
-
-    private var diarizationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Taleutskilling")
-                .clioSectionLabel()
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Identifiser hvem som snakker i opptaket")
-                    .font(.clioSub)
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    // Placeholder — not functional yet
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "person.2.wave.2")
-                        Text("Kjør taleutskilling")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                }
-                .buttonStyle(.bordered)
-                .disabled(true)
-                .help("Taleutskilling kommer i en fremtidig versjon av Clio")
-            }
-            .padding(16)
-            .background(Color.gray.opacity(0.04))
-            .cornerRadius(AppRadius.large)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.large)
-                    .stroke(Color.gray.opacity(0.15), lineWidth: 1)
-            )
         }
     }
 
@@ -644,7 +605,7 @@ struct RecordingDetailView: View {
             do {
                 let result = try await TranscriptionService.shared.transcribe(
                     audioFile: audioURL,
-                    speakers: defaultSpeakers,
+                    speakers: 1,
                     model: model,
                     verbatim: verbatim,
                     language: language

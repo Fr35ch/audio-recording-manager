@@ -17,8 +17,13 @@ private let speakerColors: [Color] = [
 ]
 
 private func colorForSpeaker(_ speaker: String) -> Color {
-    let index = abs(speaker.hashValue) % speakerColors.count
-    return speakerColors[index]
+    switch speaker {
+    case "INTERVJUER": return .blue
+    case "INFORMANT":  return .orange
+    default:
+        let index = abs(speaker.hashValue) % speakerColors.count
+        return speakerColors[index]
+    }
 }
 
 private func formatTimestamp(_ seconds: Double) -> String {
@@ -32,8 +37,8 @@ private func shortSpeakerLabel(_ speaker: String) -> String {
         return "T\(num + 1)"
     }
     switch speaker {
-    case "INTERVJUER": return "Int."
-    case "INFORMANT":  return "Inf."
+    case "INTERVJUER": return "Intervjuer"
+    case "INFORMANT":  return "Informant"
     default: return speaker
     }
 }
@@ -522,9 +527,9 @@ struct TranscriptEditorView: View {
                 .frame(width: 8, height: 8)
             Text(shortSpeakerLabel(speaker))
                 .font(.clioLabel)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(colorForSpeaker(speaker))
         }
-        .frame(width: 44, alignment: .leading)
+        .frame(width: 80, alignment: .leading)
     }
 
     // MARK: - Sign-off bar

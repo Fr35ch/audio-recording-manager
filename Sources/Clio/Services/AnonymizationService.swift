@@ -233,12 +233,19 @@ final class AnonymizationService: @unchecked Sendable {
         return nil
     }
 
-    /// Returns the Python executable to use, preferring the no-anonymizer dev venv.
+    /// Returns the Python executable to use.
     ///
     /// Priority:
-    ///   1. `~/Github/no-anonymizer/.venv/bin/python3` — local development venv
-    ///   2. `python3` via login shell PATH — production / globally installed
+    ///   1. Bundled interpreter (`PythonRuntime.interpreter`) — present in
+    ///      production DMG builds after `embed-python.sh` has run.
+    ///   2. `~/Github/no-anonymizer/.venv/bin/python3` — local development venv
+    ///   3. `python3` via login shell PATH — fallback
     private func pythonExecutable() -> String {
+        // 1. Prefer the bundled interpreter when the app is distributed as a DMG.
+        if PythonRuntime.isEmbedded {
+            return PythonRuntime.interpreter.path.armShellEscaped
+        }
+        // 2. Development venv fallback.
         let candidates = [
             (NSHomeDirectory() as NSString).appendingPathComponent(
                 "Github/no-anonymizer/.venv/bin/python3")

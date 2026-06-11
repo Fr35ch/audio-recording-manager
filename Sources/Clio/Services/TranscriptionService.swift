@@ -281,32 +281,57 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         verbatim: Bool,
         language: String
     ) throws -> TranscriptionResult {
-        var cmdParts = [
-            noTranscribeExecutable,
-            "--input", audioFile.path.armShellEscaped,
-            "--format", "json",
-            "--model", model.rawValue,
-            "--speakers", "\(speakers)",
-            "--language", language,
-        ]
-        if verbatim { cmdParts.append("--verbatim") }
-        let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
-        if validateMode != "none" { cmdParts += ["--validate", validateMode] }
-        let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
-        cmdParts += ["--num-beams", "\(max(1, min(5, numBeams)))"]
-        let cmd = cmdParts.joined(separator: " ")
+        // ── Embedded interpreter path (production DMG) ───────────────────────────
+        // When the app ships with python-build-standalone bundled via embed-python.sh,
+        // use PythonRuntime.process() directly instead of the shell-string path.
+        // The fallback (venv / PATH) remains fully functional for development.
+        let task: Process
+        if PythonRuntime.isEmbedded {
+            var args: [String] = [
+                "--input", audioFile.path,
+                "--format", "json",
+                "--model", model.rawValue,
+                "--speakers", "\(speakers)",
+                "--language", language,
+            ]
+            if verbatim { args.append("--verbatim") }
+            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
+            if validateMode != "none" { args += ["--validate", validateMode] }
+            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
+            args += ["--num-beams", "\(max(1, min(5, numBeams)))"]
+            // PythonRuntime.process() already sets PYTHONHOME, HF_HOME,
+            // removes METAL_DEVICE_WRAPPER_TYPE and sets TOKENIZERS_PARALLELISM.
+            task = PythonRuntime.process(module: "no_transcribe", arguments: args)
+        } else {
+            // ── Development / fallback path ──────────────────────────────────────
+            var cmdParts = [
+                noTranscribeExecutable,
+                "--input", audioFile.path.armShellEscaped,
+                "--format", "json",
+                "--model", model.rawValue,
+                "--speakers", "\(speakers)",
+                "--language", language,
+            ]
+            if verbatim { cmdParts.append("--verbatim") }
+            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
+            if validateMode != "none" { cmdParts += ["--validate", validateMode] }
+            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
+            cmdParts += ["--num-beams", "\(max(1, min(5, numBeams)))"]
+            let cmd = cmdParts.joined(separator: " ")
 
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
+            let shellTask = Process()
+            shellTask.launchPath = "/bin/sh"
+            shellTask.arguments = ["-lc", cmd]
 
-        // Strip Metal API Validation flag inherited from Xcode's debugger environment.
-        // METAL_DEVICE_WRAPPER_TYPE=1 enables strict Metal validation which causes MPS
-        // shader assertion failures (validateComputeFunctionArguments) in subprocesses.
-        var env = ProcessInfo.processInfo.environment
-        env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
-        env["TOKENIZERS_PARALLELISM"] = "false"
-        task.environment = env
+            // Strip Metal API Validation flag inherited from Xcode's debugger environment.
+            // METAL_DEVICE_WRAPPER_TYPE=1 enables strict Metal validation which causes MPS
+            // shader assertion failures (validateComputeFunctionArguments) in subprocesses.
+            var env = ProcessInfo.processInfo.environment
+            env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
+            env["TOKENIZERS_PARALLELISM"] = "false"
+            shellTask.environment = env
+            task = shellTask
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

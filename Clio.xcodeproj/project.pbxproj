@@ -13,6 +13,8 @@
 		F1F3AE0C6954429DAAAA61D1 /* NavPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 109D616E44154D5B9A737794 /* NavPanel.swift */; };
 		6F49A16937F14727B33804F7 /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49529CFB20AE46E692A423EF /* AboutView.swift */; };
 		F609B88F661C44388819B99C /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1DFBD96E67848828C8165D3 /* MainView.swift */; };
+		AA001122334455PR01 /* PythonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455PR02 /* PythonRuntime.swift */; };
+		AA001122334455SF01 /* SetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455SF02 /* SetupFlow.swift */; };
 		AA001122334455667788BF01 /* MobileTransferScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788BB01 /* MobileTransferScreen.swift */; };
 		AA001122334455667788BF11 /* BonjourConfirmationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT01 /* BonjourConfirmationServer.swift */; };
 		AA001122334455667788BF13 /* MobileTransferBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT03 /* MobileTransferBrowser.swift */; };
@@ -185,6 +187,8 @@
 		F1530437CF1FEEE629B38DA7 /* ComplianceChecklistSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComplianceChecklistSheet.swift; sourceTree = "<group>"; };
 		F1E12AE07184DED8B61EB3D8 /* StatusChipView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusChipView.swift; sourceTree = "<group>"; };
 		F9743DAF0BE9C1CF51E55BA7 /* TranscriptsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptsView.swift; sourceTree = "<group>"; };
+		AA001122334455PR02 /* PythonRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PythonRuntime.swift; path = Sources/Clio/PythonRuntime.swift; sourceTree = SOURCE_ROOT; };
+		AA001122334455SF02 /* SetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SetupFlow.swift; path = Sources/Clio/SetupFlow.swift; sourceTree = SOURCE_ROOT; };
 		FB38CDA2EE93F624A724B0B4 /* Clio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -307,6 +311,8 @@
 			children = (
 				B1C2D3E4F5061728394A5B6C /* AppCopy.swift */,
 				54E0CED9013697E6080B4188 /* main.swift */,
+				AA001122334455PR02 /* PythonRuntime.swift */,
+				AA001122334455SF02 /* SetupFlow.swift */,
 				A77D27D26DC75CD2A87BF92F /* Design */,
 				CDDE0C786900465483C35D28 /* Features */,
 				DFE71B136C91302219B3EB92 /* Library */,
@@ -576,6 +582,8 @@
 				AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */,
 				AA001122334455667788BF17 /* NearbyTransferAdvertiser.swift in Sources */,
 				0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */,
+				AA001122334455PR01 /* PythonRuntime.swift in Sources */,
+				AA001122334455SF01 /* SetupFlow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

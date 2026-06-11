@@ -29,7 +29,8 @@ final class NearbyTransferAdvertiser: NSObject {
 
     /// Returns the audio stem for both audio resource names (`<stem>.<ext>`)
     /// and sidecar names (`<stem>.meta.json`) so they map to the same key.
-    private static func audioStem(forResourceName name: String) -> String {
+    /// Internal (not private) so the transfer stem-matching logic is unit-testable.
+    static func audioStem(forResourceName name: String) -> String {
         if name.hasSuffix(".meta.json") {
             return String(name.dropLast(".meta.json".count))
         }

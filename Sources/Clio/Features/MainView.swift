@@ -74,12 +74,7 @@ struct MainView: View {
                 .padding(.vertical, 16)
                 Divider()
                 ScrollView {
-                    VStack(spacing: 0) {
-                        TranscriptionSettingsView()
-                        Divider()
-                            .padding(.horizontal, AppSpacing.lg)
-                        LLMSettingsSection()
-                    }
+                    TranscriptionSettingsView()
                 }
             }
             .frame(minWidth: 520, minHeight: 500)
@@ -118,8 +113,6 @@ struct MainView: View {
                 audioPlayer: audioPlayer,
                 selectedRecording: $selectedRecording
             )
-        case .analyse:
-            AnalyseScreen()
         case .mobileTransfer:
             MobileTransferScreen()
         }
@@ -133,8 +126,6 @@ struct MainView: View {
             if selectedRecording == nil {
                 selectedRecording = recordingsManager.recordings.first
             }
-        case .analyse:
-            break
         case .mobileTransfer:
             break
         }

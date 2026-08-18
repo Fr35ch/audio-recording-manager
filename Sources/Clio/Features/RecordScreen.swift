@@ -417,12 +417,23 @@ struct RecordingView: View {
     @ObservedObject var recorder: AudioRecorder
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
+    @StateObject private var soundCheck = RodeSoundCheckService()
     @Binding var isShowing: Bool
     @State private var microphoneVerified = false
     @State private var verificationTimer: Timer?
     @State private var recordingName = ""  // User-entered filename
     @State private var glowRadius: CGFloat = 10
     @State private var glowOpacity: Double = 0.2
+
+    // MARK: - Computed verification state
+
+    /// True when recording can start. RØDE path requires both channels in green zone.
+    private var isVerified: Bool {
+        if recorder.rodeMonitor.isConnected {
+            return soundCheck.leftPassed && soundCheck.rightPassed
+        }
+        return microphoneVerified
+    }
 
     var body: some View {
         // Main recording area (sidebar is now global in MainView)
@@ -472,14 +483,31 @@ struct RecordingView: View {
                         microphoneVerified = true
                     }
                 }
+
+                // Start RØDE metering if device is already connected on appear
+                if recorder.rodeMonitor.isConnected {
+                    soundCheck.resetPassState()
+                    soundCheck.startMetering()
+                }
             }
             .onDisappear {
                 // Stop monitoring when leaving the recording view
                 recorder.stopMonitoring()
+                // Stop RØDE metering
+                soundCheck.stopMetering()
                 // Stop playback if active
                 audioPlayer.stop()
                 // Cancel verification timer
                 verificationTimer?.invalidate()
+            }
+
+            .onChange(of: recorder.rodeMonitor.isConnected) { _, connected in
+                if connected {
+                    soundCheck.resetPassState()
+                    soundCheck.startMetering()
+                } else {
+                    soundCheck.stopMetering()
+                }
             }
 
             .onChange(of: recorder.frequencyBands) { _, bands in
@@ -491,8 +519,8 @@ struct RecordingView: View {
                     glowRadius = CGFloat(amplified) * 30 + 10   // 10–40 pt
                     glowOpacity = amplified * 0.8 + 0.2          // 0.2–1.0
                 }
-                // Auto-verify when audio is detected
-                if !microphoneVerified, avg > 0.15 {
+                // Auto-verify when audio is detected (only in non-RØDE path)
+                if !recorder.rodeMonitor.isConnected, !microphoneVerified, avg > 0.15 {
                     microphoneVerified = true
                     verificationTimer?.invalidate()
                 }
@@ -500,11 +528,17 @@ struct RecordingView: View {
     }
 
     var mainRecordingView: some View {
-        VStack(spacing: 0) {
-            // Recording Interface
-            ZStack {
-                // Main Content
-                VStack(spacing: 40) {
+        // GeometryReader + ScrollView clamp the content to the viewport height so
+        // inserting the RØDE sound-check panel can never grow the detail column
+        // past the window (which would push the sidebar icons off-screen and clip
+        // the panel). minHeight: geo.size.height keeps the mic centered when the
+        // content fits, and lets it scroll when it doesn't.
+        GeometryReader { geo in
+            ScrollView {
+                // Recording Interface
+                ZStack {
+                    // Main Content
+                    VStack(spacing: 40) {
                     Spacer()
 
                     // Save Confirmation
@@ -599,73 +633,90 @@ struct RecordingView: View {
 
                     // Control Buttons - Minimalist
                     if !recorder.showSaveConfirmation {
-                        HStack(spacing: 32) {
-                            // Delete Button (always show during recording)
-                            if recorder.isRecording {
-                                Button(action: {
-                                    recorder.deleteCurrentRecording()
-                                    isShowing = false
-                                }) {
-                                    VStack(spacing: 10) {
-                                        Image(systemName: "trash")
-                                            .font(.system(size: 24, weight: .ultraLight))
-                                            .foregroundStyle(.red.opacity(0.8))
-                                            .frame(width: 56, height: 56)
-                                            .background(Color.red.opacity(0.08))
-                                            .cornerRadius(2)
-                                        Text("Delete")
-                                            .font(.system(size: 11, weight: .light))
-                                            .foregroundStyle(.red.opacity(0.8))
-                                            .textCase(.uppercase)
-                                            .tracking(1)
-                                    }
-                                }
-                                .buttonStyle(.plain)
+                        VStack(spacing: AppSpacing.xl) {
+                            // RØDE Sound Check Panel (pre-recording only)
+                            if recorder.rodeMonitor.isConnected && !recorder.isRecording {
+                                RodeSoundCheckView(
+                                    deviceName: recorder.rodeMonitor.deviceName,
+                                    meterService: soundCheck
+                                )
+                                .frame(maxWidth: 520)
+                                .padding(.horizontal, 40)
                             }
 
-                            // Main Record/Stop Button
-                            RecordButton(
-                                isRecording: recorder.isRecording,
-                                isVerified: microphoneVerified,
-                                action: {
-                                    if recorder.isRecording {
-                                        recorder.stopRecording()
-                                    } else {
-                                        recorder.startRecording()
+                            HStack(spacing: 32) {
+                                // Delete Button (always show during recording)
+                                if recorder.isRecording {
+                                    Button(action: {
+                                        recorder.deleteCurrentRecording()
+                                        isShowing = false
+                                    }) {
+                                        VStack(spacing: 10) {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 24, weight: .ultraLight))
+                                                .foregroundStyle(.red.opacity(0.8))
+                                                .frame(width: 56, height: 56)
+                                                .background(Color.red.opacity(0.08))
+                                                .cornerRadius(2)
+                                            Text("Delete")
+                                                .font(.system(size: 11, weight: .light))
+                                                .foregroundStyle(.red.opacity(0.8))
+                                                .textCase(.uppercase)
+                                                .tracking(1)
+                                        }
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                            )
 
-                            // Pause/Resume Button (always show during recording)
-                            if recorder.isRecording {
-                                Button(action: {
-                                    if recorder.isPaused {
-                                        recorder.resumeRecording()
-                                    } else {
-                                        recorder.pauseRecording()
+                                // Main Record/Stop Button
+                                RecordButton(
+                                    isRecording: recorder.isRecording,
+                                    isVerified: isVerified,
+                                    action: {
+                                        if recorder.isRecording {
+                                            recorder.stopRecording()
+                                        } else {
+                                            // End the RØDE sound check once recording begins
+                                            soundCheck.stopMetering()
+                                            recorder.startRecording()
+                                        }
                                     }
-                                }) {
-                                    VStack(spacing: 10) {
-                                        Image(systemName: recorder.isPaused ? "play" : "pause")
-                                            .font(.system(size: 24, weight: .ultraLight))
-                                            .foregroundStyle(.orange.opacity(0.8))
-                                            .frame(width: 56, height: 56)
-                                            .background(Color.orange.opacity(0.08))
-                                            .cornerRadius(2)
-                                        Text(recorder.isPaused ? "Resume" : "Pause")
-                                            .font(.system(size: 11, weight: .light))
-                                            .foregroundStyle(.orange.opacity(0.8))
-                                            .textCase(.uppercase)
-                                            .tracking(1)
+                                )
+
+                                // Pause/Resume Button (always show during recording)
+                                if recorder.isRecording {
+                                    Button(action: {
+                                        if recorder.isPaused {
+                                            recorder.resumeRecording()
+                                        } else {
+                                            recorder.pauseRecording()
+                                        }
+                                    }) {
+                                        VStack(spacing: 10) {
+                                            Image(systemName: recorder.isPaused ? "play" : "pause")
+                                                .font(.system(size: 24, weight: .ultraLight))
+                                                .foregroundStyle(.orange.opacity(0.8))
+                                                .frame(width: 56, height: 56)
+                                                .background(Color.orange.opacity(0.08))
+                                                .cornerRadius(2)
+                                            Text(recorder.isPaused ? "Resume" : "Pause")
+                                                .font(.system(size: 11, weight: .light))
+                                                .foregroundStyle(.orange.opacity(0.8))
+                                                .textCase(.uppercase)
+                                                .tracking(1)
+                                        }
                                     }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.bottom, 60)
                     }
                 }
             }
+            .frame(maxWidth: .infinity, minHeight: geo.size.height)
+            }
+            .scrollIndicators(.hidden)
         }
     }
 

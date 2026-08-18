@@ -109,7 +109,7 @@ struct TranscriptionSettingsView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Last ned modellvekter lokalt for raskere oppstart. Vektene lagres i ~/.cache/huggingface.")
+                    Text("Last ned modellvekter lokalt for raskere oppstart. Vektene lagres i Clio sin modellmappe.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

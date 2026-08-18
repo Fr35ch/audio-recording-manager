@@ -718,12 +718,7 @@ struct RecordingPlayerNative: View {
                 .padding(.vertical, 16)
                 Divider()
                 ScrollView {
-                    VStack(spacing: 0) {
-                        TranscriptionSettingsView()
-                        Divider()
-                            .padding(.horizontal, AppSpacing.lg)
-                        LLMSettingsSection()
-                    }
+                    TranscriptionSettingsView()
                 }
             }
             .frame(minWidth: 520, minHeight: 500)

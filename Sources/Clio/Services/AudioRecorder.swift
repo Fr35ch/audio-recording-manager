@@ -1,6 +1,7 @@
 import AVFAudio
 import AVFoundation
 import Accelerate
+import Combine
 import CoreAudio
 import Foundation
 
@@ -224,6 +225,13 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Current audio level, normalized 0–1. Updated at 20 Hz by the metering timer.
     @Published var audioLevel: Float = 0
 
+    /// Per-channel linear RMS amplitude `[left, right]`, normalized 0–1.
+    /// Derived from `monitorRecorder` metering at 20 Hz and consumed by
+    /// `RodeSoundCheckService` for the RØDE pre-recording sound check. This
+    /// replaces the second `AVAudioEngine` that previously fought the VAD
+    /// engine for the input device.
+    @Published var channelRMS: [Float] = [0.0, 0.0]
+
     @Published var lastSavedFile: String?
     @Published var showSaveConfirmation = false
 
@@ -236,6 +244,13 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// The CoreAudio device ID that should be used for recording and monitoring.
     /// Set via ``setInputDevice(_:)``. Persisted across launches by device UID.
     @Published var selectedInputDeviceID: AudioDeviceID?
+
+    // MARK: - RØDE integration
+
+    /// Monitors CoreAudio for a connected RØDE input device.
+    let rodeMonitor = RodeDeviceMonitor()
+    private var rodeMonitorCancellable: AnyCancellable?
+    private var currentRecordingUsedRode = false
 
     /// Ring buffer of amplitude samples for the waveform timeline, ordered oldest-first.
     /// Capped at `maxHistoryLength` entries (~50 s at 20 Hz). Each entry has a stable `id`
@@ -280,6 +295,15 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             self?.isSpeechActive = active
         }
         restorePersistedInputDevice()
+
+        // Auto-select RØDE device when it connects (unless a recording is active)
+        rodeMonitorCancellable = rodeMonitor.$deviceID
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] deviceID in
+                guard let self, !self.isRecording, let id = deviceID else { return }
+                self.setInputDevice(id)
+            }
+
         print("✅ Audio recorder initialized")
     }
 
@@ -432,6 +456,18 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             let normalizedLevel = max(0, (max(minDB, min(maxDB, averagePower)) - minDB) / (maxDB - minDB))
             self.audioLevel = normalizedLevel
 
+            // Per-channel RMS for the RØDE sound check. Meters are already
+            // updated above (avRecorder.updateMeters()); during the monitoring
+            // phase avRecorder is monitorRecorder, so its channel powers are
+            // fresh here. Convert dBFS → linear amplitude. Does not touch the
+            // dBFS normalization used for visualization above.
+            let left  = self.monitorRecorder?.averagePower(forChannel: 0) ?? -160
+            let right = self.monitorRecorder?.averagePower(forChannel: 1) ?? left
+            self.channelRMS = [
+                max(0, min(1, pow(10, left  / 20))),
+                max(0, min(1, pow(10, right / 20))),
+            ]
+
             // Silence detection (VAD speech state + amplitude fallback)
             if self.isRecording, !self.isPaused, !self.silenceCooldownActive {
                 let now = Date()
@@ -513,10 +549,13 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             return
         }
 
-        // Configure recording settings
+        // Configure recording settings — use 48 kHz for RØDE stereo, 44.1 kHz otherwise
+        let isRode = rodeMonitor.isConnected && rodeMonitor.isStereoCapable
+        currentRecordingUsedRode = isRode
+        let sampleRate: Double = isRode ? 48_000.0 : 44_100.0
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100.0,
+            AVSampleRateKey: sampleRate,
             AVNumberOfChannelsKey: 2,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
@@ -639,6 +678,25 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             }
         } catch {
             print("❌ Error finalizing recording: \(error)")
+        }
+
+        // Write ClioMeta sidecar for RØDE recordings so TranscriptionService
+        // and StereoSplitter take the channel-split path instead of FluidAudio diarization.
+        if currentRecordingUsedRode {
+            let audioURL = StorageLayout.audioURL(id: id)
+            let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            let meta = ClioMeta(
+                diarizationRequired: false,
+                channelAssignment: ClioMeta.ChannelAssignment(left: "INTERVJUER", right: "INFORMANT"),
+                recordingSource: "macos_rode_wireless",
+                armVersion: appVersion
+            )
+            try? meta.write(for: audioURL)
+            AuditLogger.shared.log(
+                .recordingFinalized,
+                payload: ["recordingId": .string(id.uuidString), "inputSource": .string("rode")]
+            )
+            currentRecordingUsedRode = false
         }
 
         lastSavedFile = displayName

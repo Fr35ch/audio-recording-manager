@@ -6,7 +6,6 @@ class SystemRequirementChecker {
         return [
             checkAppleSilicon(),
             checkRAM(),
-            checkDiskSpace(),
             checkMacOSVersion(),
             checkPython()
         ]
@@ -38,20 +37,6 @@ class SystemRequirementChecker {
             actualValue: String(format: "%.0f GB", gb),
             passed: passed,
             recommendation: passed ? nil : "Øk RAM til minimum 16 GB for stabil drift av NB-Whisper og SpaCy."
-        )
-    }
-
-    static func checkDiskSpace() -> SystemRequirement {
-        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory())
-        let free = (attrs?[.systemFreeSize] as? Int64 ?? 0)
-        let gb = Double(free) / 1_073_741_824
-        let passed = gb >= 30
-        return SystemRequirement(
-            name: "Diskplass",
-            minimumValue: "30 GB ledig",
-            actualValue: String(format: "%.0f GB ledig", gb),
-            passed: passed,
-            recommendation: passed ? nil : "Frigjør diskplass. Clio og modellene krever minimum 30 GB."
         )
     }
 

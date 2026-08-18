@@ -4,10 +4,8 @@ enum DependencyCheck: Int, CaseIterable {
     case pythonVenv = 0
     case transcribeVenv = 1
     case whisperModel = 2
-    case ollamaRunning = 3
-    case llmModelLoaded = 4
-    case auditLog = 5
-    case allClear = 6
+    case auditLog = 3
+    case allClear = 4
 }
 
 enum DependencyError: LocalizedError {
@@ -36,9 +34,7 @@ class DependencyManager: ObservableObject {
             statusMessage = statusText(for: check)
 
             do {
-                let timeoutSecs: TimeInterval = check == .ollamaRunning ? 30
-                    : check == .llmModelLoaded ? 600   // pull can take minutes
-                    : 15
+                let timeoutSecs: TimeInterval = 15
                 try await withTimeout(seconds: timeoutSecs) {
                     try await self.runCheck(check)
                 }
@@ -63,9 +59,7 @@ class DependencyManager: ObservableObject {
             checkResults[check] = .running
             statusMessage = statusText(for: check)
             do {
-                let timeoutSecs: TimeInterval = check == .ollamaRunning ? 30
-                    : check == .llmModelLoaded ? 600
-                    : 15
+                let timeoutSecs: TimeInterval = 15
                 try await withTimeout(seconds: timeoutSecs) {
                     try await self.runCheck(check)
                 }
@@ -81,51 +75,46 @@ class DependencyManager: ObservableObject {
     private func runCheck(_ check: DependencyCheck) async throws {
         switch check {
         case .pythonVenv:
+            // When the app ships a bundled interpreter (DMG distribution),
+            // PythonRuntime.isEmbedded is the authoritative check.
+            if PythonRuntime.isEmbedded { return }
+            // Developer / side-loaded fallback: look for the managed venv.
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
             guard FileManager.default.fileExists(atPath: venv.path) else {
-                throw DependencyError.checkFailed("no-transcribe venv ikke funnet. Sett opp transkripsjon i innstillinger.")
+                throw DependencyError.checkFailed("Python-miljø ikke funnet. Sett opp transkripsjon i innstillinger.")
             }
 
         case .transcribeVenv:
+            // Embedded bundle already contains no_transcribe — trust the packager.
+            if PythonRuntime.isEmbedded { return }
+            // Developer fallback: accept either a venv-installed package or the
+            // legacy navt.py script under ~/Github/no-transcribe/.
+            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let venvPython = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
             let navt = FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Github/no-transcribe/navt.py")
-            guard FileManager.default.fileExists(atPath: navt.path) else {
-                throw DependencyError.checkFailed("navt.py ikke funnet på ~/Github/no-transcribe/navt.py")
+            guard FileManager.default.fileExists(atPath: venvPython.path)
+                    || FileManager.default.fileExists(atPath: navt.path) else {
+                throw DependencyError.checkFailed("no-transcribe-pakken ikke funnet. Sett opp transkripsjon i innstillinger.")
             }
 
         case .whisperModel:
-            let hfCache = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".cache/huggingface/hub")
-            let exists = (try? FileManager.default.contentsOfDirectory(atPath: hfCache.path))?
+            // When using the embedded interpreter, HF_HOME is set to
+            // ~/Library/Application Support/Clio/models (see PythonRuntime).
+            let hfCacheURL: URL
+            if PythonRuntime.isEmbedded {
+                hfCacheURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                    .appendingPathComponent("Clio/models/hub")
+            } else {
+                hfCacheURL = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".cache/huggingface/hub")
+            }
+            let exists = (try? FileManager.default.contentsOfDirectory(atPath: hfCacheURL.path))?
                 .contains(where: { $0.contains("nb-whisper") }) ?? false
             if !exists {
                 throw DependencyError.checkFailed("NB-Whisper-modell ikke funnet i cache. Transkriber en fil for å laste ned.")
             }
-
-        case .ollamaRunning:
-            if await isOllamaRunning() { return }
-            if let binary = findOllama() {
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: binary)
-                p.arguments = ["serve"]
-                p.standardOutput = FileHandle.nullDevice
-                p.standardError = FileHandle.nullDevice
-                try? p.run()
-            } else {
-                return  // Ollama not installed — analysis optional
-            }
-            for _ in 0..<40 {
-                try await Task.sleep(nanoseconds: 500_000_000)
-                if await isOllamaRunning() { return }
-            }
-            return  // didn't come up — not fatal
-
-        case .llmModelLoaded:
-            // Just verify Ollama is reachable. Model download is done via
-            // the in-app "Hent modell" button in settings — not at startup.
-            guard await isOllamaRunning() else { return }
-            return
 
         case .auditLog:
             let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -140,19 +129,6 @@ class DependencyManager: ObservableObject {
         case .allClear:
             try await Task.sleep(nanoseconds: 1_000_000_000)
         }
-    }
-
-    private func isOllamaRunning() async -> Bool {
-        guard let url = URL(string: "http://localhost:11434") else { return false }
-        var request = URLRequest(url: url, timeoutInterval: 2)
-        request.httpMethod = "GET"
-        let response = try? await URLSession.shared.data(for: request).1 as? HTTPURLResponse
-        return response?.statusCode == 200
-    }
-
-    private func findOllama() -> String? {
-        ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama", "/usr/bin/ollama"]
-            .first { FileManager.default.fileExists(atPath: $0) }
     }
 
     private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
@@ -173,8 +149,6 @@ class DependencyManager: ObservableObject {
         case .pythonVenv:      return "Ser etter Python-miljø…"
         case .transcribeVenv:  return "Sjekker transkripsjonspakke…"
         case .whisperModel:    return "Ser etter Whisper-modell…"
-        case .ollamaRunning:   return "Starter Ollama…"
-        case .llmModelLoaded:  return "Sjekker språkmodell…"
         case .auditLog:        return "Klargjør revisjonsdatabase…"
         case .allClear:        return "Klar"
         }

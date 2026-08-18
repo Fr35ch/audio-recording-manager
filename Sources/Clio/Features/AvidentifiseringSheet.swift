@@ -46,8 +46,6 @@ struct AvidentifiseringSheet: View {
     let isDirty: Bool
     @Binding var isPresented: Bool
 
-    @AppStorage("analysis.llmModel") private var ollamaModelId: String = "qwen3:8b"
-
     @State private var state: AnonymizationState = .idle
     @State private var task: Task<Void, Never>?
     @State private var showConsentModal = false
@@ -535,13 +533,7 @@ struct AvidentifiseringSheet: View {
                 let afterExceptions = raw.applying(exceptions: exceptions, to: text)
                 guard !Task.isCancelled else { return }
 
-                // Hybrid pass: context-disambiguate Norwegian-homograph
-                // redactions (Per/Slette/Vår/Mai/…) by asking the local
-                // LLM. BERT can't reason about full-sentence semantics;
-                // Ollama can. No-ops gracefully if Ollama isn't running.
-                let (result, homographReport) = await HomographDisambiguator.filter(
-                    result: afterExceptions, sourceText: text, model: ollamaModelId)
-                guard !Task.isCancelled else { return }
+                let result = afterExceptions
 
                 // 1. Write de-identified text
                 let anonURL = StorageLayout.anonymizedTranscriptURL(id: recordingId)
@@ -560,10 +552,6 @@ struct AvidentifiseringSheet: View {
                     "recordingId": .string(recordingId.uuidString),
                     "stats": .string(statsSummary(result.stats)),
                     "exceptionCount": .int(exceptions.count),
-                    "homographQueried": .int(homographReport.queried),
-                    "homographDropped": .int(homographReport.dropped),
-                    "homographKept": .int(homographReport.kept),
-                    "homographSkipped": .int(homographReport.skipped),
                 ])
 
                 state = .completed(date: Date(), stats: result.stats)

@@ -86,8 +86,6 @@ struct TranscriptEditorView: View {
     /// Per-segment anonymized text, keyed by segment.id.
     /// Pre-computed once when anonymizationResult is loaded/updated — never inside the render loop.
     @State private var segmentAnonymizedTexts: [Int: String] = [:]
-    @AppStorage("analysis.llmModel") private var ollamaModelId: String = "qwen3:8b"
-
     init(
         recordingId: UUID,
         audioURL: URL,
@@ -682,8 +680,7 @@ struct TranscriptEditorView: View {
                 let afterExceptions = raw.applying(exceptions: exceptions, to: text)
                 guard !Task.isCancelled else { return }
 
-                let (result, homographReport) = await HomographDisambiguator.filter(
-                    result: afterExceptions, sourceText: text, model: ollamaModelId)
+                let result = afterExceptions
                 guard !Task.isCancelled else { return }
 
                 let anonURL = StorageLayout.anonymizedTranscriptURL(id: recordingId)
@@ -700,10 +697,6 @@ struct TranscriptEditorView: View {
                     "recordingId": .string(recordingId.uuidString),
                     "stats": .string(statsSummary(result.stats)),
                     "exceptionCount": .int(exceptions.count),
-                    "homographQueried": .int(homographReport.queried),
-                    "homographDropped": .int(homographReport.dropped),
-                    "homographKept": .int(homographReport.kept),
-                    "homographSkipped": .int(homographReport.skipped),
                 ])
 
                 anonymizationState = .completed(date: Date(), stats: result.stats)

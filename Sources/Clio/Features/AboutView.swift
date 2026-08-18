@@ -245,10 +245,16 @@ struct SidebarPanelContent: View {
                     .font(.caption)
                     .fontWeight(.semibold)
                 let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-                let hash = Bundle.main.infoDictionary?["GitCommitHash"] as? String ?? "unknown"
+                let hash = AppRuntimeInfo.buildInfo()?.hash ?? Bundle.main.infoDictionary?["GitCommitHash"] as? String ?? "unknown"
                 Text("Versjon \(version) (\(hash))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                #if DEBUG
+                let branch = AppRuntimeInfo.buildInfo()?.branch ?? Bundle.main.infoDictionary?["GitBranch"] as? String ?? "unknown"
+                Text("Debug build • \(branch) • \(hash)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                #endif
             }
             .padding()
         }

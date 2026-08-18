@@ -54,11 +54,16 @@ class SystemRequirementChecker {
     }
 
     static func checkPython() -> SystemRequirement {
-        // Check venv python first
-        let venvPython = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/Clio/no-transcribe-venv/bin/python3")
-        if FileManager.default.fileExists(atPath: venvPython.path) {
-            return SystemRequirement(name: "Python", minimumValue: "3.10+", actualValue: "venv (3.10+)", passed: true, recommendation: nil)
+        if PythonRuntime.isEmbedded {
+            let version = (try? PythonRuntime.run(code: "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"))
+                ?? "innebygd"
+            return SystemRequirement(
+                name: "Python",
+                minimumValue: "3.10+",
+                actualValue: "Innebygd Python \(version)",
+                passed: true,
+                recommendation: nil
+            )
         }
         // Fallback: check system python
         let candidates = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]

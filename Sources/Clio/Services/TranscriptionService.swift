@@ -126,6 +126,10 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             .appendingPathComponent("Github/no-transcribe/navt.py")
     }
 
+    private var usesBundledPython: Bool {
+        PythonRuntime.isEmbedded || PythonRuntime.isSandboxed
+    }
+
     /// Returns the command to invoke navt.py, shell-escaped.
     ///
     /// Uses the managed venv's Python interpreter to run navt.py directly —
@@ -143,6 +147,9 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
 
     /// True when navt.py exists locally AND torch is installed in the managed venv.
     var isInstalled: Bool {
+        if PythonRuntime.isEmbedded {
+            return true
+        }
         guard FileManager.default.fileExists(atPath: navtScriptPath) else { return false }
         // Check that torch is present in the managed venv's site-packages
         let venvLib = venvRoot.appendingPathComponent("lib")
@@ -155,6 +162,10 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             if FileManager.default.fileExists(atPath: torchDir.path) { return true }
         }
         return false
+    }
+
+    var isBundledRuntime: Bool {
+        PythonRuntime.isEmbedded
     }
 
     /// Transcribes an audio file. Reports real-time progress via `stage` and `progress`.
@@ -224,6 +235,20 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
     /// Installs no-transcribe if not already present. Safe to call repeatedly — no-ops if installed.
     /// Intended to be called once at app launch in the background.
     func setupIfNeeded() async {
+        if PythonRuntime.isEmbedded {
+            DispatchQueue.main.async {
+                self.setupError = nil
+                self.setupStageDescription = ""
+            }
+            return
+        }
+        if PythonRuntime.isSandboxed {
+            DispatchQueue.main.async {
+                self.isSettingUp = false
+                self.setupError = "Innebygd Python mangler i appbunten."
+            }
+            return
+        }
         guard !isInstalled || !venvPythonIsCompatible() else { return }
         DispatchQueue.main.async {
             self.isSettingUp = true
@@ -316,7 +341,10 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         // use PythonRuntime.process() directly instead of the shell-string path.
         // The fallback (venv / PATH) remains fully functional for development.
         let task: Process
-        if PythonRuntime.isEmbedded {
+        if usesBundledPython {
+            guard PythonRuntime.isEmbedded else {
+                throw TranscriptionError.notInstalled
+            }
             var args: [String] = [
                 "--input", audioFile.path,
                 "--format", "json",
@@ -487,7 +515,10 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         language: String
     ) throws -> TranscriptionResult {
         let task: Process
-        if PythonRuntime.isEmbedded {
+        if usesBundledPython {
+            guard PythonRuntime.isEmbedded else {
+                throw TranscriptionError.notInstalled
+            }
             var args: [String] = [
                 "--input", audioFile.path,
                 "--format", "json",
@@ -982,8 +1013,19 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
     }
 
     private func runDownloadModel(_ model: TranscriptionModel) throws {
-        let cmd = "\(noTranscribeExecutable) --download-model \(model.rawValue)"
-        try runShell(cmd)
+        if usesBundledPython {
+            guard PythonRuntime.isEmbedded else {
+                throw TranscriptionError.notInstalled
+            }
+            let task = PythonRuntime.process(
+                module: "no_transcribe",
+                arguments: ["--download-model", model.rawValue]
+            )
+            try runProcess(task, timeout: 1800)
+        } else {
+            let cmd = "\(noTranscribeExecutable) --download-model \(model.rawValue)"
+            try runShell(cmd)
+        }
     }
 
     // MARK: - Generic shell helpers
@@ -1016,6 +1058,36 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         }
 
         if task.terminationStatus != 0 {
+            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let errText =
+                String(data: errData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? "exit code \(task.terminationStatus)"
+            throw TranscriptionError.processFailed(errText)
+        }
+    }
+
+    private func runProcess(_ task: Process, timeout: TimeInterval) throws {
+        let stderrPipe = Pipe()
+        task.standardError = stderrPipe
+        task.standardOutput = FileHandle.nullDevice
+
+        do {
+            try task.run()
+        } catch {
+            throw TranscriptionError.processFailed(error.localizedDescription)
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while task.isRunning {
+            if Date() > deadline {
+                task.terminate()
+                throw TranscriptionError.timeout
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+
+        guard task.terminationStatus == 0 else {
             let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
             let errText =
                 String(data: errData, encoding: .utf8)?

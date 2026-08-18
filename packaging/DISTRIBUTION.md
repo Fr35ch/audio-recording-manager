@@ -62,8 +62,9 @@ After this step you have `build/export/Clio.app`.
 
 ### 3. Embed Python
 
-Downloads CPython from python-build-standalone and installs
-`no-transcribe` + `no-anonymizer` into the bundle:
+The Release target now runs `packaging/embed-python.sh` as a build phase,
+so TestFlight/App Store archives contain the bundled interpreter
+automatically. You can still run it manually on a built `.app` if needed:
 
 ```bash
 bash packaging/embed-python.sh build/export/Clio.app

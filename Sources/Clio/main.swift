@@ -85,6 +85,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         print("🖥️ Clio Desktop v\(version) (build \(build))")
+        #if DEBUG
+        let branch = AppRuntimeInfo.buildInfo()?.branch ?? Bundle.main.infoDictionary?["GitBranch"] as? String ?? "unknown"
+        let hash = AppRuntimeInfo.buildInfo()?.hash ?? Bundle.main.infoDictionary?["GitCommitHash"] as? String ?? "unknown"
+        print("🧪 Debug runtime: \(branch) @ \(hash)")
+        #endif
 
         print("✅ App delegate did finish launching")
 

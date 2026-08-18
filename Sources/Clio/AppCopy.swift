@@ -123,4 +123,37 @@ enum AppCopy {
             "\(filename) er lagt til i biblioteket."
         }
     }
+
+}
+
+enum AppFeatures {
+    static let analysisEnabled = false
+}
+
+enum AppRuntimeInfo {
+    static func buildInfo() -> (branch: String, hash: String)? {
+        guard let url = Bundle.main.url(forResource: "clio-build-info", withExtension: "txt"),
+              let contents = try? String(contentsOf: url, encoding: .utf8)
+        else {
+            return nil
+        }
+
+        var branch: String?
+        var hash: String?
+        for line in contents.split(separator: "\n") {
+            let parts = line.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            switch parts[0] {
+            case "branch":
+                branch = String(parts[1])
+            case "hash":
+                hash = String(parts[1])
+            default:
+                continue
+            }
+        }
+
+        guard let branch, let hash else { return nil }
+        return (branch, hash)
+    }
 }

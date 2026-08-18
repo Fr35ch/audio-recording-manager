@@ -17,12 +17,12 @@
   • allow-dyld-environment-variables: permits DYLD_* env vars to be
     honoured for the process, which some Python extension modules rely on.
 
-  ⚠️  Do NOT add:
-      • com.apple.security.app-sandbox — incompatible with subprocess
-        execution (Process/NSTask) and with Ollama IPC.
-      • com.apple.security.cs.allow-unsigned-executable-memory — only
-        add this if Apple's notarization diagnostics specifically require
-        it. It is not needed for CPython 3.12 itself.
+  App Store/TestFlight builds use sandboxed entitlements in the Xcode
+  target. Keep this file for the hardened-runtime Developer ID path.
+
+  • com.apple.security.cs.allow-unsigned-executable-memory — only add this
+    if Apple's notarization diagnostics specifically require it. It is not
+    needed for CPython 3.12 itself.
 -->
 <dict>
     <!-- Required: allow bundled Python C extensions (.so/.dylib) that

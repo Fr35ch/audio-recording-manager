@@ -75,28 +75,29 @@ class DependencyManager: ObservableObject {
     private func runCheck(_ check: DependencyCheck) async throws {
         switch check {
         case .pythonVenv:
-            // When the app ships a bundled interpreter (DMG distribution),
-            // PythonRuntime.isEmbedded is the authoritative check.
-            if PythonRuntime.isEmbedded { return }
-            // Developer / side-loaded fallback: look for the managed venv.
-            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
-            guard FileManager.default.fileExists(atPath: venv.path) else {
-                throw DependencyError.checkFailed("Python-miljø ikke funnet. Sett opp transkripsjon i innstillinger.")
+            if PythonRuntime.isEmbedded {
+                guard (try? PythonRuntime.run(code: "import sys; print('OK')")) == "OK" else {
+                    throw DependencyError.checkFailed("Innebygd Python ikke tilgjengelig i appbunten.")
+                }
+            } else {
+                let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
+                guard FileManager.default.fileExists(atPath: venv.path) else {
+                    throw DependencyError.checkFailed("no-transcribe venv ikke funnet. Sett opp transkripsjon i innstillinger.")
+                }
             }
 
         case .transcribeVenv:
-            // Embedded bundle already contains no_transcribe — trust the packager.
-            if PythonRuntime.isEmbedded { return }
-            // Developer fallback: accept either a venv-installed package or the
-            // legacy navt.py script under ~/Github/no-transcribe/.
-            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let venvPython = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
-            let navt = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Github/no-transcribe/navt.py")
-            guard FileManager.default.fileExists(atPath: venvPython.path)
-                    || FileManager.default.fileExists(atPath: navt.path) else {
-                throw DependencyError.checkFailed("no-transcribe-pakken ikke funnet. Sett opp transkripsjon i innstillinger.")
+            if PythonRuntime.isEmbedded {
+                guard (try? PythonRuntime.run(code: "import no_transcribe; print('OK')")) == "OK" else {
+                    throw DependencyError.checkFailed("no-transcribe er ikke pakket inn i appbunten.")
+                }
+            } else {
+                let navt = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Github/no-transcribe/navt.py")
+                guard FileManager.default.fileExists(atPath: navt.path) else {
+                    throw DependencyError.checkFailed("navt.py ikke funnet på ~/Github/no-transcribe/navt.py")
+                }
             }
 
         case .whisperModel:
@@ -146,7 +147,7 @@ class DependencyManager: ObservableObject {
 
     func statusText(for check: DependencyCheck) -> String {
         switch check {
-        case .pythonVenv:      return "Ser etter Python-miljø…"
+        case .pythonVenv:      return PythonRuntime.isEmbedded ? "Ser etter innebygd Python…" : "Ser etter Python-miljø…"
         case .transcribeVenv:  return "Sjekker transkripsjonspakke…"
         case .whisperModel:    return "Ser etter Whisper-modell…"
         case .auditLog:        return "Klargjør revisjonsdatabase…"

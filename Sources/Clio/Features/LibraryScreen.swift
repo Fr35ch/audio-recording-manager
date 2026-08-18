@@ -722,7 +722,9 @@ struct RecordingPlayerNative: View {
                         TranscriptionSettingsView()
                         Divider()
                             .padding(.horizontal, AppSpacing.lg)
-                        LLMSettingsSection()
+                        if AppFeatures.analysisEnabled {
+                            LLMSettingsSection()
+                        }
                     }
                 }
             }

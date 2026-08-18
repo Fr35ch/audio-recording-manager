@@ -78,7 +78,9 @@ struct MainView: View {
                         TranscriptionSettingsView()
                         Divider()
                             .padding(.horizontal, AppSpacing.lg)
-                        LLMSettingsSection()
+                        if AppFeatures.analysisEnabled {
+                            LLMSettingsSection()
+                        }
                     }
                 }
             }
@@ -119,7 +121,16 @@ struct MainView: View {
                 selectedRecording: $selectedRecording
             )
         case .analyse:
-            AnalyseScreen()
+            if AppFeatures.analysisEnabled {
+                AnalyseScreen()
+            } else {
+                ContentUnavailableView(
+                    "Analyse er deaktivert",
+                    systemImage: "nosign",
+                    description: Text("Denne builden inkluderer ikke analysefunksjonen.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         case .mobileTransfer:
             MobileTransferScreen()
         }

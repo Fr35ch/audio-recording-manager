@@ -86,11 +86,13 @@ final class SetupFlowCoordinator: ObservableObject {
             .contains { $0.contains("NB-Whisper") || $0.contains("nb-whisper") || $0.contains("NbAiLab") } ?? false
         guard hasWhisper else { return true }
 
-        // 3. Ollama must be reachable (ollama binary present on disk).
-        guard ollamaPath != nil else { return true }
+        if AppFeatures.analysisEnabled {
+            // 3. Ollama must be reachable (ollama binary present on disk).
+            guard ollamaPath != nil else { return true }
 
-        // 4. qwen3:8b must appear in `ollama list`.
-        guard isOllamaModelPresent("qwen3:8b") else { return true }
+            // 4. qwen3:8b must appear in `ollama list`.
+            guard isOllamaModelPresent("qwen3:8b") else { return true }
+        }
 
         return false
     }
@@ -133,8 +135,13 @@ final class SetupFlowCoordinator: ObservableObject {
 
         await runNBWhisper()
         await runSpacy()
-        await runOllama()
-        await runOllamaModel()
+        if AppFeatures.analysisEnabled {
+            await runOllama()
+            await runOllamaModel()
+        } else {
+            update(.ollama, status: .skipped, detail: "Analyse deaktivert")
+            update(.ollamaModel, status: .skipped, detail: "Analyse deaktivert")
+        }
 
         let anyFailed = items.contains { $0.status.isFailed }
         if anyFailed {

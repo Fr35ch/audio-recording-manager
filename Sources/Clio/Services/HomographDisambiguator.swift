@@ -68,6 +68,9 @@ enum HomographDisambiguator {
         sourceText: String,
         model: String
     ) async -> (AnonymizationResult, FilterReport) {
+        if !AppFeatures.analysisEnabled {
+            return (result, FilterReport())
+        }
         var report = FilterReport()
 
         // Identify which redactions to query. Skip everything that's

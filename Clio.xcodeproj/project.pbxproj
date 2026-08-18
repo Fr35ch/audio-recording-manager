@@ -438,6 +438,7 @@
 				BA61BE75D51E7198564D984F /* Sources */,
 				D3CB5A1E36CCD9C10CA4B983 /* Resources */,
 				F53B9310441BD6031D40EDF8 /* Frameworks */,
+				A1B2C3D4E5F60002A1B2C3D4 /* Embed Python Runtime */,
 			);
 			buildRules = (
 			);
@@ -614,7 +615,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\nexit 0\n";
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\n' \"$BRANCH\" \"$HASH\" > \"$INFO\"\nexit 0\n";
+			showEnvVarsInLog = 0;
+		};
+		A1B2C3D4E5F60002A1B2C3D4 /* Embed Python Runtime */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Python Runtime";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/packaging/embed-python.sh\" \"$TARGET_BUILD_DIR/$WRAPPER_NAME\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

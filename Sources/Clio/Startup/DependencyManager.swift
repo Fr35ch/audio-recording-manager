@@ -81,17 +81,29 @@ class DependencyManager: ObservableObject {
     private func runCheck(_ check: DependencyCheck) async throws {
         switch check {
         case .pythonVenv:
-            let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
-            guard FileManager.default.fileExists(atPath: venv.path) else {
-                throw DependencyError.checkFailed("no-transcribe venv ikke funnet. Sett opp transkripsjon i innstillinger.")
+            if PythonRuntime.isEmbedded {
+                guard (try? PythonRuntime.run(code: "import sys; print('OK')")) == "OK" else {
+                    throw DependencyError.checkFailed("Innebygd Python ikke tilgjengelig i appbunten.")
+                }
+            } else {
+                let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
+                guard FileManager.default.fileExists(atPath: venv.path) else {
+                    throw DependencyError.checkFailed("no-transcribe venv ikke funnet. Sett opp transkripsjon i innstillinger.")
+                }
             }
 
         case .transcribeVenv:
-            let navt = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Github/no-transcribe/navt.py")
-            guard FileManager.default.fileExists(atPath: navt.path) else {
-                throw DependencyError.checkFailed("navt.py ikke funnet på ~/Github/no-transcribe/navt.py")
+            if PythonRuntime.isEmbedded {
+                guard (try? PythonRuntime.run(code: "import no_transcribe; print('OK')")) == "OK" else {
+                    throw DependencyError.checkFailed("no-transcribe er ikke pakket inn i appbunten.")
+                }
+            } else {
+                let navt = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent("Github/no-transcribe/navt.py")
+                guard FileManager.default.fileExists(atPath: navt.path) else {
+                    throw DependencyError.checkFailed("navt.py ikke funnet på ~/Github/no-transcribe/navt.py")
+                }
             }
 
         case .whisperModel:
@@ -104,6 +116,7 @@ class DependencyManager: ObservableObject {
             }
 
         case .ollamaRunning:
+            if !AppFeatures.analysisEnabled { return }
             if await isOllamaRunning() { return }
             if let binary = findOllama() {
                 let p = Process()
@@ -122,6 +135,7 @@ class DependencyManager: ObservableObject {
             return  // didn't come up — not fatal
 
         case .llmModelLoaded:
+            if !AppFeatures.analysisEnabled { return }
             // Just verify Ollama is reachable. Model download is done via
             // the in-app "Hent modell" button in settings — not at startup.
             guard await isOllamaRunning() else { return }
@@ -170,11 +184,11 @@ class DependencyManager: ObservableObject {
 
     func statusText(for check: DependencyCheck) -> String {
         switch check {
-        case .pythonVenv:      return "Ser etter Python-miljø…"
+        case .pythonVenv:      return PythonRuntime.isEmbedded ? "Ser etter innebygd Python…" : "Ser etter Python-miljø…"
         case .transcribeVenv:  return "Sjekker transkripsjonspakke…"
         case .whisperModel:    return "Ser etter Whisper-modell…"
-        case .ollamaRunning:   return "Starter Ollama…"
-        case .llmModelLoaded:  return "Sjekker språkmodell…"
+        case .ollamaRunning:   return AppFeatures.analysisEnabled ? "Starter Ollama…" : "Analyse deaktivert"
+        case .llmModelLoaded:  return AppFeatures.analysisEnabled ? "Sjekker språkmodell…" : "Analyse deaktivert"
         case .auditLog:        return "Klargjør revisjonsdatabase…"
         case .allClear:        return "Klar"
         }

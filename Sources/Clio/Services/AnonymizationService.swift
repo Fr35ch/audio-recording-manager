@@ -274,7 +274,7 @@ final class AnonymizationService: @unchecked Sendable {
 
         try transcript.write(to: inputURL, atomically: true, encoding: .utf8)
 
-        // Use the best available Python; login shell so Homebrew/pyenv PATH is also available
+        // Use the embedded interpreter in sandboxed/packaged builds.
         //
         // ⏳ Phase A.2 deferred: no-anonymizer v2 will accept `--strict-mode`
         // to suppress the new three-way `flag` bucket and behave like v1.
@@ -285,13 +285,29 @@ final class AnonymizationService: @unchecked Sendable {
         // ships in `AvidentifiseringSheet` (Phase B), at which point the
         // flag is dropped and ARM consumes `flagged_for_review` directly.
         // Spec: docs/no_anonymizer_v2_implementasjon.md §10.
-        let cmd = "\(pythonExecutable()) \(scriptURL.path.armShellEscaped) "
-            + "--input \(inputURL.path.armShellEscaped) "
-            + "--output \(outputURL.path.armShellEscaped)"
+        let task: Process
+        if PythonRuntime.isEmbedded || PythonRuntime.isSandboxed {
+            guard PythonRuntime.isEmbedded else {
+                throw AnonymizationError.libraryNotInstalled
+            }
+            var embeddedTask = PythonRuntime.process(module: "__main__", arguments: [])
+            embeddedTask.executableURL = PythonRuntime.interpreter
+            embeddedTask.arguments = [
+                scriptURL.path,
+                "--input", inputURL.path,
+                "--output", outputURL.path,
+            ]
+            task = embeddedTask
+        } else {
+            let cmd = "\(pythonExecutable()) \(scriptURL.path.armShellEscaped) "
+                + "--input \(inputURL.path.armShellEscaped) "
+                + "--output \(outputURL.path.armShellEscaped)"
 
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
+            let shellTask = Process()
+            shellTask.launchPath = "/bin/sh"
+            shellTask.arguments = ["-lc", cmd]
+            task = shellTask
+        }
 
         let stderrPipe = Pipe()
         task.standardError = stderrPipe

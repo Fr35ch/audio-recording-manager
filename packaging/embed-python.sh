@@ -125,7 +125,31 @@ echo "📥 Upgrading pip …"
 
 echo ""
 echo "📥 Installing no-transcribe and no-anonymizer …"
-"$PYTHON_DIR/bin/python3" -m pip install no-transcribe no-anonymizer
+"$PYTHON_DIR/bin/python3" -m pip install numpy torch transformers
+
+# ---------------------------------------------------------------------------
+# Bundle the Python source trees directly.
+# `no-transcribe` ships as a top-level navt.py script. `no-anonymizer`
+# expects its data directory to live alongside the source tree, so we mirror
+# that layout under a bundle-local source root and add it to sys.path.
+# ---------------------------------------------------------------------------
+SITE_PACKAGES="$PYTHON_DIR/lib/python3.12/site-packages"
+CLIO_SRC_DIR="$SITE_PACKAGES/clio_src"
+rm -rf "$CLIO_SRC_DIR"
+mkdir -p "$CLIO_SRC_DIR/src"
+cp "$HOME/Github/no-transcribe/navt.py" "$CLIO_SRC_DIR/src/navt.py"
+cp -R "$HOME/Github/no-anonymizer/src/no_anonymizer" "$CLIO_SRC_DIR/src/"
+cp -R "$HOME/Github/no-anonymizer/data" "$CLIO_SRC_DIR/src/"
+mkdir -p "$CLIO_SRC_DIR/src/no_transcribe"
+cat > "$CLIO_SRC_DIR/src/no_transcribe/__init__.py" <<'EOF'
+EOF
+cat > "$CLIO_SRC_DIR/src/no_transcribe/__main__.py" <<'EOF'
+from navt import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+EOF
+printf '%s\n' "clio_src/src" > "$SITE_PACKAGES/clio_src.pth"
 
 # ---------------------------------------------------------------------------
 # Offline import verification (must not trigger model downloads)

@@ -55,7 +55,7 @@ struct TranscriptionSettingsView: View {
                     HStack(spacing: 8) {
                         Image(systemName: service.isInstalled ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(service.isInstalled ? .green : .red)
-                        Text(service.isInstalled ? "no-transcribe er installert" : "no-transcribe er ikke installert")
+                        Text(service.isBundledRuntime ? "no-transcribe følger med appen" : service.isInstalled ? "no-transcribe er installert" : "no-transcribe er ikke installert")
                             .font(.system(size: 13, weight: .medium))
 
                         if let ver = versionString {
@@ -69,27 +69,32 @@ struct TranscriptionSettingsView: View {
 
                     // Install / Update buttons
                     HStack(spacing: 8) {
-                        if !service.isInstalled {
-                            ActionButton(
-                                label: "Installer",
-                                systemImage: "arrow.down.circle",
-                                state: installState
-                            ) {
-                                performInstall()
-                            }
+                        if service.isBundledRuntime {
+                           Text("Python-miljøet er pakket inn i appen for sandboxet distribusjon.")
+                               .font(.system(size: 11))
+                               .foregroundStyle(.secondary)
+                               .fixedSize(horizontal: false, vertical: true)
+                        } else if !service.isInstalled {
+                           ActionButton(
+                               label: "Installer",
+                               systemImage: "arrow.down.circle",
+                               state: installState
+                           ) {
+                               performInstall()
+                           }
                         } else {
-                            ActionButton(
-                                label: "Oppdater",
-                                systemImage: "arrow.triangle.2.circlepath",
-                                state: updateState
-                            ) {
-                                performUpdate()
-                            }
+                           ActionButton(
+                               label: "Oppdater",
+                               systemImage: "arrow.triangle.2.circlepath",
+                               state: updateState
+                           ) {
+                               performUpdate()
+                           }
                         }
                     }
 
                     if !service.isInstalled {
-                        Text("Krever Python 3.9+ og internettilgang for nedlasting av pakken.")
+                        Text(service.isBundledRuntime ? "Bundled Python brukes i TestFlight/App Store-bygget." : "Krever Python 3.9+ og internettilgang for nedlasting av pakken.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -301,21 +306,32 @@ struct TranscriptionSettingsView: View {
     }
 
     private func loadVersion() {
-        guard service.isInstalled else { return }
         Task {
-            // Run `no-transcribe --version` via a quick shell invocation
-            let task = Process()
-            task.launchPath = "/bin/sh"
-            task.arguments = ["-lc", "no-transcribe --version 2>/dev/null || echo ''"]
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            try? task.run()
-            task.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            let ver = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            await MainActor.run {
-                versionString = ver?.isEmpty == false ? ver : nil
+            if service.isBundledRuntime {
+                let ver = (try? PythonRuntime.run(code: "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"))
+                await MainActor.run {
+                    if let ver, !ver.isEmpty {
+                        versionString = "Python \(ver)"
+                    } else {
+                        versionString = "Python"
+                    }
+                }
+            } else {
+                guard service.isInstalled else { return }
+                // Run `no-transcribe --version` via a quick shell invocation
+                let task = Process()
+                task.launchPath = "/bin/sh"
+                task.arguments = ["-lc", "no-transcribe --version 2>/dev/null || echo ''"]
+                let pipe = Pipe()
+                task.standardOutput = pipe
+                try? task.run()
+                task.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let ver = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                await MainActor.run {
+                    versionString = ver?.isEmpty == false ? ver : nil
+                }
             }
         }
     }

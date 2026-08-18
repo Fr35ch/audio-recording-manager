@@ -12,6 +12,11 @@ import Foundation
 /// all service code should query `isEmbedded` before deciding how to invoke Python.
 enum PythonRuntime {
 
+    /// `true` when the app is running in a sandboxed container.
+    static var isSandboxed: Bool {
+        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+    }
+
     /// Root of the bundled CPython tree (…/Clio.app/Contents/Resources/python).
     static var home: URL {
         Bundle.main.resourceURL!.appendingPathComponent("python")

@@ -124,4 +124,5 @@ All Swift sources live under `Sources/Clio/`. The file `main.swift` is very larg
 
 - Xcode: `⌘B` to build, `⌘R` to run. Minimum macOS 14.
 - Release script: `./scripts/release.sh <patch|minor|major>` — see [docs/VERSIONING.md](docs/VERSIONING.md).
+- Archive for TestFlight/App Store: `./scripts/archive.sh` — do NOT use Xcode's Product > Archive menu directly. FluidAudio (SPM dependency) has unguarded `Float16` usage that breaks universal Archive builds on x86_64; the script passes `ARCHS=arm64 EXCLUDED_ARCHS=x86_64` as build-setting overrides, the only way that setting reliably propagates into Swift Package sub-targets. `open` the resulting `.xcarchive` to load it into Xcode's Organizer as usual.
 - Python dependencies are user-installed; `DependencyManager` verifies on launch.

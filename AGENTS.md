@@ -188,6 +188,21 @@ Requires macOS 14+ and Apple Silicon. Python dependencies must be installed sepa
 ```
 Updates `VERSION`, `Info.plist`, `CHANGELOG.md`. Full guide in `docs/VERSIONING.md`.
 
+**Archive (TestFlight / App Store):**
+```bash
+./scripts/archive.sh [path/to/output.xcarchive]
+```
+Use this instead of Xcode's Product > Archive menu. FluidAudio (SPM
+dependency, used for on-device speaker diarization) has files with
+unguarded `Float16` usage — an arm64-only Swift built-in — so a plain
+universal Archive build fails with `'Float16' is unavailable in macOS`.
+Clio's own project build settings are restricted to arm64, but that
+restriction does not propagate into Swift Package dependencies; the only
+setting that reliably does is a build-setting override on the `xcodebuild`
+invocation itself (`ARCHS=arm64 EXCLUDED_ARCHS=x86_64`), which is what this
+script passes. After archiving, `open` the resulting `.xcarchive` to load
+it into Xcode's Organizer exactly as if it had been archived via the GUI.
+
 **Python tests:**
 ```bash
 pytest -m "not slow"          # fast tests (pre-commit default)

@@ -1,0 +1,41 @@
+# Norwegian first names that double as common words.
+#
+# Format: one name per line, blank lines and `# comments` ignored. Lookup is
+# case-insensitive (the file is loaded with str.casefold()).
+#
+# Each entry MUST also be a real entry in data/ssb_fornavn.txt — this file
+# narrows the SSB list, it does not replace it. Names listed here require
+# contextual support to be redacted in the default `balanced` strictness mode:
+#   - the next or previous token is also a capitalized SSB name match, OR
+#   - a name precursor precedes the token (e.g. "Hr.", "intervjuet med",
+#     "Hei"), OR
+#   - a reporting-verb postcursor follows the token (e.g. "sa", "spurte"), OR
+#   - the BERT NER layer flagged the span with score >= 0.95.
+#
+# Curation methodology (for future extension):
+#   1. Take the intersection of data/ssb_fornavn.txt with a Bokmål wordlist
+#      such as aspell-no or hunspell-nb.
+#   2. Filter to names whose Bokmål common-word frequency exceeds a threshold
+#      (e.g. NoTa-Oslo / NAK corpus frequencies).
+#   3. Filter to names whose SSB count falls below a high-prevalence threshold
+#      so that very common names (Anne, Per, Lars) that almost always denote a
+#      person are *not* demoted.
+#   4. Have a Norwegian-speaking reviewer accept or reject each candidate.
+#
+# v1: hand-curated set targeting the worst NAV-transcript false positives.
+# Each entry was verified to exist in data/ssb_fornavn.txt — entries that
+# weren't (e.g. Klar, Glad, Snill) were dropped from the seed.
+
+Vår
+Jo
+Dag
+Per
+Mai
+May
+Bjørn
+Tor
+Liv
+Hans
+Else
+Mons
+Roger

@@ -273,7 +273,6 @@ struct BibliotekView: View {
             .help("Åpne transkripsjon i editor")
         } else {
             Button("Transkriber") {
-                selectRow(bundle.id)
                 transcriptionRunner.start(recordingId: bundle.id, audioDuration: bundle.durationSeconds)
             }
             .buttonStyle(PillButtonStyle(variant: .primary))
@@ -425,8 +424,8 @@ private struct BibliotekRow<TranscribeButton: View>: View {
         }
         .animation(.easeInOut(duration: 0.12), value: isHovered)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { onDoubleClick() }
-        .onTapGesture { onSelect() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onDoubleClick() })
+        .simultaneousGesture(TapGesture().onEnded { onSelect() })
         .onHover { hovering in
             isHovered = hovering
             if !hovering { DispatchQueue.main.async { NSCursor.arrow.set() } }

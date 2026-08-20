@@ -160,3 +160,12 @@ DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Bundled ML models (CoreML/WhisperKit) — large binary build artifacts,
+# deterministically regenerated from public HuggingFace checkpoints via
+# documented conversion scripts. Never committed to git (would exceed
+# GitHub's 100MB file-size limit and permanently bloat repo history).
+# See docs/MODEL_SETUP.md for how to (re)generate them locally.
+Resources/WhisperKitModels/
+Resources/NBBertNER.mlmodelc/
+Resources/NBBertNER-tokenizer/

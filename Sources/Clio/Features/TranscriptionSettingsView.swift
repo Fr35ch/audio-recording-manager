@@ -93,6 +93,39 @@ struct TranscriptionSettingsView: View {
                         }
                     }
 
+                    if case .downloading(let model, let message) = service.modelDownloadState {
+                        HStack(spacing: 8) {
+                           ProgressView()
+                               .progressViewStyle(.circular)
+                               .scaleEffect(0.65)
+                           Text("NB-Whisper \(model.displayName) lastes ned")
+                               .font(.system(size: 11))
+                               .foregroundStyle(.secondary)
+                           Text(message)
+                               .font(.system(size: 11))
+                               .foregroundStyle(.secondary)
+                           Spacer()
+                        }
+                    } else if case .ready(let model) = service.modelDownloadState {
+                        HStack(spacing: 8) {
+                           Image(systemName: "checkmark.circle.fill")
+                               .foregroundStyle(.green)
+                           Text("NB-Whisper \(model.displayName) er lastet ned. Transkribering er nå mulig.")
+                               .font(.system(size: 11))
+                               .foregroundStyle(.secondary)
+                           Spacer()
+                        }
+                    } else if case .failed(let message) = service.modelDownloadState {
+                        HStack(spacing: 8) {
+                           Image(systemName: "exclamationmark.triangle.fill")
+                               .foregroundStyle(.orange)
+                           Text(message)
+                               .font(.system(size: 11))
+                               .foregroundStyle(.secondary)
+                           Spacer()
+                        }
+                    }
+
                     if !service.isInstalled {
                         Text(service.isBundledRuntime ? "Bundled Python brukes i TestFlight/App Store-bygget." : "Krever Python 3.9+ og internettilgang for nedlasting av pakken.")
                             .font(.system(size: 11))
@@ -146,9 +179,12 @@ struct TranscriptionSettingsView: View {
                                     performDownload(model)
                                 }
                                 .buttonStyle(.bordered)
-                                .disabled(!service.isInstalled || downloadState == .running)
-                                .font(.system(size: 12))
-                            }
+                                    .disabled(!service.isInstalled || downloadState == .running || {
+                                        if case .downloading = service.modelDownloadState { return true }
+                                        return false
+                                    }())
+                                    .font(.system(size: 12))
+                                }
                         }
                         if model != TranscriptionModel.allCases.last {
                             Divider()
@@ -307,31 +343,8 @@ struct TranscriptionSettingsView: View {
 
     private func loadVersion() {
         Task {
-            if service.isBundledRuntime {
-                let ver = (try? PythonRuntime.run(code: "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"))
-                await MainActor.run {
-                    if let ver, !ver.isEmpty {
-                        versionString = "Python \(ver)"
-                    } else {
-                        versionString = "Python"
-                    }
-                }
-            } else {
-                guard service.isInstalled else { return }
-                // Run `no-transcribe --version` via a quick shell invocation
-                let task = Process()
-                task.launchPath = "/bin/sh"
-                task.arguments = ["-lc", "no-transcribe --version 2>/dev/null || echo ''"]
-                let pipe = Pipe()
-                task.standardOutput = pipe
-                try? task.run()
-                task.waitUntilExit()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let ver = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                await MainActor.run {
-                    versionString = ver?.isEmpty == false ? ver : nil
-                }
+            await MainActor.run {
+                versionString = "NB-Whisper-large (WhisperKit / CoreML)"
             }
         }
     }

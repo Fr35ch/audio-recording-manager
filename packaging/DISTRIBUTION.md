@@ -81,6 +81,24 @@ PBS_RELEASE="20241016"
 Available release tags and assets:
 https://github.com/astral-sh/python-build-standalone/releases
 
+**App Sandbox requirement for embedded executables**: App Store/TestFlight
+validation requires every standalone Mach-O executable in the bundle (not
+just the main app binary) to carry the same `com.apple.security.app-sandbox`
+entitlement as the app itself. Shared libraries (`.dylib`/`.so`) are exempt
+— they run inside the sandbox scope of whichever process loads them.
+`embed-python.sh`:
+- deletes torch's unused helper executables (`protoc`, `protoc-3.13.0.0`,
+  `torch_shm_manager`) rather than entitling code the app never invokes
+- signs the one executable we do need (`bin/python3.12`) with
+  `packaging/sandbox-entitlements.plist`, which must be kept in sync with
+  the main app's actual entitlements (Signing & Capabilities tab in Xcode).
+  Verify the main app's entitlements with
+  `codesign -d --entitlements - /path/to/Clio.app`.
+- bump `SCRIPT_LOGIC_VERSION` at the top of the script whenever this
+  signing/entitlement logic changes, so already-embedded bundles are
+  forced through a fresh full re-embed instead of taking the fast-path
+  skip with stale signing.
+
 ### 4. Sign and notarize
 
 ```bash

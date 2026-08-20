@@ -16,10 +16,15 @@
 		0C98E65F1306C3FA64458777 /* AvidentExceptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC4F5E2A28A5F9F8C05CC60 /* AvidentExceptionsView.swift */; };
 		0FD296B662B20927119CB0CC /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */; };
 		11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 42FCB9B274EC3A52C96EF365 /* FluidAudio */; };
+		18BD729984ED471381F4ADB5 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = C3692886A57046468653FC1C /* WhisperKit */; };
 		15398FA9751B16DEC921258B /* RecordingExpiryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46946E8D385F3AFCB3523042 /* RecordingExpiryManager.swift */; };
 		155861C74CBFD44B56ACE200 /* TranscriptionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */; };
 		1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */; };
-		1993DAF3EF1CCC5A9E3FFEB7 /* anonymize_bridge.py in Resources */ = {isa = PBXBuildFile; fileRef = BBDD5A98F213794984CF6C7D /* anonymize_bridge.py */; };
+		FAA03A32A2A74A399C028426 /* NBBertNER.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = B6F97FBE5D5D459CB2D1A25D /* NBBertNER.mlmodelc */; };
+		489EB2575BE64D78957E2657 /* NBBertNER-tokenizer in Resources */ = {isa = PBXBuildFile; fileRef = F260A9A4E53345BB87FC82CE /* NBBertNER-tokenizer */; };
+		0AC73FE06EB94396AE3915EC /* WhisperKitModels in Resources */ = {isa = PBXBuildFile; fileRef = 7C56456B53AF469585F2CF75 /* WhisperKitModels */; };
+		EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */ = {isa = PBXBuildFile; fileRef = A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */; };
+		2B196515E23B41E0AABB7C1F /* ambiguous_names.txt in Resources */ = {isa = PBXBuildFile; fileRef = D2B9719F830A43749A975590 /* ambiguous_names.txt */; };
 		1BC619DAFC4AEA3D636B419D /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */; };
 		20FA68DA01D9B5740852A653 /* DependencyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E3B184AB414FBCEE5CB44BA /* DependencyManager.swift */; };
 		241D48A3BA8B4DDE80979659 /* RecordScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C48C2C69D3341F98A28BD4F /* RecordScreen.swift */; };
@@ -54,6 +59,18 @@
 		93422B4933C289275F063EE9 /* AudioLevelVisualization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E056E09D9198F48C6D484127 /* AudioLevelVisualization.swift */; };
 		93BB38BF5E431D9C5E512A66 /* TranscriptEditorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3E4DB16C7F2DBCBAAD577EB /* TranscriptEditorWindow.swift */; };
 		987374636261AACB80821CA6 /* AnonymizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80B42532D49A70085D58FF1E /* AnonymizationService.swift */; };
+		DCE94912EF73423BB9FBC1DE /* AnonymizerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73B863E5AE8497CB653ECA1 /* AnonymizerModels.swift */; };
+		8452FECBA6E24BC4A45F4819 /* TextPreprocessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9C7CBFCE50948C989B70199 /* TextPreprocessor.swift */; };
+		FBB272B8ECD64AB490B2252D /* TextContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98768996CFC84699B44AA330 /* TextContext.swift */; };
+		3F3414CCA76E48FC9591A09F /* RegexPatternDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F55B97FF900947CC8243ED6F /* RegexPatternDetector.swift */; };
+		CAF62E697469440C87DF128E /* SSBNamesDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295AB7FD0E104C15AC648A75 /* SSBNamesDetector.swift */; };
+		EF2F3F312F0E493A87A177B4 /* StederDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5B5D4A8745B4B1AA1F19AC7 /* StederDetector.swift */; };
+		00AFA3830A694C5F910594CD /* AddressLookupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DFB4211DFD94CD19955767D /* AddressLookupService.swift */; };
+		919EF5EF740E4EF983E26F89 /* AmbiguityFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88963D8BA97B4A50BFCAFC7A /* AmbiguityFilter.swift */; };
+		D51F2770578F4BF988D8F80E /* BertWordPieceTokenizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16736D769CF243A7BD5F9264 /* BertWordPieceTokenizer.swift */; };
+		0685B594D41F4C4F8680CAE5 /* BertNERDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8ABFC1CD4D44B11A7C47A87 /* BertNERDetector.swift */; };
+		9F15DB187CDD49C6A3B965D7 /* NativeAnonymizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7731BBDE69C0425A862A85C9 /* NativeAnonymizer.swift */; };
+		C725191F67324FD996B5DE42 /* NativeTranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39B51F379804114B6FE196C /* NativeTranscriptionEngine.swift */; };
 		A132A46B3FE88ABDBF95651D /* PillButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F068C655F17F8707229EB9 /* PillButton.swift */; };
 		A18DA67CEA7327CF92CA5622 /* EntraConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* AppCopy.swift */; };
@@ -66,11 +83,11 @@
 		AA001122334455667788BF17 /* NearbyTransferAdvertiser.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT07 /* NearbyTransferAdvertiser.swift */; };
 		AA001122334455667788FW01 /* MultipeerConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA001122334455667788FW02 /* MultipeerConnectivity.framework */; };
 		AA001122334455CM01 /* ClioMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455CM02 /* ClioMeta.swift */; };
-		AA001122334455PR01 /* PythonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455PR02 /* PythonRuntime.swift */; };
 		AA001122334455RD01 /* RodeDeviceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455RD02 /* RodeDeviceMonitor.swift */; };
 		AA001122334455RS01 /* RodeSoundCheckService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455RS02 /* RodeSoundCheckService.swift */; };
 		AA001122334455RV01 /* RodeSoundCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455RV02 /* RodeSoundCheckView.swift */; };
 		AA001122334455SS01 /* StereoSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455SS02 /* StereoSplitter.swift */; };
+		AA001122334455WC01 /* AudioWAVConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455WC02 /* AudioWAVConverter.swift */; };
 		AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */; };
 		B68312AE2CD9340004EE100F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E0CED9013697E6080B4188 /* main.swift */; };
 		B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */; };
@@ -145,6 +162,18 @@
 		7C154C760474D9F33E4983FD /* TranscriptionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionModel.swift; sourceTree = "<group>"; };
 		7E29A4B575739DC0D20AC08F /* RecordingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStore.swift; sourceTree = "<group>"; };
 		80B42532D49A70085D58FF1E /* AnonymizationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationService.swift; sourceTree = "<group>"; };
+		B73B863E5AE8497CB653ECA1 /* AnonymizerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizerModels.swift; sourceTree = "<group>"; };
+		A9C7CBFCE50948C989B70199 /* TextPreprocessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextPreprocessor.swift; sourceTree = "<group>"; };
+		98768996CFC84699B44AA330 /* TextContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextContext.swift; sourceTree = "<group>"; };
+		F55B97FF900947CC8243ED6F /* RegexPatternDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegexPatternDetector.swift; sourceTree = "<group>"; };
+		295AB7FD0E104C15AC648A75 /* SSBNamesDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSBNamesDetector.swift; sourceTree = "<group>"; };
+		A5B5D4A8745B4B1AA1F19AC7 /* StederDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StederDetector.swift; sourceTree = "<group>"; };
+		8DFB4211DFD94CD19955767D /* AddressLookupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddressLookupService.swift; sourceTree = "<group>"; };
+		88963D8BA97B4A50BFCAFC7A /* AmbiguityFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmbiguityFilter.swift; sourceTree = "<group>"; };
+		16736D769CF243A7BD5F9264 /* BertWordPieceTokenizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BertWordPieceTokenizer.swift; sourceTree = "<group>"; };
+		C8ABFC1CD4D44B11A7C47A87 /* BertNERDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BertNERDetector.swift; sourceTree = "<group>"; };
+		7731BBDE69C0425A862A85C9 /* NativeAnonymizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAnonymizer.swift; sourceTree = "<group>"; };
+		D39B51F379804114B6FE196C /* NativeTranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptionEngine.swift; sourceTree = "<group>"; };
 		8141AAF46C3D20560192B795 /* ProjectConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConfig.swift; sourceTree = "<group>"; };
 		8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadConfirmationSheet.swift; sourceTree = "<group>"; };
 		82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewHelpers.swift; sourceTree = "<group>"; };
@@ -163,16 +192,20 @@
 		AA001122334455667788MT06 /* AirDropImportWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirDropImportWatcher.swift; sourceTree = "<group>"; };
 		AA001122334455667788MT07 /* NearbyTransferAdvertiser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyTransferAdvertiser.swift; sourceTree = "<group>"; };
 		AA001122334455CM02 /* ClioMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClioMeta.swift; sourceTree = "<group>"; };
-		AA001122334455PR02 /* PythonRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PythonRuntime.swift; path = Sources/Clio/PythonRuntime.swift; sourceTree = SOURCE_ROOT; };
 		AA001122334455RD02 /* RodeDeviceMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RodeDeviceMonitor.swift; sourceTree = "<group>"; };
 		AA001122334455RS02 /* RodeSoundCheckService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RodeSoundCheckService.swift; sourceTree = "<group>"; };
 		AA001122334455RV02 /* RodeSoundCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RodeSoundCheckView.swift; sourceTree = "<group>"; };
 		AA001122334455SS02 /* StereoSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StereoSplitter.swift; sourceTree = "<group>"; };
+		AA001122334455WC02 /* AudioWAVConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioWAVConverter.swift; sourceTree = "<group>"; };
 		AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingDetailView.swift; sourceTree = "<group>"; };
 		AC8DF171A94AC9D0659BA3C1 /* RecordingStatusBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStatusBundle.swift; sourceTree = "<group>"; };
 		B1C2D3E4F5061728394A5B6C /* AppCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCopy.swift; sourceTree = "<group>"; };
 		B3E4DB16C7F2DBCBAAD577EB /* TranscriptEditorWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptEditorWindow.swift; sourceTree = "<group>"; };
-		BBDD5A98F213794984CF6C7D /* anonymize_bridge.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = anonymize_bridge.py; sourceTree = "<group>"; };
+		B6F97FBE5D5D459CB2D1A25D /* NBBertNER.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "NBBertNER.mlmodelc"; sourceTree = "<group>"; };
+		F260A9A4E53345BB87FC82CE /* NBBertNER-tokenizer */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "NBBertNER-tokenizer"; sourceTree = "<group>"; };
+		7C56456B53AF469585F2CF75 /* WhisperKitModels */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "WhisperKitModels"; sourceTree = "<group>"; };
+		A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = kartverket_steder.txt; sourceTree = "<group>"; };
+		D2B9719F830A43749A975590 /* ambiguous_names.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ambiguous_names.txt; sourceTree = "<group>"; };
 		BEDC6AD3601EADA5387EAEC1 /* DefaultAvidentExceptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultAvidentExceptions.swift; sourceTree = "<group>"; };
 		C63560298DEC2D58FE5A1E9C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		D768BD447F094B7EEEF3703D /* RecordingMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMeta.swift; sourceTree = "<group>"; };
@@ -196,6 +229,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */,
+				18BD729984ED471381F4ADB5 /* WhisperKit in Frameworks */,
 				AA001122334455667788FW01 /* MultipeerConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -238,12 +272,12 @@
 			children = (
 				B1C2D3E4F5061728394A5B6C /* AppCopy.swift */,
 				54E0CED9013697E6080B4188 /* main.swift */,
-				AA001122334455PR02 /* PythonRuntime.swift */,
 				A77D27D26DC75CD2A87BF92F /* Design */,
 				CDDE0C786900465483C35D28 /* Features */,
 				DFE71B136C91302219B3EB92 /* Library */,
 				AA11BB22CC33DD44EE55FF66 /* Models */,
 				AC6B9512843B9831505D1828 /* Playback */,
+				7B26724303AE47D7878EC6A2 /* Anonymization */,
 				E87C68A76CA1484E955ABBA1 /* Services */,
 				8A4DD4F6B8EE4BC2358F8B42 /* Startup */,
 				E996C5A1B91D9FEBA4D81B56 /* Storage */,
@@ -298,10 +332,14 @@
 		A96B9FFC2E253A34C4C1D4B4 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				BBDD5A98F213794984CF6C7D /* anonymize_bridge.py */,
+				B6F97FBE5D5D459CB2D1A25D /* NBBertNER.mlmodelc */,
+				F260A9A4E53345BB87FC82CE /* NBBertNER-tokenizer */,
+				7C56456B53AF469585F2CF75 /* WhisperKitModels */,
 				89E722BD634E4B0A4570CA82 /* Assets.xcassets */,
 				26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */,
 				283BC0325526BEA992ADAABB /* ssb_fornavn.txt */,
+				A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */,
+				D2B9719F830A43749A975590 /* ambiguous_names.txt */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -394,10 +432,29 @@
 			path = Utils;
 			sourceTree = "<group>";
 		};
+		7B26724303AE47D7878EC6A2 /* Anonymization */ = {
+			isa = PBXGroup;
+			children = (
+				B73B863E5AE8497CB653ECA1 /* AnonymizerModels.swift */,
+				A9C7CBFCE50948C989B70199 /* TextPreprocessor.swift */,
+				98768996CFC84699B44AA330 /* TextContext.swift */,
+				F55B97FF900947CC8243ED6F /* RegexPatternDetector.swift */,
+				295AB7FD0E104C15AC648A75 /* SSBNamesDetector.swift */,
+				A5B5D4A8745B4B1AA1F19AC7 /* StederDetector.swift */,
+				8DFB4211DFD94CD19955767D /* AddressLookupService.swift */,
+				88963D8BA97B4A50BFCAFC7A /* AmbiguityFilter.swift */,
+				16736D769CF243A7BD5F9264 /* BertWordPieceTokenizer.swift */,
+				C8ABFC1CD4D44B11A7C47A87 /* BertNERDetector.swift */,
+				7731BBDE69C0425A862A85C9 /* NativeAnonymizer.swift */,
+			);
+			path = Anonymization;
+			sourceTree = "<group>";
+		};
 		E87C68A76CA1484E955ABBA1 /* Services */ = {
 			isa = PBXGroup;
 			children = (
 				80B42532D49A70085D58FF1E /* AnonymizationService.swift */,
+				D39B51F379804114B6FE196C /* NativeTranscriptionEngine.swift */,
 				4C4A1FCFD71EDCBFBB130D76 /* AudioPlayer.swift */,
 				1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */,
 				35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */,
@@ -406,6 +463,7 @@
 				E9EE8D5882CD2DBB99E27BB8 /* RecordingsManager.swift */,
 				013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */,
 				AA001122334455SS02 /* StereoSplitter.swift */,
+				AA001122334455WC02 /* AudioWAVConverter.swift */,
 				AA001122334455RD02 /* RodeDeviceMonitor.swift */,
 				AA001122334455RS02 /* RodeSoundCheckService.swift */,
 				A7D9DC657F2709B54C9B527F /* TranscriptionService.swift */,
@@ -438,7 +496,6 @@
 				BA61BE75D51E7198564D984F /* Sources */,
 				D3CB5A1E36CCD9C10CA4B983 /* Resources */,
 				F53B9310441BD6031D40EDF8 /* Frameworks */,
-				A1B2C3D4E5F60002A1B2C3D4 /* Embed Python Runtime */,
 			);
 			buildRules = (
 			);
@@ -447,6 +504,7 @@
 			name = Clio;
 			packageProductDependencies = (
 				42FCB9B274EC3A52C96EF365 /* FluidAudio */,
+				C3692886A57046468653FC1C /* WhisperKit */,
 			);
 			productName = Clio;
 			productReference = FB38CDA2EE93F624A724B0B4 /* Clio.app */;
@@ -472,6 +530,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				76C11878C6178AC7D83D115F /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				E938F7237B374ECFB9F546BB /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 528AC45447AA2C0FE8E14001 /* Products */;
@@ -490,9 +549,13 @@
 			files = (
 				760BAF2F1ECA924DD1791C5F /* Assets.xcassets in Resources */,
 				8A08187DF0D956FADD0ADE35 /* README.md in Resources */,
-				1993DAF3EF1CCC5A9E3FFEB7 /* anonymize_bridge.py in Resources */,
+				FAA03A32A2A74A399C028426 /* NBBertNER.mlmodelc in Resources */,
+				489EB2575BE64D78957E2657 /* NBBertNER-tokenizer in Resources */,
+				0AC73FE06EB94396AE3915EC /* WhisperKitModels in Resources */,
 				5966749827B677DE2B52979B /* ssb_etternavn.txt in Resources */,
 				32BC3A4A7408255CD737F67C /* ssb_fornavn.txt in Resources */,
+				EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */,
+				2B196515E23B41E0AABB7C1F /* ambiguous_names.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -527,6 +590,18 @@
 			files = (
 				E5D57A02EBA89FD0FAF25996 /* AnonymizationModal.swift in Sources */,
 				987374636261AACB80821CA6 /* AnonymizationService.swift in Sources */,
+				DCE94912EF73423BB9FBC1DE /* AnonymizerModels.swift in Sources */,
+				8452FECBA6E24BC4A45F4819 /* TextPreprocessor.swift in Sources */,
+				FBB272B8ECD64AB490B2252D /* TextContext.swift in Sources */,
+				3F3414CCA76E48FC9591A09F /* RegexPatternDetector.swift in Sources */,
+				CAF62E697469440C87DF128E /* SSBNamesDetector.swift in Sources */,
+				EF2F3F312F0E493A87A177B4 /* StederDetector.swift in Sources */,
+				00AFA3830A694C5F910594CD /* AddressLookupService.swift in Sources */,
+				919EF5EF740E4EF983E26F89 /* AmbiguityFilter.swift in Sources */,
+				D51F2770578F4BF988D8F80E /* BertWordPieceTokenizer.swift in Sources */,
+				0685B594D41F4C4F8680CAE5 /* BertNERDetector.swift in Sources */,
+				9F15DB187CDD49C6A3B965D7 /* NativeAnonymizer.swift in Sources */,
+				C725191F67324FD996B5DE42 /* NativeTranscriptionEngine.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* AppCopy.swift in Sources */,
 				447157CF8D22B0D41C42ECDC /* AppFont.swift in Sources */,
 				28B97BA238D29468D2D1A3E1 /* AppState.swift in Sources */,
@@ -581,6 +656,7 @@
 				1BC619DAFC4AEA3D636B419D /* TranscriptionResult.swift in Sources */,
 				AA001122334455CM01 /* ClioMeta.swift in Sources */,
 				AA001122334455SS01 /* StereoSplitter.swift in Sources */,
+				AA001122334455WC01 /* AudioWAVConverter.swift in Sources */,
 				AA001122334455RD01 /* RodeDeviceMonitor.swift in Sources */,
 				AA001122334455RS01 /* RodeSoundCheckService.swift in Sources */,
 				AA001122334455RV01 /* RodeSoundCheckView.swift in Sources */,
@@ -606,7 +682,6 @@
 				AA001122334455667788BF16 /* AirDropImportWatcher.swift in Sources */,
 				AA001122334455667788BF17 /* NearbyTransferAdvertiser.swift in Sources */,
 				0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */,
-				AA001122334455PR01 /* PythonRuntime.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -630,25 +705,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\n' \"$BRANCH\" \"$HASH\" > \"$INFO\"\nexit 0\n";
-			showEnvVarsInLog = 0;
-		};
-		A1B2C3D4E5F60002A1B2C3D4 /* Embed Python Runtime */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Embed Python Runtime";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/packaging/embed-python.sh\" \"$TARGET_BUILD_DIR/$WRAPPER_NAME\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -883,6 +939,14 @@
 				minimumVersion = 0.12.4;
 			};
 		};
+		E938F7237B374ECFB9F546BB /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -890,6 +954,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 76C11878C6178AC7D83D115F /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		C3692886A57046468653FC1C /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E938F7237B374ECFB9F546BB /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -18,6 +18,16 @@ final class TranscriptionRunner: ObservableObject {
 
     func start(recordingId: UUID, audioDuration: Double? = nil) {
         guard tasks[recordingId] == nil else { return }
+        guard TranscriptionService.shared.runtimeIsInstalled() else {
+            _ = try? RecordingStore.shared.updateMeta(id: recordingId) { meta in
+                meta.transcript.status = .failed
+            }
+            AuditLogger.shared.log(.transcriptFailed, payload: [
+                "recordingId": .string(recordingId.uuidString),
+                "error": .string("no-transcribe mangler eller er ikke installert"),
+            ])
+            return
+        }
 
         // Clear any prior anonymization data so the editor and library chips
         // immediately reflect the clean state before the new transcript lands.
@@ -62,6 +72,12 @@ final class TranscriptionRunner: ObservableObject {
             let audioURL = StorageLayout.audioURL(id: recordingId)
 
             do {
+                try await TranscriptionService.shared.ensureModelAvailable(model, announce: true)
+                guard !Task.isCancelled else { return }
+
+                // Reset old anonymization only once the run is visibly in-flight.
+                clearAnonymizationData(for: recordingId)
+
                 let result = try await TranscriptionService.shared.transcribe(
                     audioFile: audioURL,
                     speakers: 1,

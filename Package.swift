@@ -24,6 +24,15 @@ let package = Package(
         .package(
             url: "https://github.com/FluidInference/FluidAudio.git",
             from: "0.12.4"),
+        // WhisperKit (argmax-oss-swift): on-device speech-to-text via
+        // CoreML / Apple Neural Engine. Replaces the no-transcribe Python
+        // subprocess bridge — no embedded interpreter, no second Mach-O
+        // executable, so no app-sandbox entitlement conflict with the
+        // main app's own sandbox. See ADR for the embedded-Python
+        // sandbox dead end this replaces.
+        .package(
+            url: "https://github.com/argmaxinc/argmax-oss-swift.git",
+            from: "0.9.0"),
     ],
     targets: [
         // Executable app target (combines all sources)
@@ -31,6 +40,7 @@ let package = Package(
             name: "Clio",
             dependencies: [
                 .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "WhisperKit", package: "argmax-oss-swift"),
             ],
             path: "Sources/Clio",
             linkerSettings: [

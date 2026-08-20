@@ -236,7 +236,8 @@ struct RecordingDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(redAccent)
-            .disabled(!transcriptionService.isInstalled)
+
+            modelStatusRow(for: model)
 
             HStack(spacing: 16) {
                 Label("Modell: \(model.displayName)", systemImage: "cpu")
@@ -254,7 +255,8 @@ struct RecordingDetailView: View {
     }
 
     private var transcriptionInProgress: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
@@ -265,6 +267,8 @@ struct RecordingDetailView: View {
                     .animation(.default, value: transcriptionService.stage.displayName)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            modelStatusRow(for: model)
 
             if transcriptionService.progress > 0 {
                 ProgressView(value: transcriptionService.progress)
@@ -591,18 +595,26 @@ struct RecordingDetailView: View {
     // MARK: - Transcription actions
 
     private func startTranscription() {
+        guard transcriptionService.runtimeIsInstalled() else {
+            transcriptionState = .failed(.notInstalled)
+            return
+        }
+
         let model = TranscriptionModel(rawValue: defaultModelRaw) ?? .medium
         let audioURL = recording.audioURL
 
         transcriptionTask?.cancel()
         transcriptionState = .inProgress
 
-        // A new transcription invalidates any previous anonymization result.
-        // Clear storage now so the editor opens with a clean slate.
-        clearAnonymizationData(for: recording.id)
-
         transcriptionTask = Task { @MainActor in
             do {
+                try await TranscriptionService.shared.ensureModelAvailable(model, announce: true)
+                guard !Task.isCancelled else { return }
+
+                // A new transcription invalidates any previous anonymization result.
+                // Clear storage once the run is visibly underway.
+                clearAnonymizationData(for: recording.id)
+
                 let result = try await TranscriptionService.shared.transcribe(
                     audioFile: audioURL,
                     speakers: 1,
@@ -683,5 +695,57 @@ struct RecordingDetailView: View {
             "recordingId": .string(id.uuidString),
             "reason": .string("re-transcription"),
         ])
+    }
+
+    @ViewBuilder
+    private func modelStatusRow(for model: TranscriptionModel) -> some View {
+        switch transcriptionService.modelDownloadState {
+        case .downloading(let activeModel, let message) where activeModel == model:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("NB-Whisper \(model.displayName) lastes ned")
+                    .font(.clioCaption)
+                Text(message)
+                    .font(.clioCaption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        case .ready(let readyModel) where readyModel == model:
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(AppColors.success)
+                Text("NB-Whisper \(model.displayName) er lastet ned. Transkribering er nå mulig.")
+                    .font(.clioCaption)
+                Spacer()
+            }
+        case .failed(let message):
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppColors.warning)
+                Text(message)
+                    .font(.clioCaption)
+                Spacer()
+            }
+        default:
+            if transcriptionService.modelIsCached(model) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppColors.success)
+                    Text("NB-Whisper \(model.displayName) er tilgjengelig lokalt.")
+                        .font(.clioCaption)
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(AppColors.accent)
+                    Text("NB-Whisper \(model.displayName) er ikke lastet ned ennå. Den lastes ved behov.")
+                        .font(.clioCaption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            }
+        }
     }
 }

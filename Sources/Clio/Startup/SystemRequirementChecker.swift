@@ -7,7 +7,7 @@ class SystemRequirementChecker {
             checkAppleSilicon(),
             checkRAM(),
             checkMacOSVersion(),
-            checkPython()
+            checkNativeModels()
         ]
     }
 
@@ -53,29 +53,29 @@ class SystemRequirementChecker {
         )
     }
 
-    static func checkPython() -> SystemRequirement {
-        if PythonRuntime.isEmbedded {
-            let version = (try? PythonRuntime.run(code: "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"))
-                ?? "innebygd"
-            return SystemRequirement(
-                name: "Python",
-                minimumValue: "3.10+",
-                actualValue: "Innebygd Python \(version)",
-                passed: true,
-                recommendation: nil
-            )
-        }
-        // Fallback: check system python
-        let candidates = ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"]
-        for p in candidates where FileManager.default.fileExists(atPath: p) {
-            return SystemRequirement(name: "Python", minimumValue: "3.10+", actualValue: p, passed: true, recommendation: nil)
+    /// Verifies the bundled native transcription (WhisperKit) and
+    /// anonymization (CoreML BERT NER) models are present in the app
+    /// bundle. Replaces the old Python interpreter/venv check — both
+    /// pipelines now run fully in-process, no external runtime needed.
+    static func checkNativeModels() -> SystemRequirement {
+        let transcriptionOK = NativeTranscriptionEngine.isBundled
+        let anonymizerOK = BertNERDetector.isAvailable
+        let passed = transcriptionOK && anonymizerOK
+        let actual: String
+        if passed {
+            actual = "NB-Whisper + anonymiseringsmodell er innebygd"
+        } else {
+            var missing: [String] = []
+            if !transcriptionOK { missing.append("NB-Whisper") }
+            if !anonymizerOK { missing.append("anonymiseringsmodell") }
+            actual = "Mangler: \(missing.joined(separator: ", "))"
         }
         return SystemRequirement(
-            name: "Python",
-            minimumValue: "3.10+",
-            actualValue: "Ikke funnet",
-            passed: false,
-            recommendation: "Installer Python via Homebrew: brew install python@3.11"
+            name: "Innebygde modeller",
+            minimumValue: "Bunt med appen",
+            actualValue: actual,
+            passed: passed,
+            recommendation: passed ? nil : "Prøv å installere appen på nytt — modellfiler mangler i appbunten."
         )
     }
 

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 // MARK: - Error types
@@ -30,6 +31,19 @@ enum TranscriptionError: LocalizedError {
             return "En transkripsjon kjører allerede. Vent til den er ferdig før du starter en ny."
         }
     }
+}
+
+enum ModelDownloadState: Equatable {
+    case idle
+    case downloading(model: TranscriptionModel, message: String)
+    case ready(model: TranscriptionModel)
+    case failed(message: String)
+}
+
+enum InstallationState: Equatable {
+    case unknown
+    case installed
+    case missing
 }
 
 // MARK: - Progress stage
@@ -87,12 +101,14 @@ final class TranscriptionCache {
 
 // MARK: - Service
 
-/// Calls the no-transcribe CLI via a subprocess.
+/// Runs Clio's native, in-process transcription pipeline (WhisperKit /
+/// CoreML) — see `NativeTranscriptionEngine`. Replaces the old
+/// `no-transcribe` Python subprocess bridge entirely: no embedded
+/// interpreter, no child executable, no sandbox entitlement conflict.
 ///
 /// Threading model:
-///   - All async methods dispatch work to `DispatchQueue.global(qos: .userInitiated)`.
-///   - Stderr is read in real-time via `readabilityHandler` for live progress updates.
-///   - Stdout is read once after the process exits for the JSON result.
+///   - All async methods dispatch work off the main thread (mostly via the
+///     `NativeTranscriptionEngine` actor, which serializes CoreML calls).
 ///   - All @Published updates happen on the main thread.
 final class TranscriptionService: ObservableObject, @unchecked Sendable {
     static let shared = TranscriptionService()
@@ -102,70 +118,39 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
     @Published var diarizationProgress: Double = 0
     @Published var isSettingUp: Bool = false
     @Published var setupError: String? = nil
-    /// Human-readable description of the current setup step (e.g. pip download lines).
+    /// Human-readable description of the current setup step. Native
+    /// pipeline has no install step, so this is normally empty.
     @Published var setupStageDescription: String = ""
+    @Published var modelDownloadState: ModelDownloadState = .idle
+    @Published private(set) var installationState: InstallationState = .unknown
     /// True while any transcription is in progress. Guards against concurrent calls.
     @Published var isBusy: Bool = false
 
-    private var activeProcess: Process?
-
     private init() {}
-
-    // MARK: - Computed paths
-
-    /// Root of the managed venv created by `install()`.
-    private var venvRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-            .first!
-            .appendingPathComponent("AudioRecordingManager/no-transcribe-venv")
-    }
-
-    /// Path to the navt.py script in the local no-transcribe repository.
-    private var navtScriptPath: String {
-        (NSHomeDirectory() as NSString)
-            .appendingPathComponent("Github/no-transcribe/navt.py")
-    }
-
-    private var usesBundledPython: Bool {
-        PythonRuntime.isEmbedded || PythonRuntime.isSandboxed
-    }
-
-    /// Returns the command to invoke navt.py, shell-escaped.
-    ///
-    /// Uses the managed venv's Python interpreter to run navt.py directly —
-    /// avoids the need to pip-install a CLI binary.
-    private var noTranscribeExecutable: String {
-        let python = venvRoot.appendingPathComponent("bin/python3").path
-        if FileManager.default.fileExists(atPath: python)
-            && FileManager.default.fileExists(atPath: navtScriptPath) {
-            return "\(python.armShellEscaped) \(navtScriptPath.armShellEscaped)"
-        }
-        return "no-transcribe"  // fallback: resolved via login-shell PATH
-    }
 
     // MARK: - Public API
 
-    /// True when navt.py exists locally AND torch is installed in the managed venv.
+    /// True when the bundled WhisperKit model is present in the app bundle.
     var isInstalled: Bool {
-        if PythonRuntime.isEmbedded {
-            return true
-        }
-        guard FileManager.default.fileExists(atPath: navtScriptPath) else { return false }
-        // Check that torch is present in the managed venv's site-packages
-        let venvLib = venvRoot.appendingPathComponent("lib")
-        guard let pythonDirs = try? FileManager.default.contentsOfDirectory(atPath: venvLib.path)
-        else { return false }
-        for pyDir in pythonDirs {
-            let torchDir = venvLib
-                .appendingPathComponent(pyDir)
-                .appendingPathComponent("site-packages/torch")
-            if FileManager.default.fileExists(atPath: torchDir.path) { return true }
-        }
-        return false
+        installationState == .installed
     }
 
+    func runtimeIsInstalled() -> Bool {
+        NativeTranscriptionEngine.isBundled
+    }
+
+    /// Always true — the native pipeline is always "bundled" (in-process
+    /// CoreML, no external interpreter of any kind). Kept for source-level
+    /// back-compat with existing call sites.
     var isBundledRuntime: Bool {
-        PythonRuntime.isEmbedded
+        true
+    }
+
+    func refreshInstallationState() async {
+        let state: InstallationState = runtimeIsInstalled() ? .installed : .missing
+        DispatchQueue.main.async {
+            self.installationState = state
+        }
     }
 
     /// Transcribes an audio file. Reports real-time progress via `stage` and `progress`.
@@ -214,285 +199,120 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         // Non-RØDE / mono recordings: force single speaker to skip
         // probabilistic diarization which is too error-prone on software
         // audio spectrum alone.
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let result = try self.runSubprocess(
-                        audioFile: audioFile,
-                        speakers: 1,
-                        model: model,
-                        verbatim: verbatim,
-                        language: language
-                    )
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
+        return try await runNative(
+            audioFile: audioFile,
+            speakers: 1,
+            model: model,
+            verbatim: verbatim,
+            language: language
+        )
     }
 
-    /// Installs no-transcribe if not already present. Safe to call repeatedly — no-ops if installed.
-    /// Intended to be called once at app launch in the background.
+    /// Verifies the bundled WhisperKit model is present. With the native
+    /// pipeline there's no pip venv or subprocess to install — the model
+    /// ships inside the app bundle — so this just checks bundle presence
+    /// and (optionally) pre-warms the CoreML pipeline into memory.
     func setupIfNeeded() async {
-        if PythonRuntime.isEmbedded {
-            DispatchQueue.main.async {
-                self.setupError = nil
-                self.setupStageDescription = ""
-            }
-            return
-        }
-        if PythonRuntime.isSandboxed {
-            DispatchQueue.main.async {
-                self.isSettingUp = false
-                self.setupError = "Innebygd Python mangler i appbunten."
-            }
-            return
-        }
-        guard !isInstalled || !venvPythonIsCompatible() else { return }
+        let available = NativeTranscriptionEngine.isBundled
         DispatchQueue.main.async {
-            self.isSettingUp = true
-            self.setupError = nil
+            self.isSettingUp = false
             self.setupStageDescription = ""
-        }
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global(qos: .background).async {
-                do {
-                    try self.runInstall()
-                    DispatchQueue.main.async {
-                        self.isSettingUp = false
-                        self.setupStageDescription = ""
-                    }
-                } catch {
-                    DispatchQueue.main.async {
-                        self.isSettingUp = false
-                        self.setupStageDescription = ""
-                        self.setupError = error.localizedDescription
-                    }
-                }
-                continuation.resume()
-            }
+            self.installationState = available ? .installed : .missing
+            self.setupError = available ? nil : "Innebygd NB-Whisper-modell mangler i appbunten."
         }
     }
 
-    /// Creates a managed venv and installs no-transcribe from GitHub.
+    /// Kept for source-level back-compat with existing call sites — the
+    /// native pipeline has nothing to install (the model is bundled), so
+    /// this just re-checks bundle presence.
     func install() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try self.runInstall()
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+        await setupIfNeeded()
+        guard NativeTranscriptionEngine.isBundled else {
+            throw TranscriptionError.notInstalled
         }
     }
 
-    /// Upgrades no-transcribe to the latest version in the managed venv.
-    func update() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try self.runUpdate()
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+    /// No-op — the bundled model is fixed at build time; there is no
+    /// separate "update" step for the native pipeline.
+    func update() async throws {}
+
+    /// No-op — the model is bundled in the app, never downloaded.
+    /// Kept for source-level back-compat with existing call sites.
+    func downloadModel(_ model: TranscriptionModel, announce: Bool = true) async throws {
+        guard NativeTranscriptionEngine.isBundled else {
+            throw TranscriptionError.notInstalled
+        }
+        if announce {
+            setModelDownloadState(.ready(model: model))
+            clearModelDownloadStateLater()
         }
     }
 
-    /// Downloads (pre-caches) the given NB-Whisper model weights.
-    func downloadModel(_ model: TranscriptionModel) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    try self.runDownloadModel(model)
-                    continuation.resume()
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
+    /// Ensures the requested model is present before transcription starts.
+    /// Always resolves immediately — the model is bundled, never downloaded.
+    func ensureModelAvailable(_ model: TranscriptionModel, announce: Bool = false) async throws {
+        try await downloadModel(model, announce: announce)
+    }
+
+    /// Kept for source-level back-compat — nothing to prefetch, the model
+    /// is already bundled in the app.
+    func prefetchDefaultModelIfNeeded() async {
+        if NativeTranscriptionEngine.isBundled {
+            setModelDownloadState(.ready(model: .large))
+            clearModelDownloadStateLater()
         }
     }
 
-    /// Terminates any running transcription process.
+    /// Terminates any running transcription. The native pipeline runs
+    /// in-process via an actor rather than a subprocess, so there is
+    /// nothing to signal here yet — this resets UI state only.
+    /// TODO: wire real cancellation through to WhisperKit once it exposes
+    /// a cancellation token on `transcribe(audioPath:)`.
     func cancel() {
-        activeProcess?.terminate()
-        activeProcess = nil
         DispatchQueue.main.async {
             self.progress = 0
             self.stage = .idle
         }
     }
 
-    // MARK: - Subprocess execution
+    // MARK: - Native transcription (WhisperKit)
 
-    private func runSubprocess(
+    /// Returns the duration in seconds of an audio file via AVFoundation.
+    private func audioDuration(url: URL) async -> Double {
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration) else { return 0 }
+        let seconds = CMTimeGetSeconds(duration)
+        return seconds.isFinite && seconds > 0 ? seconds : 0
+    }
+
+    /// Transcribes a single mono audio file via the native WhisperKit engine.
+    /// Replaces the old `no-transcribe` Python subprocess call — runs
+    /// entirely in-process (CoreML/ANE), so there is no sandbox entitlement
+    /// conflict with the main app's own sandbox.
+    private func runNative(
         audioFile: URL,
         speakers: Int,
         model: TranscriptionModel,
         verbatim: Bool,
         language: String
-    ) throws -> TranscriptionResult {
-        // ── Embedded interpreter path (production DMG) ───────────────────────────
-        // When the app ships with python-build-standalone bundled via embed-python.sh,
-        // use PythonRuntime.process() directly instead of the shell-string path.
-        // The fallback (venv / PATH) remains fully functional for development.
-        let task: Process
-        if usesBundledPython {
-            guard PythonRuntime.isEmbedded else {
-                throw TranscriptionError.notInstalled
-            }
-            var args: [String] = [
-                "--input", audioFile.path,
-                "--format", "json",
-                "--model", model.rawValue,
-                "--speakers", "\(speakers)",
-                "--language", language,
-            ]
-            if verbatim { args.append("--verbatim") }
-            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
-            if validateMode != "none" { args += ["--validate", validateMode] }
-            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
-            args += ["--num-beams", "\(max(1, min(5, numBeams)))"]
-            // PythonRuntime.process() already sets PYTHONHOME, HF_HOME,
-            // removes METAL_DEVICE_WRAPPER_TYPE and sets TOKENIZERS_PARALLELISM.
-            task = PythonRuntime.process(module: "no_transcribe", arguments: args)
-        } else {
-            // ── Development / fallback path ──────────────────────────────────────
-            var cmdParts = [
-                noTranscribeExecutable,
-                "--input", audioFile.path.armShellEscaped,
-                "--format", "json",
-                "--model", model.rawValue,
-                "--speakers", "\(speakers)",
-                "--language", language,
-            ]
-            if verbatim { cmdParts.append("--verbatim") }
-            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
-            if validateMode != "none" { cmdParts += ["--validate", validateMode] }
-            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
-            cmdParts += ["--num-beams", "\(max(1, min(5, numBeams)))"]
-            let cmd = cmdParts.joined(separator: " ")
-
-            let shellTask = Process()
-            shellTask.launchPath = "/bin/sh"
-            shellTask.arguments = ["-lc", cmd]
-
-            // Strip Metal API Validation flag inherited from Xcode's debugger environment.
-            // METAL_DEVICE_WRAPPER_TYPE=1 enables strict Metal validation which causes MPS
-            // shader assertion failures (validateComputeFunctionArguments) in subprocesses.
-            var env = ProcessInfo.processInfo.environment
-            env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
-            env["TOKENIZERS_PARALLELISM"] = "false"
-            shellTask.environment = env
-            task = shellTask
-        }
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
-
-        activeProcess = task
-
-        // Read stderr in real-time for progress updates.
-        // fullStderrLines accumulates ALL lines so Python tracebacks appear in error messages.
-        let stderrHandle = stderrPipe.fileHandleForReading
-        var stderrBuffer = ""
-        var fullStderrLines: [String] = []
-        let bufferLock = NSLock()
-
-        stderrHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            bufferLock.lock()
-            stderrBuffer += chunk
-            var lines = stderrBuffer.components(separatedBy: "\n")
-            stderrBuffer = lines.removeLast()  // keep last (potentially incomplete) fragment
-            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
-            bufferLock.unlock()
-            for line in lines where !line.isEmpty {
-                self.handleProgressLine(line)
-            }
-        }
-
-        // Read stdout in real-time to prevent pipe-buffer deadlock.
-        // navt.py can emit >64 KB of JSON for long recordings; if Swift only reads stdout
-        // after waitUntilExit the pipe fills up, Python's print() blocks, and they deadlock.
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        var accumulatedStdout = Data()
-        let stdoutLock = NSLock()
-
-        stdoutHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stdoutLock.lock()
-            accumulatedStdout.append(data)
-            stdoutLock.unlock()
-        }
-
+    ) async throws -> TranscriptionResult {
+        let wavURL: URL
         do {
-            try task.run()
-        } catch {
-            stderrHandle.readabilityHandler = nil
-            activeProcess = nil
-            throw TranscriptionError.processFailed(error.localizedDescription)
+            wavURL = try AudioWAVConverter.convertToWAV(sourceURL: audioFile)
+        } catch let error as AudioWAVConverterError {
+            throw TranscriptionError.processFailed(error.errorDescription ?? "WAV-konvertering feilet")
+        }
+        defer { try? FileManager.default.removeItem(at: wavURL) }
+
+        DispatchQueue.main.async {
+            self.stage = .transcribing
+            self.progress = 0.1
         }
 
-        // Poll for completion (same pattern as AnonymizationService).
-        // 2-hour ceiling for long recordings; typical interviews complete in minutes.
-        let deadline = Date().addingTimeInterval(7200)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                stderrHandle.readabilityHandler = nil
-                activeProcess = nil
-                throw TranscriptionError.timeout
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-
-        stderrHandle.readabilityHandler = nil
-        stdoutHandle.readabilityHandler = nil
-        activeProcess = nil
-
-        let exitCode = task.terminationStatus
-
-        switch exitCode {
-        case 0:
-            break  // success — fall through to JSON parsing
-        case 3:
-            throw TranscriptionError.notInstalled
-        default:
-            bufferLock.lock()
-            var allLines = fullStderrLines
-            let tail = stderrBuffer
-            bufferLock.unlock()
-            // Drain any remaining bytes that arrived after the last readabilityHandler call
-            let extra = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            if !tail.isEmpty { allLines.append(tail) }
-            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
-            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            throw TranscriptionError.processFailed(
-                errText.isEmpty ? "exit code \(exitCode)" : errText
-            )
-        }
-
-        // Parse stdout JSON result (already fully read by the readabilityHandler above)
-        stdoutLock.lock()
-        let stdoutData = accumulatedStdout
-        stdoutLock.unlock()
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let result = try? decoder.decode(TranscriptionResult.self, from: stdoutData) else {
-            throw TranscriptionError.invalidOutput
-        }
+        let duration = await audioDuration(url: wavURL)
+        let result = try await NativeTranscriptionEngine.shared.transcribe(
+            wavPath: wavURL.path, language: language, speakerLabel: "SPEAKER_0",
+            durationSeconds: duration)
 
         DispatchQueue.main.async {
             self.progress = 1.0
@@ -502,161 +322,34 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         return result
     }
 
-    // MARK: - Mono subprocess (stereo-split path)
+    // MARK: - Native mono transcription (stereo-split path)
 
-    /// Runs no-transcribe on a single mono M4A. Does NOT update activeProcess,
-    /// stage, or progress — those are managed by the outer stereo orchestrator.
-    /// Always passes `--speakers 1`. All returned segments are labelled `speakerLabel`.
-    private func runMonoSubprocess(
+    /// Runs the native WhisperKit engine on a single mono M4A (one RØDE
+    /// channel). Does NOT update `stage`/`progress` — those are managed by
+    /// the outer stereo orchestrator. All returned segments are labelled
+    /// `speakerLabel`.
+    private func runNativeMono(
         audioFile: URL,
         speakerLabel: String,
         model: TranscriptionModel,
         verbatim: Bool,
         language: String
-    ) throws -> TranscriptionResult {
-        let task: Process
-        if usesBundledPython {
-            guard PythonRuntime.isEmbedded else {
-                throw TranscriptionError.notInstalled
-            }
-            var args: [String] = [
-                "--input", audioFile.path,
-                "--format", "json",
-                "--model", model.rawValue,
-                "--speakers", "1",
-                "--language", language,
-            ]
-            if verbatim { args.append("--verbatim") }
-            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
-            if validateMode != "none" { args += ["--validate", validateMode] }
-            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
-            args += ["--num-beams", "\(max(1, min(5, numBeams)))"]
-            task = PythonRuntime.process(module: "no_transcribe", arguments: args)
-        } else {
-            var cmdParts = [
-                noTranscribeExecutable,
-                "--input", audioFile.path.armShellEscaped,
-                "--format", "json",
-                "--model", model.rawValue,
-                "--speakers", "1",
-                "--language", language,
-            ]
-            if verbatim { cmdParts.append("--verbatim") }
-            let validateMode = UserDefaults.standard.string(forKey: "transcription.validateMode") ?? "warn"
-            if validateMode != "none" { cmdParts += ["--validate", validateMode] }
-            let numBeams = UserDefaults.standard.integer(forKey: "transcription.numBeams")
-            cmdParts += ["--num-beams", "\(max(1, min(5, numBeams)))"]
-            let cmd = cmdParts.joined(separator: " ")
-
-            let shellTask = Process()
-            shellTask.launchPath = "/bin/sh"
-            shellTask.arguments = ["-lc", cmd]
-
-            var env = ProcessInfo.processInfo.environment
-            env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
-            env["TOKENIZERS_PARALLELISM"] = "false"
-            shellTask.environment = env
-            task = shellTask
-        }
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
-
-        // Note: activeProcess is intentionally NOT set here — only runSubprocess
-        // and runDiarizeSubprocess manage it to avoid concurrent write races.
-
-        let stderrHandle = stderrPipe.fileHandleForReading
-        var stderrBuffer = ""
-        var fullStderrLines: [String] = []
-        let bufferLock = NSLock()
-
-        stderrHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            bufferLock.lock()
-            stderrBuffer += chunk
-            var lines = stderrBuffer.components(separatedBy: "\n")
-            stderrBuffer = lines.removeLast()
-            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
-            bufferLock.unlock()
-        }
-
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        var accumulatedStdout = Data()
-        let stdoutLock = NSLock()
-
-        stdoutHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stdoutLock.lock()
-            accumulatedStdout.append(data)
-            stdoutLock.unlock()
-        }
-
+    ) async throws -> TranscriptionResult {
+        let wavURL: URL
         do {
-            try task.run()
-        } catch {
-            stderrHandle.readabilityHandler = nil
-            throw TranscriptionError.processFailed(error.localizedDescription)
+            wavURL = try AudioWAVConverter.convertToWAV(sourceURL: audioFile)
+        } catch let error as AudioWAVConverterError {
+            throw TranscriptionError.processFailed(error.errorDescription ?? "WAV-konvertering feilet")
         }
+        defer { try? FileManager.default.removeItem(at: wavURL) }
 
-        let deadline = Date().addingTimeInterval(7200)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                stderrHandle.readabilityHandler = nil
-                throw TranscriptionError.timeout
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
+        let duration = await audioDuration(url: wavURL)
+        var result = try await NativeTranscriptionEngine.shared.transcribe(
+            wavPath: wavURL.path, language: language, speakerLabel: speakerLabel,
+            durationSeconds: duration)
 
-        stderrHandle.readabilityHandler = nil
-        stdoutHandle.readabilityHandler = nil
-
-        let exitCode = task.terminationStatus
-
-        switch exitCode {
-        case 0:
-            break
-        case 3:
-            throw TranscriptionError.notInstalled
-        default:
-            bufferLock.lock()
-            var allLines = fullStderrLines
-            let tail = stderrBuffer
-            bufferLock.unlock()
-            let extra = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            if !tail.isEmpty { allLines.append(tail) }
-            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
-            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            throw TranscriptionError.processFailed(
-                errText.isEmpty ? "exit code \(exitCode)" : errText
-            )
-        }
-
-        stdoutLock.lock()
-        let stdoutData = accumulatedStdout
-        stdoutLock.unlock()
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard var decoded = try? decoder.decode(TranscriptionResult.self, from: stdoutData) else {
-            throw TranscriptionError.invalidOutput
-        }
-
-        // Relabel all segments with the assigned speaker label
-        decoded.segments = decoded.segments.map { seg in
-            var s = seg
-            s.speaker = speakerLabel
-            return s
-        }
-        decoded.metadata.diarizationRun = true  // channel split IS our diarization
-
-        return decoded
+        result.metadata.diarizationRun = true  // channel split IS our diarization
+        return result
     }
 
     // MARK: - Stereo pipeline orchestrator
@@ -692,35 +385,16 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: rightURL)
         }
 
-        // Step 2: transcribe each channel — wrapped in continuations on global queue.
-        // NB-Whisper is GPU-bound; the two tasks will naturally serialize on the GPU.
-        // We use async let to express intent; actual parallelism depends on hardware.
-        async let leftResult: TranscriptionResult = withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let r = try self.runMonoSubprocess(
-                        audioFile: leftURL,
-                        speakerLabel: meta.resolvedLeft,
-                        model: model, verbatim: verbatim, language: language)
-                    cont.resume(returning: r)
-                } catch {
-                    cont.resume(throwing: error)
-                }
-            }
-        }
-        async let rightResult: TranscriptionResult = withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    let r = try self.runMonoSubprocess(
-                        audioFile: rightURL,
-                        speakerLabel: meta.resolvedRight,
-                        model: model, verbatim: verbatim, language: language)
-                    cont.resume(returning: r)
-                } catch {
-                    cont.resume(throwing: error)
-                }
-            }
-        }
+        // Step 2: transcribe each channel. Both calls target the same
+        // NativeTranscriptionEngine actor, so they naturally serialize on
+        // the underlying CoreML/ANE model instance — matches the GPU-bound
+        // serialization behavior of the old subprocess path.
+        async let leftResult: TranscriptionResult = runNativeMono(
+            audioFile: leftURL, speakerLabel: meta.resolvedLeft,
+            model: model, verbatim: verbatim, language: language)
+        async let rightResult: TranscriptionResult = runNativeMono(
+            audioFile: rightURL, speakerLabel: meta.resolvedRight,
+            model: model, verbatim: verbatim, language: language)
 
         var (left, right): (TranscriptionResult, TranscriptionResult)
         do {
@@ -891,407 +565,32 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         return all.map { $0.formatted }.joined(separator: "\n")
     }
 
-    // MARK: - Install / Update / Download
+    // MARK: - Model availability (native — bundled, no install/download needed)
 
-    private func setSetupStage(_ description: String) {
-        DispatchQueue.main.async { self.setupStageDescription = description }
+    /// True if the bundled WhisperKit model is present in the app bundle.
+    /// With the native pipeline there is nothing to install or download —
+    /// the model ships inside the app — so this simply reflects bundle
+    /// presence rather than a pip/venv installation state.
+    private func isModelCached(_ model: TranscriptionModel) -> Bool {
+        NativeTranscriptionEngine.isBundled
     }
 
-    private func runInstall() throws {
-        // If a venv already exists but was built with Python < 3.10, remove it and start fresh
-        if FileManager.default.fileExists(atPath: venvRoot.path) && !venvPythonIsCompatible() {
-            setSetupStage("Sletter gammelt virtuelt miljø (inkompatibel Python)…")
-            try? FileManager.default.removeItem(at: venvRoot)
-        }
-
-        if !FileManager.default.fileExists(atPath: venvRoot.path) {
-            setSetupStage("Finner Python 3.10+…")
-            let python = try findPython310Plus()
-            let parent = venvRoot.deletingLastPathComponent().path.armShellEscaped
-            setSetupStage("Oppretter virtuelt miljø…")
-            try runShell("mkdir -p \(parent)")
-            try runShell("\(python.armShellEscaped) -m venv \(venvRoot.path.armShellEscaped)")
-            let pip = venvRoot.appendingPathComponent("bin/pip").path.armShellEscaped
-            setSetupStage("Oppgraderer pip…")
-            try runShell("\(pip) install --upgrade pip --quiet")
-        }
-
-        // Install ML dependencies directly — no pip wheel build needed.
-        // torch alone is ~2 GB; first install takes 5–15 min depending on connection.
-        let pip = venvRoot.appendingPathComponent("bin/pip").path.armShellEscaped
-        setSetupStage("Installerer torch, transformers, numpy (torch ~2 GB, 5–15 min)…")
-        try runShellWithLiveOutput(
-            "\(pip) install torch torchaudio transformers numpy",
-            timeout: 1800  // 30 minutes ceiling for slow connections
-        )
+    func modelIsCached(_ model: TranscriptionModel) -> Bool {
+        isModelCached(model)
     }
 
-    /// Returns true if the venv's Python is 3.10 or newer.
-    private func venvPythonIsCompatible() -> Bool {
-        let python = venvRoot.appendingPathComponent("bin/python3").path
-        guard FileManager.default.fileExists(atPath: python) else { return false }
-        let task = Process()
-        task.launchPath = python
-        task.arguments = ["-c", "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"]
-        try? task.run()
-        task.waitUntilExit()
-        return task.terminationStatus == 0
-    }
-
-    /// Finds the first python3.10+ executable available on this machine.
-    ///
-    /// Search order:
-    ///   1. `which python3.xx` via login-shell (picks up pyenv shims, Homebrew in PATH, etc.)
-    ///   2. Known direct paths: Homebrew (Apple Silicon + Intel), pyenv shims, conda/miniforge
-    private func findPython310Plus() throws -> String {
-        let versions = ["python3.13", "python3.12", "python3.11", "python3.10"]
-
-        // 1. Login-shell PATH probe
-        for name in versions {
-            let task = Process()
-            task.launchPath = "/bin/sh"
-            task.arguments = ["-lc", "which \(name) 2>/dev/null"]
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            try? task.run()
-            task.waitUntilExit()
-            let path = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !path.isEmpty { return path }
-        }
-
-        // 2. Direct path fallback (Homebrew, pyenv, conda/miniforge)
-        let home = NSHomeDirectory()
-        var directCandidates: [String] = []
-        for ver in versions {
-            // Homebrew on Apple Silicon (/opt/homebrew) and Intel (/usr/local)
-            directCandidates += [
-                "/opt/homebrew/bin/\(ver)",
-                "/usr/local/bin/\(ver)",
-            ]
-            // Homebrew versioned formula paths, e.g. /opt/homebrew/opt/python@3.11/bin/python3.11
-            let shortVer = ver.replacingOccurrences(of: "python", with: "")  // "3.11"
-            directCandidates += [
-                "/opt/homebrew/opt/python@\(shortVer)/bin/\(ver)",
-                "/usr/local/opt/python@\(shortVer)/bin/\(ver)",
-            ]
-        }
-        // pyenv shims and a few conda/miniforge roots
-        directCandidates += [
-            "\(home)/.pyenv/shims/python3",
-            "\(home)/miniforge3/bin/python3",
-            "\(home)/opt/anaconda3/bin/python3",
-            "\(home)/anaconda3/bin/python3",
-            "/opt/conda/bin/python3",
-        ]
-
-        for path in directCandidates where FileManager.default.fileExists(atPath: path) {
-            // Verify it's actually ≥3.10
-            let task = Process()
-            task.launchPath = path
-            task.arguments = ["-c", "import sys; exit(0 if sys.version_info >= (3, 10) else 1)"]
-            try? task.run()
-            task.waitUntilExit()
-            if task.terminationStatus == 0 { return path }
-        }
-
-        throw TranscriptionError.processFailed(
-            "Python 3.10 eller nyere ble ikke funnet. Installer via: brew install python@3.11"
-        )
-    }
-
-    private func runUpdate() throws {
-        guard FileManager.default.fileExists(
-            atPath: venvRoot.appendingPathComponent("bin/pip").path
-        ) else {
-            throw TranscriptionError.notInstalled
-        }
-        let pip = venvRoot.appendingPathComponent("bin/pip").path.armShellEscaped
-        try runShell(
-            "\(pip) install --upgrade git+https://github.com/Fr35ch/no-transcribe.git"
-        )
-    }
-
-    private func runDownloadModel(_ model: TranscriptionModel) throws {
-        if usesBundledPython {
-            guard PythonRuntime.isEmbedded else {
-                throw TranscriptionError.notInstalled
-            }
-            let task = PythonRuntime.process(
-                module: "no_transcribe",
-                arguments: ["--download-model", model.rawValue]
-            )
-            try runProcess(task, timeout: 1800)
-        } else {
-            let cmd = "\(noTranscribeExecutable) --download-model \(model.rawValue)"
-            try runShell(cmd)
+    private func setModelDownloadState(_ state: ModelDownloadState) {
+        DispatchQueue.main.async {
+            self.modelDownloadState = state
         }
     }
 
-    // MARK: - Generic shell helpers
-
-    /// Runs a shell command via `/bin/sh -lc` (login shell for PATH compatibility).
-    /// Polls for completion with an optional timeout to avoid hanging indefinitely.
-    private func runShell(_ cmd: String, timeout: TimeInterval = 300) throws {
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
-
-        let stderrPipe = Pipe()
-        task.standardError = stderrPipe
-
-        do {
-            try task.run()
-        } catch {
-            throw TranscriptionError.processFailed(error.localizedDescription)
-        }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                throw TranscriptionError.processFailed(
-                    "Kommandoen tok for lang tid (tidsavbrudd etter \(Int(timeout / 60)) min)"
-                )
-            }
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-
-        if task.terminationStatus != 0 {
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let errText =
-                String(data: errData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? "exit code \(task.terminationStatus)"
-            throw TranscriptionError.processFailed(errText)
-        }
-    }
-
-    private func runProcess(_ task: Process, timeout: TimeInterval) throws {
-        let stderrPipe = Pipe()
-        task.standardError = stderrPipe
-        task.standardOutput = FileHandle.nullDevice
-
-        do {
-            try task.run()
-        } catch {
-            throw TranscriptionError.processFailed(error.localizedDescription)
-        }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                throw TranscriptionError.timeout
-            }
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-
-        guard task.terminationStatus == 0 else {
-            let errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-            let errText =
-                String(data: errData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? "exit code \(task.terminationStatus)"
-            throw TranscriptionError.processFailed(errText)
-        }
-    }
-
-    /// Runs a shell command and forwards live stdout/stderr lines to `setupStageDescription`.
-    /// Used for `pip install` so the user can see download progress in the UI.
-    private func runShellWithLiveOutput(_ cmd: String, timeout: TimeInterval = 1800) throws {
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
-
-        var lastErrLines = ""
-        let lock = NSLock()
-
-        // Forward non-empty lines to the UI in real time (stdout + stderr combined)
-        let forward: (FileHandle) -> Void = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            let lines = chunk.components(separatedBy: "\n")
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else { continue }
-                lock.lock()
-                lastErrLines = trimmed
-                lock.unlock()
-                DispatchQueue.main.async { self.setupStageDescription = trimmed }
+    private func clearModelDownloadStateLater() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            if case .ready = self.modelDownloadState {
+                self.modelDownloadState = .idle
             }
         }
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = forward
-        stderrPipe.fileHandleForReading.readabilityHandler = forward
-
-        do {
-            try task.run()
-        } catch {
-            stdoutPipe.fileHandleForReading.readabilityHandler = nil
-            stderrPipe.fileHandleForReading.readabilityHandler = nil
-            throw TranscriptionError.processFailed(error.localizedDescription)
-        }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                stdoutPipe.fileHandleForReading.readabilityHandler = nil
-                stderrPipe.fileHandleForReading.readabilityHandler = nil
-                throw TranscriptionError.processFailed(
-                    "Installasjon tok for lang tid (tidsavbrudd etter \(Int(timeout / 60)) min)"
-                )
-            }
-            Thread.sleep(forTimeInterval: 0.5)
-        }
-
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
-        stderrPipe.fileHandleForReading.readabilityHandler = nil
-
-        if task.terminationStatus != 0 {
-            lock.lock()
-            let errText = lastErrLines
-            lock.unlock()
-            throw TranscriptionError.processFailed(
-                errText.isEmpty ? "pip exit code \(task.terminationStatus)" : errText
-            )
-        }
-    }
-
-    // MARK: - Diarize subprocess
-
-    private func runDiarizeSubprocess(
-        audioFile: URL,
-        existingResult: TranscriptionResult,
-        hfToken: String,
-        speakers: Int
-    ) throws -> TranscriptionResult {
-        // Write existing result to a temp JSON file for --transcript-input
-        let tempDir = FileManager.default.temporaryDirectory
-        let tempURL = tempDir.appendingPathComponent("arm-transcript-\(UUID().uuidString).json")
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        let jsonData = try encoder.encode(existingResult)
-        try jsonData.write(to: tempURL)
-        defer { try? FileManager.default.removeItem(at: tempURL) }
-
-        let python = venvRoot.appendingPathComponent("bin/python3").path
-        let navtScript = navtScriptPath
-        let tempJSONPath = tempURL.path
-        let cmd = "\(python.armShellEscaped) \(navtScript.armShellEscaped) --input \(audioFile.path.armShellEscaped) --transcript-input \(tempJSONPath.armShellEscaped) --format json --diarize-only --hf-token \(hfToken.armShellEscaped) --speakers \(speakers)"
-
-        let task = Process()
-        task.launchPath = "/bin/sh"
-        task.arguments = ["-lc", cmd]
-
-        var env = ProcessInfo.processInfo.environment
-        env.removeValue(forKey: "METAL_DEVICE_WRAPPER_TYPE")
-        env["TOKENIZERS_PARALLELISM"] = "false"
-        task.environment = env
-
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        task.standardOutput = stdoutPipe
-        task.standardError = stderrPipe
-
-        activeProcess = task
-
-        let stderrHandle = stderrPipe.fileHandleForReading
-        var stderrBuffer = ""
-        var fullStderrLines: [String] = []
-        let bufferLock = NSLock()
-
-        stderrHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
-            bufferLock.lock()
-            stderrBuffer += chunk
-            var lines = stderrBuffer.components(separatedBy: "\n")
-            stderrBuffer = lines.removeLast()
-            fullStderrLines.append(contentsOf: lines.filter { !$0.isEmpty })
-            bufferLock.unlock()
-            for line in lines where !line.isEmpty {
-                self.handleProgressLine(line)
-            }
-        }
-
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        var accumulatedStdout = Data()
-        let stdoutLock = NSLock()
-
-        stdoutHandle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
-            stdoutLock.lock()
-            accumulatedStdout.append(data)
-            stdoutLock.unlock()
-        }
-
-        do {
-            try task.run()
-        } catch {
-            stderrHandle.readabilityHandler = nil
-            activeProcess = nil
-            throw TranscriptionError.processFailed(error.localizedDescription)
-        }
-
-        let deadline = Date().addingTimeInterval(7200)
-        while task.isRunning {
-            if Date() > deadline {
-                task.terminate()
-                stderrHandle.readabilityHandler = nil
-                activeProcess = nil
-                throw TranscriptionError.timeout
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-
-        stderrHandle.readabilityHandler = nil
-        stdoutHandle.readabilityHandler = nil
-        activeProcess = nil
-
-        let exitCode = task.terminationStatus
-
-        switch exitCode {
-        case 0:
-            break
-        case 6:
-            throw TranscriptionError.processFailed(
-                "Ugyldig Hugging Face-token. Sjekk HF-tokenet i innstillingene."
-            )
-        default:
-            bufferLock.lock()
-            var allLines = fullStderrLines
-            let tail = stderrBuffer
-            bufferLock.unlock()
-            let extra = String(
-                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            if !tail.isEmpty { allLines.append(tail) }
-            allLines.append(contentsOf: extra.components(separatedBy: "\n").filter { !$0.isEmpty })
-            let errText = allLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            throw TranscriptionError.processFailed(
-                errText.isEmpty ? "exit code \(exitCode)" : errText
-            )
-        }
-
-        stdoutLock.lock()
-        let stdoutData = accumulatedStdout
-        stdoutLock.unlock()
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let result = try? decoder.decode(TranscriptionResult.self, from: stdoutData) else {
-            throw TranscriptionError.invalidOutput
-        }
-
-        return result
     }
 
     // MARK: - Public diarize/analyze API
@@ -1369,37 +668,5 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         if let data = try? encoder.encode(result) {
             try? data.write(to: url, options: .atomic)
         }
-    }
-
-    // MARK: - Progress parsing
-
-    private func handleProgressLine(_ line: String) {
-        guard
-            let data = line.data(using: .utf8),
-            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let stageStr = obj["stage"] as? String,
-            let progressVal = obj["progress"] as? Double
-        else { return }
-
-        let newStage = TranscriptionStage(rawValue: stageStr) ?? .idle
-        DispatchQueue.main.async {
-            self.progress = progressVal
-            self.stage = newStage
-            switch newStage {
-            case .diarizing:
-                self.diarizationProgress = progressVal
-            default:
-                break
-            }
-        }
-    }
-}
-
-// MARK: - String helper
-
-private extension String {
-    /// Shell-escapes a path by wrapping in single quotes and escaping any embedded single quotes.
-    var armShellEscaped: String {
-        "'" + replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

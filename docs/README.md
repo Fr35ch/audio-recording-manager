@@ -23,6 +23,7 @@ Alle prosjektdokumenter med formål og sist verifisert mot kodebasen.
 | Fil | Formål | Sist verifisert |
 |-----|--------|----------------|
 | [FILE_MANAGEMENT_AND_TEAMS_SYNC.md](FILE_MANAGEMENT_AND_TEAMS_SYNC.md) | End-to-end fillivssyklus: lagring, opplasting til Teams/SharePoint, retensjon, compliance. Styrende spec for ADR-1014-arbeidet. | 2026-05-26 |
+| [MODEL_SETUP.md](MODEL_SETUP.md) | Hvordan (re)generere de gitignorede CoreML-modellene (WhisperKit NB-Whisper-large, BERT NER) lokalt fra offentlige HuggingFace-checkpoints. Nødvendig etter en fersk klone. | 2026-08-20 |
 | [no_anonymizer_v2_implementasjon.md](no_anonymizer_v2_implementasjon.md) | Referansedok for no-anonymizer-biblioteket (github.com/Fr35ch/no-anonymizer). Pipeline-arkitektur, lag, datafiler, JSON-kontrakt mot Clio. | 2026-05-26 |
 | [TESTING.md](TESTING.md) | Testinfrastruktur: pytest (Python), pre-commit hooks, CI-workflows. Ingen Swift-enhetstester per i dag. | 2026-05-26 |
 | [VERSIONING.md](VERSIONING.md) | SemVer-rutiner, release-skript, hvilke filer som må holdes i synk (inkl. MARKETING_VERSION i project.pbxproj). | 2026-05-26 |

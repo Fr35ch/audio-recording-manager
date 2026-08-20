@@ -5,6 +5,7 @@ import SwiftUI
 struct SplashView: View {
 
     @ObservedObject var coordinator: StartupCoordinator
+    @ObservedObject private var transcriptionService = TranscriptionService.shared
     var onComplete: () -> Void = {}
 
     @State private var dotCount = 1
@@ -20,6 +21,8 @@ struct SplashView: View {
             raw = coordinator.dependencyManager.statusMessage.isEmpty
                 ? "Sjekker avhengigheter"
                 : coordinator.dependencyManager.statusMessage
+        case .modelLoading:
+            raw = coordinator.statusMessage.isEmpty ? "Laster NB-Whisper Large" : coordinator.statusMessage
         case .complete:
             raw = "Klar"
         case .failed(let msg):
@@ -32,6 +35,33 @@ struct SplashView: View {
         switch coordinator.phase {
         case .complete, .failed: return false
         default: return true
+        }
+    }
+
+    private var modelBanner: some View {
+        Group {
+            switch coordinator.phase {
+            case .modelLoading:
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .tint(.white.opacity(0.75))
+                    Text("NB-Whisper Large lastes ned")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+                .frame(width: 280)
+            case .complete:
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.white.opacity(0.8))
+                    Text("NB-Whisper Large er lastet ned")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+            default:
+                EmptyView()
+            }
         }
     }
 
@@ -92,6 +122,8 @@ struct SplashView: View {
                     .clipShape(Capsule())
                     .padding(.top, 8)
                 }
+
+                modelBanner
             }
             .padding(36)
             .frame(maxWidth: .infinity, alignment: .leading)

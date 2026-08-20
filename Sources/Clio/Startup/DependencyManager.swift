@@ -1,11 +1,10 @@
 import Foundation
 
 enum DependencyCheck: Int, CaseIterable {
-    case pythonVenv = 0
-    case transcribeVenv = 1
-    case whisperModel = 2
-    case auditLog = 3
-    case allClear = 4
+    case transcriptionModel = 0
+    case anonymizerModel = 1
+    case auditLog = 2
+    case allClear = 3
 }
 
 enum DependencyError: LocalizedError {
@@ -22,7 +21,7 @@ enum DependencyError: LocalizedError {
 
 @MainActor
 class DependencyManager: ObservableObject {
-    @Published var currentCheck: DependencyCheck = .pythonVenv
+    @Published var currentCheck: DependencyCheck = .transcriptionModel
     @Published var checkResults: [DependencyCheck: CheckStatus] = [:]
     @Published var overallProgress: Double = 0
     @Published var statusMessage: String = ""
@@ -74,47 +73,14 @@ class DependencyManager: ObservableObject {
 
     private func runCheck(_ check: DependencyCheck) async throws {
         switch check {
-        case .pythonVenv:
-            if PythonRuntime.isEmbedded {
-                guard (try? PythonRuntime.run(code: "import sys; print('OK')")) == "OK" else {
-                    throw DependencyError.checkFailed("Innebygd Python ikke tilgjengelig i appbunten.")
-                }
-            } else {
-                let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                let venv = support.appendingPathComponent("AudioRecordingManager/no-transcribe-venv/bin/python3")
-                guard FileManager.default.fileExists(atPath: venv.path) else {
-                    throw DependencyError.checkFailed("no-transcribe venv ikke funnet. Sett opp transkripsjon i innstillinger.")
-                }
+        case .transcriptionModel:
+            guard NativeTranscriptionEngine.isBundled else {
+                throw DependencyError.checkFailed("Innebygd NB-Whisper-modell mangler i appbunten.")
             }
 
-        case .transcribeVenv:
-            if PythonRuntime.isEmbedded {
-                guard (try? PythonRuntime.run(code: "import no_transcribe; print('OK')")) == "OK" else {
-                    throw DependencyError.checkFailed("no-transcribe er ikke pakket inn i appbunten.")
-                }
-            } else {
-                let navt = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Github/no-transcribe/navt.py")
-                guard FileManager.default.fileExists(atPath: navt.path) else {
-                    throw DependencyError.checkFailed("navt.py ikke funnet på ~/Github/no-transcribe/navt.py")
-                }
-            }
-
-        case .whisperModel:
-            // When using the embedded interpreter, HF_HOME is set to
-            // ~/Library/Application Support/Clio/models (see PythonRuntime).
-            let hfCacheURL: URL
-            if PythonRuntime.isEmbedded {
-                hfCacheURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-                    .appendingPathComponent("Clio/models/hub")
-            } else {
-                hfCacheURL = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".cache/huggingface/hub")
-            }
-            let exists = (try? FileManager.default.contentsOfDirectory(atPath: hfCacheURL.path))?
-                .contains(where: { $0.contains("nb-whisper") }) ?? false
-            if !exists {
-                throw DependencyError.checkFailed("NB-Whisper-modell ikke funnet i cache. Transkriber en fil for å laste ned.")
+        case .anonymizerModel:
+            guard BertNERDetector.isAvailable else {
+                throw DependencyError.checkFailed("Innebygd anonymiseringsmodell mangler i appbunten.")
             }
 
         case .auditLog:
@@ -147,11 +113,10 @@ class DependencyManager: ObservableObject {
 
     func statusText(for check: DependencyCheck) -> String {
         switch check {
-        case .pythonVenv:      return PythonRuntime.isEmbedded ? "Ser etter innebygd Python…" : "Ser etter Python-miljø…"
-        case .transcribeVenv:  return "Sjekker transkripsjonspakke…"
-        case .whisperModel:    return "Ser etter Whisper-modell…"
-        case .auditLog:        return "Klargjør revisjonsdatabase…"
-        case .allClear:        return "Klar"
+        case .transcriptionModel: return "Ser etter innebygd NB-Whisper-modell…"
+        case .anonymizerModel:    return "Ser etter innebygd anonymiseringsmodell…"
+        case .auditLog:           return "Klargjør revisjonsdatabase…"
+        case .allClear:           return "Klar"
         }
     }
 

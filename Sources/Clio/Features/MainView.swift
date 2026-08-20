@@ -6,6 +6,7 @@ struct MainView: View {
     @StateObject private var audioRecorder = AudioRecorder.shared
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
+    @ObservedObject private var transcriptionService = TranscriptionService.shared
 
     @State private var selectedTab: AppTab = .record
     @State private var selectedRecording: RecordingItem? = nil
@@ -38,16 +39,20 @@ struct MainView: View {
             .toolbar(removing: .sidebarToggle)
         }
         .overlay(alignment: .top) {
-            if let toast = airDropToast {
-                Text(toast)
-                    .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.vertical, AppSpacing.sm)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(.quaternary))
-                    .padding(.top, AppSpacing.md)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: AppSpacing.sm) {
+                if let toast = airDropToast {
+                    Text(toast)
+                        .font(.system(size: 13, weight: .medium))
+                        .padding(.horizontal, AppSpacing.lg)
+                        .padding(.vertical, AppSpacing.sm)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(.quaternary))
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                modelDownloadBanner
             }
+            .padding(.top, AppSpacing.md)
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 1100, minHeight: 700)
@@ -100,6 +105,59 @@ struct MainView: View {
             if selectedTab == .recordings { autoSelectFirst() }
         }
         .onAppear { /* RecordingsManager loads on init and stays in sync via notifications */ }
+    }
+
+    @ViewBuilder
+    private var modelDownloadBanner: some View {
+        switch transcriptionService.modelDownloadState {
+        case .idle:
+            EmptyView()
+        case .downloading(let model, let message):
+            HStack(spacing: 10) {
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(0.75)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Laster ned NB-Whisper \(model.displayName)…")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.sm)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.quaternary))
+            .padding(.horizontal, AppSpacing.lg)
+        case .ready(let model):
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("NB-Whisper \(model.displayName) er lastet ned. Transkribering er nå mulig.")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.sm)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.quaternary))
+            .padding(.horizontal, AppSpacing.lg)
+        case .failed(let message):
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(message)
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.sm)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.quaternary))
+            .padding(.horizontal, AppSpacing.lg)
+        }
     }
 
     @ViewBuilder

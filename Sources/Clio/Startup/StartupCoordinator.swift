@@ -13,6 +13,7 @@ class StartupCoordinator: ObservableObject {
     enum StartupPhase: Equatable {
         case systemChecks
         case dependencies
+        case modelLoading
         case complete
         case failed(String)
     }
@@ -44,7 +45,20 @@ class StartupCoordinator: ObservableObject {
             }
         }
 
-        // Phase 3: Complete
+        // Phase 3: Prepare transcription runtime and large model.
+        phase = .modelLoading
+        statusMessage = "Laster NB-Whisper Large…"
+        await TranscriptionService.shared.setupIfNeeded()
+        await TranscriptionService.shared.refreshInstallationState()
+        do {
+            try await TranscriptionService.shared.ensureModelAvailable(.large, announce: true)
+            statusMessage = "NB-Whisper Large er lastet ned"
+        } catch {
+            phase = .failed(error.localizedDescription)
+            return
+        }
+
+        // Phase 4: Complete
         phase = .complete
         statusMessage = "Klar"
         try? await Task.sleep(nanoseconds: 3_000_000_000)  // 1s for bars to settle + 2s display

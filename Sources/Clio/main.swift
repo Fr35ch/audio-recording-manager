@@ -145,11 +145,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Kick off the startup sequence (drives the splash status line).
         Task { await startupCoordinator.runStartupSequence() }
 
-        // Auto-install no-transcribe in the background if not already present
-        Task {
-            await TranscriptionService.shared.setupIfNeeded()
-        }
-
         // Disable NSToolbar user customisation on every window. The
         // chrome trigger we add in `ClioApp.body` (a
         // zero-size `.principal` toolbar item — required for

@@ -28,8 +28,29 @@ struct TeamsChannelRef: Codable, Equatable {
 
     /// When the channel was created in M365 (if known). Used for the
     /// 24-hour backup-exclusion propagation check. `nil` if unknown —
-    /// ARM shows a soft warning rather than blocking.
+    /// ARM shows a soft warning rather than blocking (a freshly
+    /// configured channel legitimately has no message history yet to
+    /// derive an estimate from — see `GraphClient.estimateChannelCreatedDate`
+    /// and `GraphClient.assertChannelAgeOK`).
+    ///
+    /// This is a best-effort heuristic, not an exact timestamp: direct
+    /// channel metadata (which has a real `createdDateTime`) requires the
+    /// `Channel.ReadBasic.All` Graph scope, which was not granted to this
+    /// app. Instead this is derived by paging through the channel's
+    /// messages (scope `ChannelMessage.Read.All`, which WAS granted) and
+    /// taking the earliest `createdDateTime` seen.
     var channelCreatedAt: Date?
+
+    /// Graph drive ID backing this channel's file library — resolved
+    /// once via `GraphClient.resolveChannelFilesFolder` when the
+    /// researcher configures this channel, and cached here so uploads
+    /// never need to re-resolve it. `nil` until first configured.
+    var driveId: String?
+
+    /// The `driveItem` ID of the folder files should be uploaded into
+    /// (the channel's "Files" tab root), resolved and cached alongside
+    /// `driveId`.
+    var filesFolderItemId: String?
 }
 
 // MARK: - Project config

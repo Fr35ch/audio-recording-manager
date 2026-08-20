@@ -1,0 +1,200 @@
+import AppKit
+import Foundation
+import MSAL
+
+/// Errors surfaced by `GraphAuthService` to callers (upload UI, project
+/// settings UI). Distinct from `GraphAPIError` (Sources/Clio/Upload/GraphClient.swift),
+/// which covers errors from the actual Graph HTTP calls once a token exists.
+enum GraphAuthError: LocalizedError {
+    case notSignedIn
+    case noPresentationContext
+    case msal(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .notSignedIn:
+            return "Ikke logget inn med Microsoft-kontoen din."
+        case .noPresentationContext:
+            return "Fant ikke et vindu å vise innloggingen i."
+        case .msal(let underlying):
+            return "Innlogging mot Microsoft feilet: \(underlying.localizedDescription)"
+        }
+    }
+}
+
+/// Wraps `MSALPublicClientApplication` to provide sign-in and token
+/// acquisition against NAV's Entra ID tenant (see `EntraConfig`).
+///
+/// MSAL owns all token security: it persists tokens (access + refresh) in
+/// the macOS Keychain internally, handles refresh-token exchange for
+/// `acquireTokenSilent`, and drives the browser-based sign-in UI via
+/// `ASWebAuthenticationSession` under the hood
+/// (`MSALWebviewParameters`/`MSALInteractiveTokenParameters`). This class
+/// only orchestrates *when* to call which MSAL entry point and exposes
+/// sign-in state to SwiftUI.
+///
+/// We persist only the MSAL **account identifier** (`MSALAccount.identifier`)
+/// across launches — never a token — so a returning user's silent token
+/// acquisition can look up the same account without re-prompting for
+/// which account to use.
+@MainActor
+final class GraphAuthService: ObservableObject {
+    static let shared = GraphAuthService()
+
+    @Published private(set) var signedIn: Bool = false
+    @Published private(set) var accountDisplayName: String?
+
+    private var application: MSALPublicClientApplication?
+    private var currentAccount: MSALAccount?
+
+    private static let accountIdentifierKey = "GraphAuthService.accountIdentifier"
+
+    private init() {
+        do {
+            application = try Self.makeApplication()
+        } catch {
+            // Config error (bad client ID / redirect URI format) — should
+            // only happen during development, never in a shipped build.
+            print("⚠️ GraphAuthService: failed to construct MSALPublicClientApplication: \(error)")
+            application = nil
+        }
+        restoreCachedAccountIfPresent()
+    }
+
+    private static func makeApplication() throws -> MSALPublicClientApplication {
+        guard let authorityURL = URL(string: EntraConfig.authority) else {
+            throw GraphAuthError.msal(
+                NSError(domain: "GraphAuthService", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Ugyldig authority-URL"]))
+        }
+        let authority = try MSALAADAuthority(url: authorityURL)
+        let config = MSALPublicClientApplicationConfig(
+            clientId: EntraConfig.clientID,
+            redirectUri: EntraConfig.redirectURI,
+            authority: authority)
+        return try MSALPublicClientApplication(configuration: config)
+    }
+
+    /// On launch, if we have a previously-signed-in account identifier
+    /// cached, look it up via MSAL's own account store (no network call —
+    /// this just reads MSAL's local Keychain-backed cache) so `signedIn`
+    /// reflects reality immediately without requiring a fresh token fetch.
+    private func restoreCachedAccountIfPresent() {
+        guard let application,
+            let identifier = UserDefaults.standard.string(forKey: Self.accountIdentifierKey)
+        else { return }
+        do {
+            if let account = try application.account(forIdentifier: identifier) {
+                currentAccount = account
+                signedIn = true
+                accountDisplayName = account.username
+            }
+        } catch {
+            // Account no longer in MSAL's cache (e.g. user removed it via
+            // System Settings, or cache was cleared) — fall through to
+            // signed-out state; a fresh interactive sign-in will recover.
+        }
+    }
+
+    /// Triggers the browser-based OAuth sign-in flow. Must be called from
+    /// a context where a window is on screen (uses the frontmost window's
+    /// content view controller as the presentation anchor for MSAL's
+    /// `ASWebAuthenticationSession`).
+    func signInInteractive() async throws {
+        guard let application else { throw GraphAuthError.notSignedIn }
+        guard let viewController = Self.frontmostViewController() else {
+            throw GraphAuthError.noPresentationContext
+        }
+
+        let webviewParameters = MSALWebviewParameters(authPresentationViewController: viewController)
+        let parameters = MSALInteractiveTokenParameters(
+            scopes: EntraConfig.scopes, webviewParameters: webviewParameters)
+
+        let result: MSALResult = try await withCheckedThrowingContinuation { continuation in
+            application.acquireToken(with: parameters) { result, error in
+                if let error {
+                    continuation.resume(throwing: GraphAuthError.msal(error))
+                } else if let result {
+                    continuation.resume(returning: result)
+                } else {
+                    continuation.resume(throwing: GraphAuthError.notSignedIn)
+                }
+            }
+        }
+
+        currentAccount = result.account
+        UserDefaults.standard.set(result.account.identifier, forKey: Self.accountIdentifierKey)
+        signedIn = true
+        accountDisplayName = result.account.username
+    }
+
+    /// Returns a valid bearer token, refreshing silently via MSAL if
+    /// needed. Falls back to an interactive sign-in only when silent
+    /// acquisition fails with `MSALErrorInteractionRequired` (e.g. first
+    /// use, or the refresh token was revoked) — any other silent-path
+    /// error is surfaced directly rather than silently prompting the user
+    /// unexpectedly mid-upload.
+    ///
+    /// - Parameter forceRefresh: When true, bypasses MSAL's cached access
+    ///   token and forces a fresh refresh-token exchange. Used by
+    ///   `GraphClient`'s retry-after-401 path — a plain re-call without
+    ///   this would very likely hand back the same (already-rejected)
+    ///   cached token, since MSAL's own proactive expiry buffer may not
+    ///   have caught a token invalidated server-side before its stated
+    ///   expiry.
+    func acquireTokenSilent(forceRefresh: Bool = false) async throws -> String {
+        guard let application else { throw GraphAuthError.notSignedIn }
+        guard let account = currentAccount else {
+            try await signInInteractive()
+            guard let account = currentAccount else { throw GraphAuthError.notSignedIn }
+            return try await acquireTokenSilent(application: application, account: account, forceRefresh: forceRefresh)
+        }
+        do {
+            return try await acquireTokenSilent(application: application, account: account, forceRefresh: forceRefresh)
+        } catch let error as NSError where error.domain == MSALErrorDomain
+            && error.code == MSALError.interactionRequired.rawValue {
+            try await signInInteractive()
+            guard let refreshedAccount = currentAccount else { throw GraphAuthError.notSignedIn }
+            return try await acquireTokenSilent(application: application, account: refreshedAccount, forceRefresh: forceRefresh)
+        }
+    }
+
+    private func acquireTokenSilent(
+        application: MSALPublicClientApplication, account: MSALAccount, forceRefresh: Bool
+    ) async throws -> String {
+        let parameters = MSALSilentTokenParameters(scopes: EntraConfig.scopes, account: account)
+        parameters.forceRefresh = forceRefresh
+        let result: MSALResult = try await withCheckedThrowingContinuation { continuation in
+            application.acquireTokenSilent(with: parameters) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let result {
+                    continuation.resume(returning: result)
+                } else {
+                    continuation.resume(throwing: GraphAuthError.notSignedIn)
+                }
+            }
+        }
+        return result.accessToken
+    }
+
+    /// Signs out the current account, clearing both MSAL's cache and our
+    /// persisted account identifier.
+    func signOut() throws {
+        guard let application, let account = currentAccount else { return }
+        _ = try application.removeAccount(account)
+        currentAccount = nil
+        signedIn = false
+        accountDisplayName = nil
+        UserDefaults.standard.removeObject(forKey: Self.accountIdentifierKey)
+    }
+
+    /// Finds a window to anchor MSAL's `ASWebAuthenticationSession`
+    /// presentation to. Prefers the key window, falling back to the first
+    /// visible window if none is key (e.g. sign-in triggered from a
+    /// background task).
+    private static func frontmostViewController() -> NSViewController? {
+        let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible)
+        return window?.contentViewController
+    }
+}

@@ -4,12 +4,6 @@
 // Manages the upload of anonymized transcripts to Teams/SharePoint via the
 // Microsoft Graph API.
 //
-// ⚠️  STUB: The Graph API call is not implemented — Azure AD app registration
-//     with NAV IT is pending. The stub immediately marks the upload as
-//     successful so the full UI flow is testable end-to-end.
-//     Replace `performGraphUpload(...)` with the real implementation when
-//     credentials are available. See FILE_MANAGEMENT_AND_TEAMS_SYNC.md §Egress.
-//
 // Responsibilities:
 //   - Read anonymized transcript from RecordingStore
 //   - Update sidecar upload state via RecordingStore.updateMeta()
@@ -82,25 +76,41 @@ final class TeamsUploadService: ObservableObject {
         }
     }
 
-    // MARK: - Graph API (STUB)
+    // MARK: - Graph API
 
-    /// ⚠️  STUB: Simulates a successful Graph API upload with a short delay.
+    /// Uploads the anonymized transcript to the configured study channel's
+    /// file library via Microsoft Graph.
     ///
-    /// Real implementation will:
-    ///  - Authenticate via OAuth 2.0 / PKCE against Entra ID
-    ///  - For files < 4 MB: PUT /sites/{site-id}/drive/items/{parent}:/{filename}:/content
-    ///  - For files ≥ 4 MB: createUploadSession + chunked PUT (10 MB chunks)
-    ///    with session URL persisted in sidecar for resumable uploads
+    /// Order of operations:
+    ///  1. Re-check the channel's cached age estimate — refuses to upload
+    ///     to a channel confirmed to be less than 24 hours old (compliance
+    ///     guard against uploading before backup-exclusion propagates).
+    ///     An *unknown* age (nil `channelCreatedAt`) is intentionally NOT
+    ///     blocked here — that's a soft warning surfaced at channel
+    ///     configuration time (`ProjectSettingsView`), not an upload-time
+    ///     hard stop, per the approved plan.
+    ///  2. Requires the channel to have been fully configured (i.e.
+    ///     `driveId`/`filesFolderItemId` already resolved via
+    ///     `ProjectSettingsView` — uploads never resolve these on the fly).
+    ///  3. `GraphAuthService.acquireTokenSilent()` — silent token
+    ///     acquisition with interactive fallback (handled inside
+    ///     `GraphClient`'s request plumbing on a 401).
+    ///  4. Direct small-file `PUT` (anonymized transcripts are plain text,
+    ///     always well under the 4 MB small-file ceiling).
     private func performGraphUpload(
         fileURL: URL,
         remoteName: String,
         channel: TeamsChannelRef
     ) async throws {
-        // Simulate network latency
-        try await Task.sleep(nanoseconds: 800_000_000)
-        // TODO: Replace with real Graph API implementation when Entra ID app
-        // registration (NAV IT) is approved. Scopes needed:
-        //   Files.ReadWrite, Sites.ReadWrite.All, User.Read
+        _ = try GraphClient.assertChannelAgeOK(createdAt: channel.channelCreatedAt)
+
+        guard let driveId = channel.driveId, let itemId = channel.filesFolderItemId else {
+            throw TeamsUploadError.channelNotFullyConfigured
+        }
+
+        let fileData = try Data(contentsOf: fileURL)
+        try await GraphClient.shared.uploadSmallFile(
+            driveId: driveId, parentItemId: itemId, filename: remoteName, data: fileData)
     }
 
     // MARK: - Helpers
@@ -115,6 +125,23 @@ final class TeamsUploadService: ObservableObject {
             try RecordingStore.shared.updateMeta(id: recordingId, transform: transform)
         } catch {
             print("⚠️ TeamsUploadService: could not update sidecar for \(recordingId): \(error)")
+        }
+    }
+}
+
+/// Errors specific to the upload orchestration in `TeamsUploadService`,
+/// as opposed to `GraphAuthError` (sign-in) or `GraphAPIError` (Graph
+/// HTTP calls).
+enum TeamsUploadError: LocalizedError {
+    case channelNotFullyConfigured
+
+    var errorDescription: String? {
+        switch self {
+        case .channelNotFullyConfigured:
+            return """
+            Studiekanalen mangler informasjon om fil-plassering. Gå til \
+            Innstillinger → Prosjekter og Teams og lagre kanalen på nytt.
+            """
         }
     }
 }

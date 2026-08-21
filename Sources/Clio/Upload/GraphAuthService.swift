@@ -84,11 +84,10 @@ final class GraphAuthService: ObservableObject {
             let identifier = UserDefaults.standard.string(forKey: Self.accountIdentifierKey)
         else { return }
         do {
-            if let account = try application.account(forIdentifier: identifier) {
-                currentAccount = account
-                signedIn = true
-                accountDisplayName = account.username
-            }
+            let account = try application.account(forIdentifier: identifier)
+            currentAccount = account
+            signedIn = true
+            accountDisplayName = account.username
         } catch {
             // Account no longer in MSAL's cache (e.g. user removed it via
             // System Settings, or cache was cleared) — fall through to
@@ -182,7 +181,7 @@ final class GraphAuthService: ObservableObject {
     /// persisted account identifier.
     func signOut() throws {
         guard let application, let account = currentAccount else { return }
-        _ = try application.removeAccount(account)
+        _ = try application.remove(account)
         currentAccount = nil
         signedIn = false
         accountDisplayName = nil

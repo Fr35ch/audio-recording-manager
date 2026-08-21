@@ -5,11 +5,9 @@
 // Gate: transcript must exist AND researcher must have confirmed de-identification.
 // Real Microsoft Graph upload — see TeamsUploadService.performGraphUpload
 // and GraphClient. Tapping "Last opp til Teams" signs the researcher in
-// (if needed) and then presents UploadConfirmationSheet so they pick which
-// project this specific recording belongs to — researchers can be working
-// on several projects at once, so this is a per-recording choice, not a
-// single app-wide setting. The chosen project is persisted onto
-// RecordingMeta.projectId (pre-selected, but always changeable, next time).
+// (if needed) and then presents UploadConfirmationSheet for a final check
+// before uploading to the one configured Teams channel — Clio has no
+// "project" concept, just one destination every recording uploads to.
 
 import SwiftUI
 
@@ -21,17 +19,16 @@ struct TeamsUploadSection: View {
     @ObservedObject private var authService = GraphAuthService.shared
     @State private var configurationErrorMessage: String?
     @State private var isSigningIn = false
-    @State private var showingProjectPicker = false
+    @State private var showingConfirmationSheet = false
 
     private var readiness: UploadReadiness {
         UploadGate.evaluate(recording: recording)
     }
 
-    /// All configured projects the researcher can choose between when
-    /// uploading this recording (a researcher may work on several projects
-    /// at once, and each recording can belong to a different one).
-    private var availableProjects: [ProjectConfig] {
-        AppStateStore.load().projects
+    /// The one configured Teams destination. `nil` means it hasn't been
+    /// set up yet in Settings.
+    private var channel: TeamsChannelRef? {
+        AppStateStore.load().teamsChannel
     }
 
     var body: some View {
@@ -47,16 +44,18 @@ struct TeamsUploadSection: View {
             } message: {
                 Text(configurationErrorMessage ?? "")
             }
-            .sheet(isPresented: $showingProjectPicker) {
-                UploadConfirmationSheet(
-                    recording: recording,
-                    projects: availableProjects,
-                    onConfirmed: { project, remoteName in
-                        showingProjectPicker = false
-                        assignProjectAndUpload(project: project, remoteName: remoteName)
-                    },
-                    onCancel: { showingProjectPicker = false }
-                )
+            .sheet(isPresented: $showingConfirmationSheet) {
+                if let channel {
+                    UploadConfirmationSheet(
+                        recording: recording,
+                        channel: channel,
+                        onConfirmed: { remoteName in
+                            showingConfirmationSheet = false
+                            startUpload(channel: channel, remoteName: remoteName)
+                        },
+                        onCancel: { showingConfirmationSheet = false }
+                    )
+                }
             }
     }
 
@@ -203,15 +202,21 @@ struct TeamsUploadSection: View {
 
     // MARK: - Actions
 
-    /// Entry point for "Last opp til Teams" / "Prøv igjen". If the
-    /// researcher isn't signed in to Microsoft yet, signs in first (same
-    /// button, no separate "Logg inn" state) and only then shows the
-    /// project picker — signing in and picking a project are two steps of
-    /// one flow, not two separate actions the researcher has to trigger.
+    /// Entry point for "Last opp til Teams" / "Prøv igjen". Checks the
+    /// Teams channel is configured, signs the researcher in if needed (same
+    /// button, no separate "Logg inn" state), and only then shows the
+    /// confirmation sheet — signing in and confirming are two steps of one
+    /// flow, not two separate actions the researcher has to trigger.
     private func beginUploadFlow() {
         guard !isSigningIn else { return }
+        guard channel != nil else {
+            configurationErrorMessage = """
+            Ingen Teams-kanal er konfigurert ennå. Gå til Innstillinger → Teams.
+            """
+            return
+        }
         if authService.signedIn {
-            showingProjectPicker = true
+            showingConfirmationSheet = true
             return
         }
         isSigningIn = true
@@ -219,7 +224,7 @@ struct TeamsUploadSection: View {
             do {
                 try await authService.signInInteractive()
                 isSigningIn = false
-                showingProjectPicker = true
+                showingConfirmationSheet = true
             } catch {
                 print("🔑 TeamsUploadSection.beginUploadFlow: caught error: \(error)")
                 isSigningIn = false
@@ -228,18 +233,10 @@ struct TeamsUploadSection: View {
         }
     }
 
-    /// Persists the researcher's chosen project onto this recording (so
-    /// it's pre-selected — but still changeable — next time), then starts
-    /// the actual Graph upload. A researcher can be working on several
-    /// projects at once, so this choice is per-recording, not app-wide.
-    private func assignProjectAndUpload(project: ProjectConfig, remoteName: String) {
-        do {
-            try RecordingStore.shared.updateMeta(id: recording.id) { $0.projectId = project.id }
-        } catch {
-            print("⚠️ TeamsUploadSection: could not persist projectId for \(recording.id): \(error)")
-        }
+    /// Starts the actual Graph upload to the one configured channel.
+    private func startUpload(channel: TeamsChannelRef, remoteName: String) {
         Task {
-            await uploadService.upload(recording: recording, project: project, remoteName: remoteName)
+            await uploadService.upload(recording: recording, channel: channel, remoteName: remoteName)
         }
     }
 }

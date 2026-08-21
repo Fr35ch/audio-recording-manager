@@ -21,35 +21,27 @@ final class TeamsUploadService: ObservableObject {
 
     // MARK: - Upload
 
-    /// Starts upload of the anonymized transcript for `recording` to `project`'s study channel.
-    /// Updates the recording's sidecar and emits audit events.
+    /// Starts upload of the anonymized transcript for `recording` to the
+    /// configured Teams channel. Updates the recording's sidecar and emits
+    /// audit events.
     ///
     /// - Parameters:
     ///   - recording: the recording whose anonymized transcript to upload
-    ///   - project: the destination project (must have a configured study channel)
+    ///   - channel: the destination Teams channel (must be fully configured)
     ///   - remoteName: filename to use on Teams (from `UploadGate.remoteName(...)`)
-    func upload(recording: RecordingMeta, project: ProjectConfig, remoteName: String) async {
-        guard let studyChannel = project.studyChannel else {
-            // Should not happen — UploadGate checks isConfigured before calling.
-            return
-        }
-
+    func upload(recording: RecordingMeta, channel: TeamsChannelRef, remoteName: String) async {
         let recordingId = recording.id
 
         // Mark as uploading
         updateSidecar(recordingId: recordingId) { $0.upload.anonymizedTranscript.status = .uploading }
-        AuditLogger.shared.logUploadQueued(
-            recordingId: recordingId,
-            projectId: project.id,
-            remoteName: remoteName
-        )
+        AuditLogger.shared.logUploadQueued(recordingId: recordingId, remoteName: remoteName)
 
         do {
             let fileURL = anonymizedTranscriptURL(recording: recording)
             try await performGraphUpload(
                 fileURL: fileURL,
                 remoteName: remoteName,
-                channel: studyChannel
+                channel: channel
             )
 
             updateSidecar(recordingId: recordingId) { meta in
@@ -57,11 +49,7 @@ final class TeamsUploadService: ObservableObject {
                 meta.upload.anonymizedTranscript.uploadedAt = Date()
                 meta.upload.anonymizedTranscript.remoteName = remoteName
             }
-            AuditLogger.shared.logUploadCompleted(
-                recordingId: recordingId,
-                projectId: project.id,
-                remoteName: remoteName
-            )
+            AuditLogger.shared.logUploadCompleted(recordingId: recordingId, remoteName: remoteName)
 
         } catch {
             updateSidecar(recordingId: recordingId) { meta in
@@ -70,7 +58,6 @@ final class TeamsUploadService: ObservableObject {
             }
             AuditLogger.shared.logUploadFailed(
                 recordingId: recordingId,
-                projectId: project.id,
                 reason: error.localizedDescription
             )
         }
@@ -78,7 +65,7 @@ final class TeamsUploadService: ObservableObject {
 
     // MARK: - Graph API
 
-    /// Uploads the anonymized transcript to the configured study channel's
+    /// Uploads the anonymized transcript to the configured Teams channel's
     /// file library via Microsoft Graph.
     ///
     /// Order of operations:
@@ -87,11 +74,11 @@ final class TeamsUploadService: ObservableObject {
     ///     guard against uploading before backup-exclusion propagates).
     ///     An *unknown* age (nil `channelCreatedAt`) is intentionally NOT
     ///     blocked here — that's a soft warning surfaced at channel
-    ///     configuration time (`ProjectSettingsView`), not an upload-time
+    ///     configuration time (`TeamsSettingsView`), not an upload-time
     ///     hard stop, per the approved plan.
     ///  2. Requires the channel to have been fully configured (i.e.
     ///     `driveId`/`filesFolderItemId` already resolved via
-    ///     `ProjectSettingsView` — uploads never resolve these on the fly).
+    ///     `TeamsSettingsView` — uploads never resolve these on the fly).
     ///  3. `GraphAuthService.acquireTokenSilent()` — silent token
     ///     acquisition with interactive fallback (handled inside
     ///     `GraphClient`'s request plumbing on a 401).
@@ -139,8 +126,8 @@ enum TeamsUploadError: LocalizedError {
         switch self {
         case .channelNotFullyConfigured:
             return """
-            Studiekanalen mangler informasjon om fil-plassering. Gå til \
-            Innstillinger → Prosjekter og Teams og lagre kanalen på nytt.
+            Teams-kanalen mangler informasjon om fil-plassering. Gå til \
+            Innstillinger → Teams og lagre kanalen på nytt.
             """
         }
     }

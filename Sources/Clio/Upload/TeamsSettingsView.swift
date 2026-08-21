@@ -1,46 +1,39 @@
+// TeamsSettingsView.swift
+// Clio
+//
+// Teams configuration UI: the single Teams channel every upload goes to,
+// plus the Microsoft sign-in used for the upload. Clio has no "project"
+// concept — one channel, set once, used by every recording.
+//
+// Channel selection is always manual entry (Team ID + Channel ID pasted in
+// by the researcher); the granted Graph scopes don't support a "browse my
+// Teams" picker.
+
 import SwiftUI
 
-/// Project configuration UI: create/edit/select `ProjectConfig`s (name,
-/// neutral code prefix, study + consent Teams channels) and manage the
-/// Microsoft sign-in used for Teams/SharePoint upload.
-///
-/// This UI did not exist before — `AppState.projects`/`TeamsChannelRef`
-/// were pure data models with no editor. Channel selection is always
-/// manual entry (Team ID + Channel ID pasted in by the researcher); the
-/// granted Graph scopes don't support a "browse my Teams" picker.
-struct ProjectSettingsView: View {
+struct TeamsSettingsView: View {
     @ObservedObject private var authService = GraphAuthService.shared
 
-    @State private var projects: [ProjectConfig] = AppStateStore.load().projects
-    @State private var selectedProjectId: UUID?
+    @State private var channel: TeamsChannelRef = AppStateStore.load().teamsChannel ?? TeamsChannelRef()
     @State private var errorMessage: String?
     @State private var isResolvingChannel = false
     @State private var channelAgeNotice: String?
 
-    // Draft fields for the selected project's study channel — edited in
-    // a local buffer, only written back to AppState on explicit Save.
+    // Draft fields — edited in a local buffer, only written back to
+    // AppState on explicit Save.
     @State private var draftDisplayName = ""
     @State private var draftTeamId = ""
     @State private var draftChannelId = ""
-
-    private var selectedProject: ProjectConfig? {
-        projects.first(where: { $0.id == selectedProjectId })
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xl) {
             signInSection
             Divider()
-            projectListSection
-            Divider()
-            if selectedProjectId != nil {
-                studyChannelSection
-            }
+            teamsChannelSection
         }
         .padding(AppSpacing.xl)
         .frame(width: 520)
         .onAppear { syncDraftFromSelection() }
-        .onChange(of: selectedProjectId) { _, _ in syncDraftFromSelection() }
     }
 
     // MARK: - Sign-in section
@@ -89,83 +82,38 @@ struct ProjectSettingsView: View {
                 try await authService.signInInteractive()
             }
         } catch {
-            print("🔑 ProjectSettingsView.toggleSignIn: caught error: \(error)")
+            print("🔑 TeamsSettingsView.toggleSignIn: caught error: \(error)")
             errorMessage = error.localizedDescription
         }
     }
 
-    // MARK: - Project list
+    // MARK: - Teams channel section
 
-    private var projectListSection: some View {
+    private var teamsChannelSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
-            sectionHeader("Prosjekter", systemImage: "folder.badge.gearshape")
-
-            if projects.isEmpty {
-                Text("Ingen prosjekter konfigurert ennå.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
-            ForEach(projects) { project in
-                Button {
-                    selectedProjectId = project.id
-                } label: {
-                    HStack {
-                        Text(project.projectName.isEmpty ? "(Uten navn)" : project.projectName)
-                        Spacer()
-                        if project.isReadyForUpload {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                        }
-                    }
-                    .padding(.horizontal, AppSpacing.sm)
-                    .padding(.vertical, AppSpacing.xs)
-                    .background(
-                        selectedProjectId == project.id
-                            ? AppColors.accent.opacity(0.12) : Color.clear
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.small))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Button(AppCopy.Common.add + " nytt prosjekt") {
-                addProject()
-            }
-            .buttonStyle(HoverButtonStyle())
-        }
-    }
-
-    private func addProject() {
-        var newProject = ProjectConfig()
-        newProject.projectName = "Nytt prosjekt"
-        projects.append(newProject)
-        selectedProjectId = newProject.id
-        persistProjects()
-    }
-
-    // MARK: - Study channel section
-
-    private var studyChannelSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            sectionHeader("Studiekanal (Teams)", systemImage: "person.2.badge.gearshape")
+            sectionHeader("Teams-kanal", systemImage: "person.2.badge.gearshape")
 
             Text("""
             Lim inn Team-ID og Kanal-ID for den private, sikkerhetskopi-utelukkede \
-            Teams-kanalen som er satt opp for dette prosjektet. ARM oppretter aldri \
-            kanaler selv.
+            Teams-kanalen opptak skal lastes opp til. Clio oppretter aldri kanaler selv.
             """)
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
-            LabeledContent("Prosjektnavn") {
-                TextField("", text: projectNameBinding)
-            }
-
             TextField("Visningsnavn (f.eks. «Studie Bærekraft Q2»)", text: $draftDisplayName)
             TextField("Team-ID (GUID)", text: $draftTeamId)
             TextField("Kanal-ID (GUID)", text: $draftChannelId)
+
+            if channel.isReadyForUpload {
+                HStack(spacing: AppSpacing.xs) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("Kanal konfigurert og klar for opplasting")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             if let notice = channelAgeNotice {
                 Text(notice)
@@ -177,7 +125,7 @@ struct ProjectSettingsView: View {
             HStack {
                 Spacer()
                 Button(AppCopy.Common.save) {
-                    Task { await saveStudyChannel() }
+                    Task { await saveChannel() }
                 }
                 .buttonStyle(GlassButtonStyle())
                 .disabled(isResolvingChannel || draftTeamId.isEmpty || draftChannelId.isEmpty)
@@ -186,13 +134,6 @@ struct ProjectSettingsView: View {
     }
 
     private func syncDraftFromSelection() {
-        guard let project = selectedProject, let channel = project.studyChannel else {
-            draftDisplayName = ""
-            draftTeamId = ""
-            draftChannelId = ""
-            channelAgeNotice = nil
-            return
-        }
         draftDisplayName = channel.displayName
         draftTeamId = channel.teamId
         draftChannelId = channel.channelId
@@ -200,12 +141,10 @@ struct ProjectSettingsView: View {
     }
 
     /// Resolves the channel's drive/files-folder and estimates its
-    /// creation date via `GraphClient`, then persists the result on the
-    /// project's `TeamsChannelRef`. Surfaces the channel-age result
-    /// immediately, at configuration time, rather than deferring it to
-    /// the first upload attempt.
-    private func saveStudyChannel() async {
-        guard var project = selectedProject else { return }
+    /// creation date via `GraphClient`, then persists the result.
+    /// Surfaces the channel-age result immediately, at configuration
+    /// time, rather than deferring it to the first upload attempt.
+    private func saveChannel() async {
         errorMessage = nil
         channelAgeNotice = nil
         isResolvingChannel = true
@@ -217,11 +156,11 @@ struct ProjectSettingsView: View {
             let createdAt = try await GraphClient.shared.estimateChannelCreatedDate(
                 teamId: draftTeamId, channelId: draftChannelId)
 
-            var channel = TeamsChannelRef(
+            var updated = TeamsChannelRef(
                 displayName: draftDisplayName, teamId: draftTeamId, channelId: draftChannelId)
-            channel.channelCreatedAt = createdAt
-            channel.driveId = folder.driveId
-            channel.filesFolderItemId = folder.itemId
+            updated.channelCreatedAt = createdAt
+            updated.driveId = folder.driveId
+            updated.filesFolderItemId = folder.itemId
 
             let ageCheck = try GraphClient.assertChannelAgeOK(createdAt: createdAt)
             if ageCheck == .unknown {
@@ -232,9 +171,8 @@ struct ProjectSettingsView: View {
                 """
             }
 
-            project.studyChannel = channel
-            updateProjectInList(project)
-            persistProjects()
+            channel = updated
+            persistChannel()
         } catch GraphAPIError.channelTooNew(let createdAt, let hoursRemaining) {
             let formatter = DateFormatter()
             formatter.dateStyle = .short
@@ -250,32 +188,11 @@ struct ProjectSettingsView: View {
         }
     }
 
-    private func updateProjectInList(_ updated: ProjectConfig) {
-        guard let idx = projects.firstIndex(where: { $0.id == updated.id }) else { return }
-        projects[idx] = updated
-    }
-
-    /// Two-way binding to the selected project's `projectName`, writing
-    /// back through `updateProjectInList` + `persistProjects` on every
-    /// edit (matches the simple, non-debounced persistence style already
-    /// used elsewhere in this file for the channel fields).
-    private var projectNameBinding: Binding<String> {
-        Binding(
-            get: { selectedProject?.projectName ?? "" },
-            set: { newValue in
-                guard var project = selectedProject else { return }
-                project.projectName = newValue
-                updateProjectInList(project)
-                persistProjects()
-            }
-        )
-    }
-
-    private func persistProjects() {
+    private func persistChannel() {
         do {
-            _ = try AppStateStore.update { $0.projects = projects }
+            _ = try AppStateStore.update { $0.teamsChannel = channel }
         } catch {
-            errorMessage = "Kunne ikke lagre prosjektinnstillinger: \(error.localizedDescription)"
+            errorMessage = "Kunne ikke lagre Teams-innstillinger: \(error.localizedDescription)"
         }
     }
 

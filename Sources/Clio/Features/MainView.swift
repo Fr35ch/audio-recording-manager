@@ -81,7 +81,7 @@ struct MainView: View {
                 Divider()
                 Picker("", selection: $settingsTab) {
                     Text("Transkripsjon").tag(SettingsTab.transcription)
-                    Text("Prosjekter og Teams").tag(SettingsTab.projects)
+                    Text("Teams").tag(SettingsTab.teams)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -91,8 +91,8 @@ struct MainView: View {
                     switch settingsTab {
                     case .transcription:
                         TranscriptionSettingsView()
-                    case .projects:
-                        ProjectSettingsView()
+                    case .teams:
+                        TeamsSettingsView()
                     }
                 }
             }
@@ -208,5 +208,5 @@ struct MainView: View {
 /// it's purely a UI-navigation concern, not app state.
 private enum SettingsTab {
     case transcription
-    case projects
+    case teams
 }

@@ -221,6 +221,7 @@ struct TeamsUploadSection: View {
                 isSigningIn = false
                 showingProjectPicker = true
             } catch {
+                print("🔑 TeamsUploadSection.beginUploadFlow: caught error: \(error)")
                 isSigningIn = false
                 configurationErrorMessage = error.localizedDescription
             }

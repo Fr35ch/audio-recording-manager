@@ -89,6 +89,7 @@ struct ProjectSettingsView: View {
                 try await authService.signInInteractive()
             }
         } catch {
+            print("🔑 ProjectSettingsView.toggleSignIn: caught error: \(error)")
             errorMessage = error.localizedDescription
         }
     }

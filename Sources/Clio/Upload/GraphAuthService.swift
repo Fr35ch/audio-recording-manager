@@ -52,6 +52,7 @@ final class GraphAuthService: ObservableObject {
     private init() {
         do {
             application = try Self.makeApplication()
+            print("🔑 GraphAuthService: MSALPublicClientApplication constructed successfully")
         } catch {
             // Config error (bad client ID / redirect URI format) — should
             // only happen during development, never in a shipped build.
@@ -113,10 +114,16 @@ final class GraphAuthService: ObservableObject {
     /// content view controller as the presentation anchor for MSAL's
     /// `ASWebAuthenticationSession`).
     func signInInteractive() async throws {
-        guard let application else { throw GraphAuthError.notSignedIn }
+        print("🔑 GraphAuthService.signInInteractive: starting")
+        guard let application else {
+            print("🔑 GraphAuthService.signInInteractive: FAILED — application is nil (construction failed earlier, see the ⚠️ log line at launch)")
+            throw GraphAuthError.notSignedIn
+        }
         guard let viewController = Self.frontmostViewController() else {
+            print("🔑 GraphAuthService.signInInteractive: FAILED — no presentation window found (NSApp.keyWindow and no visible window)")
             throw GraphAuthError.noPresentationContext
         }
+        print("🔑 GraphAuthService.signInInteractive: presentation window found, calling MSAL acquireToken(with:)…")
 
         let webviewParameters = MSALWebviewParameters(authPresentationViewController: viewController)
         let parameters = MSALInteractiveTokenParameters(
@@ -125,10 +132,13 @@ final class GraphAuthService: ObservableObject {
         let result: MSALResult = try await withCheckedThrowingContinuation { continuation in
             application.acquireToken(with: parameters) { result, error in
                 if let error {
+                    print("🔑 GraphAuthService.signInInteractive: MSAL returned an error: \(error)")
                     continuation.resume(throwing: GraphAuthError.msal(error))
                 } else if let result {
+                    print("🔑 GraphAuthService.signInInteractive: MSAL succeeded for account \(result.account.username ?? "?")")
                     continuation.resume(returning: result)
                 } else {
+                    print("🔑 GraphAuthService.signInInteractive: MSAL completion fired with neither a result nor an error (unexpected)")
                     continuation.resume(throwing: GraphAuthError.notSignedIn)
                 }
             }

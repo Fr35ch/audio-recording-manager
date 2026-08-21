@@ -166,6 +166,6 @@ DerivedData/
 # documented conversion scripts. Never committed to git (would exceed
 # GitHub's 100MB file-size limit and permanently bloat repo history).
 # See docs/MODEL_SETUP.md for how to (re)generate them locally.
-Resources/WhisperKitModels/
-Resources/NBBertNER.mlmodelc/
-Resources/NBBertNER-tokenizer/
+Resources/WhisperKitModels
+Resources/NBBertNER.mlmodelc
+Resources/NBBertNER-tokenizer

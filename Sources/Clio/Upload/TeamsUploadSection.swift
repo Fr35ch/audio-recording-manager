@@ -4,8 +4,12 @@
 // Upload widget shown in RecordingDetailView's right panel after transcription.
 // Gate: transcript must exist AND researcher must have confirmed de-identification.
 // Real Microsoft Graph upload — see TeamsUploadService.performGraphUpload
-// and GraphClient. The destination project (with its configured study
-// channel) is resolved via RecordingMeta.projectId.
+// and GraphClient. Tapping "Last opp til Teams" signs the researcher in
+// (if needed) and then presents UploadConfirmationSheet so they pick which
+// project this specific recording belongs to — researchers can be working
+// on several projects at once, so this is a per-recording choice, not a
+// single app-wide setting. The chosen project is persisted onto
+// RecordingMeta.projectId (pre-selected, but always changeable, next time).
 
 import SwiftUI
 
@@ -14,20 +18,20 @@ struct TeamsUploadSection: View {
     let recording: RecordingMeta
 
     @StateObject private var uploadService = TeamsUploadService.shared
+    @ObservedObject private var authService = GraphAuthService.shared
     @State private var configurationErrorMessage: String?
+    @State private var isSigningIn = false
+    @State private var showingProjectPicker = false
 
     private var readiness: UploadReadiness {
         UploadGate.evaluate(recording: recording)
     }
 
-    /// Resolves the `ProjectConfig` this recording belongs to (via
-    /// `RecordingMeta.projectId`), which carries the destination study
-    /// channel. `nil` if the recording has no project assigned, or the
-    /// project no longer exists — surfaced as a configuration error
-    /// rather than silently failing.
-    private var project: ProjectConfig? {
-        guard let projectId = recording.projectId else { return nil }
-        return AppStateStore.load().projects.first(where: { $0.id == projectId })
+    /// All configured projects the researcher can choose between when
+    /// uploading this recording (a researcher may work on several projects
+    /// at once, and each recording can belong to a different one).
+    private var availableProjects: [ProjectConfig] {
+        AppStateStore.load().projects
     }
 
     var body: some View {
@@ -42,6 +46,17 @@ struct TeamsUploadSection: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(configurationErrorMessage ?? "")
+            }
+            .sheet(isPresented: $showingProjectPicker) {
+                UploadConfirmationSheet(
+                    recording: recording,
+                    projects: availableProjects,
+                    onConfirmed: { project, remoteName in
+                        showingProjectPicker = false
+                        assignProjectAndUpload(project: project, remoteName: remoteName)
+                    },
+                    onCancel: { showingProjectPicker = false }
+                )
             }
     }
 
@@ -114,11 +129,23 @@ struct TeamsUploadSection: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
 
-            Button("Last opp til Teams") {
-                triggerUpload(remoteName: remoteName)
+            Button {
+                beginUploadFlow()
+            } label: {
+                if isSigningIn {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Logger inn…")
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Text("Last opp til Teams")
+                        .frame(maxWidth: .infinity)
+                }
             }
             .buttonStyle(PillButtonStyle(variant: .primary))
-            .frame(maxWidth: .infinity)
+            .disabled(isSigningIn)
         }
     }
 
@@ -168,7 +195,7 @@ struct TeamsUploadSection: View {
             }
 
             Button("Prøv igjen") {
-                triggerUpload(remoteName: remoteName)
+                beginUploadFlow()
             }
             .buttonStyle(PillButtonStyle(variant: .primary))
         }
@@ -176,13 +203,39 @@ struct TeamsUploadSection: View {
 
     // MARK: - Actions
 
-    private func triggerUpload(remoteName: String) {
-        guard let project else {
-            configurationErrorMessage = """
-            Dette opptaket er ikke tilknyttet et prosjekt med en konfigurert \
-            studiekanal. Gå til Innstillinger → Prosjekter og Teams.
-            """
+    /// Entry point for "Last opp til Teams" / "Prøv igjen". If the
+    /// researcher isn't signed in to Microsoft yet, signs in first (same
+    /// button, no separate "Logg inn" state) and only then shows the
+    /// project picker — signing in and picking a project are two steps of
+    /// one flow, not two separate actions the researcher has to trigger.
+    private func beginUploadFlow() {
+        guard !isSigningIn else { return }
+        if authService.signedIn {
+            showingProjectPicker = true
             return
+        }
+        isSigningIn = true
+        Task {
+            do {
+                try await authService.signInInteractive()
+                isSigningIn = false
+                showingProjectPicker = true
+            } catch {
+                isSigningIn = false
+                configurationErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    /// Persists the researcher's chosen project onto this recording (so
+    /// it's pre-selected — but still changeable — next time), then starts
+    /// the actual Graph upload. A researcher can be working on several
+    /// projects at once, so this choice is per-recording, not app-wide.
+    private func assignProjectAndUpload(project: ProjectConfig, remoteName: String) {
+        do {
+            try RecordingStore.shared.updateMeta(id: recording.id) { $0.projectId = project.id }
+        } catch {
+            print("⚠️ TeamsUploadSection: could not persist projectId for \(recording.id): \(error)")
         }
         Task {
             await uploadService.upload(recording: recording, project: project, remoteName: remoteName)

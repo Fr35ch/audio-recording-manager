@@ -62,6 +62,19 @@ final class GraphAuthService: ObservableObject {
     }
 
     private static func makeApplication() throws -> MSALPublicClientApplication {
+        // Force MSAL to always use its own in-app webview
+        // (ASWebAuthenticationSession) for interactive sign-in rather than
+        // the default `.auto` behavior, which first tries the macOS system
+        // SSO broker (Microsoft Authenticator / the AppSSO extension).
+        // That broker is a *shared, system-wide* component — if it's stuck
+        // for this account/tenant for any reason (e.g. an MFA-enrollment
+        // requirement it can't complete silently, as seen for other
+        // Microsoft apps on this Mac in Console.app), every broker-routed
+        // app inherits the same failure, which surfaces here as sign-in
+        // that never completes. Clio's own webview flow is self-contained
+        // and unaffected by the broker's state.
+        MSALGlobalConfig.brokerAvailability = .none
+
         guard let authorityURL = URL(string: EntraConfig.authority) else {
             throw GraphAuthError.msal(
                 NSError(domain: "GraphAuthService", code: -1,

@@ -133,7 +133,8 @@ final class GraphAuthService: ObservableObject {
             throw GraphAuthError.notSignedIn
         }
         guard let viewController = Self.frontmostViewController() else {
-            print("🔑 GraphAuthService.signInInteractive: FAILED — no presentation window found (NSApp.keyWindow and no visible window)")
+            let windowInfo = NSApp.windows.map { "\($0.title.isEmpty ? "(untitled)" : $0.title): visible=\($0.isVisible), hasVC=\($0.contentViewController != nil)" }
+            print("🔑 GraphAuthService.signInInteractive: FAILED — no presentation window found. keyWindow=\(NSApp.keyWindow != nil), mainWindow=\(NSApp.mainWindow != nil), all windows: \(windowInfo)")
             throw GraphAuthError.noPresentationContext
         }
         print("🔑 GraphAuthService.signInInteractive: presentation window found, calling MSAL acquireToken(with:)…")
@@ -225,11 +226,24 @@ final class GraphAuthService: ObservableObject {
     }
 
     /// Finds a window to anchor MSAL's `ASWebAuthenticationSession`
-    /// presentation to. Prefers the key window, falling back to the first
-    /// visible window if none is key (e.g. sign-in triggered from a
-    /// background task).
+    /// presentation to. Tries the key window first, then the main window,
+    /// then any window with a content view controller at all — a SwiftUI
+    /// `.sheet()` (like the Settings window sign-in is triggered from) is
+    /// not always reported as "key" or "visible" at the exact moment this
+    /// is checked, so filtering only on `.isVisible` was too strict and
+    /// could fail to find a window that's genuinely on screen.
     private static func frontmostViewController() -> NSViewController? {
-        let window = NSApp.keyWindow ?? NSApp.windows.first(where: \.isVisible)
-        return window?.contentViewController
+        if let vc = NSApp.keyWindow?.contentViewController {
+            return vc
+        }
+        if let vc = NSApp.mainWindow?.contentViewController {
+            return vc
+        }
+        for window in NSApp.windows {
+            if let vc = window.contentViewController {
+                return vc
+            }
+        }
+        return nil
     }
 }

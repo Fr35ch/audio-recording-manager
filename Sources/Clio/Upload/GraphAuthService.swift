@@ -63,6 +63,29 @@ final class GraphAuthService: ObservableObject {
     }
 
     private static func makeApplication() throws -> MSALPublicClientApplication {
+        guard let authorityURL = URL(string: EntraConfig.authority) else {
+            throw GraphAuthError.msal(
+                NSError(domain: "GraphAuthService", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Ugyldig authority-URL"]))
+        }
+        let authority = try MSALAADAuthority(url: authorityURL)
+        let config = MSALPublicClientApplicationConfig(
+            clientId: EntraConfig.clientID,
+            redirectUri: EntraConfig.redirectURI,
+            authority: authority)
+
+        // Real root cause of the construction failure (found by reading
+        // MSALPublicClientApplication's actual source): MSAL requires a
+        // "broker capable" redirect URI (the msauth.<bundle-id>://auth
+        // format) for work/school (non-consumer) AAD tenants like NAV's --
+        // otherwise `initWithConfiguration:error:` silently returns nil.
+        // Our redirect URI is a plain custom scheme (arm.nav://auth/callback),
+        // registered as such in the Entra app registration and Info.plist,
+        // which is not broker-capable. Setting this bypasses that specific
+        // check (and disables brokered auth for this app, consistent with
+        // MSALGlobalConfig.brokerAvailability = .none below).
+        config.bypassRedirectURIValidation = true
+
         // Force MSAL to always use its own in-app webview
         // (ASWebAuthenticationSession) for interactive sign-in rather than
         // the default `.auto` behavior, which first tries the macOS system
@@ -76,16 +99,6 @@ final class GraphAuthService: ObservableObject {
         // and unaffected by the broker's state.
         MSALGlobalConfig.brokerAvailability = .none
 
-        guard let authorityURL = URL(string: EntraConfig.authority) else {
-            throw GraphAuthError.msal(
-                NSError(domain: "GraphAuthService", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Ugyldig authority-URL"]))
-        }
-        let authority = try MSALAADAuthority(url: authorityURL)
-        let config = MSALPublicClientApplicationConfig(
-            clientId: EntraConfig.clientID,
-            redirectUri: EntraConfig.redirectURI,
-            authority: authority)
         return try MSALPublicClientApplication(configuration: config)
     }
 

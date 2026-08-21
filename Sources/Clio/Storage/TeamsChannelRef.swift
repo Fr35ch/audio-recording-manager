@@ -13,8 +13,6 @@ import Foundation
 /// IT provides these values in Settings. Clio never creates channels — it
 /// only uploads to a channel that already exists.
 struct TeamsChannelRef: Codable, Equatable {
-    /// Display name shown in the Clio UI (e.g. "Studie Bærekraft Q2")
-    var displayName: String
     /// Teams team ID (GUID from M365 admin / Graph)
     var teamId: String
     /// Private channel ID within the team (GUID)
@@ -50,7 +48,6 @@ struct TeamsChannelRef: Codable, Equatable {
     var configuredAt: Date
 
     init(
-        displayName: String = "",
         teamId: String = "",
         channelId: String = "",
         channelCreatedAt: Date? = nil,
@@ -58,7 +55,6 @@ struct TeamsChannelRef: Codable, Equatable {
         filesFolderItemId: String? = nil,
         configuredAt: Date = Date()
     ) {
-        self.displayName = displayName
         self.teamId = teamId
         self.channelId = channelId
         self.channelCreatedAt = channelCreatedAt

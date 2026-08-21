@@ -21,7 +21,6 @@ struct TeamsSettingsView: View {
 
     // Draft fields — edited in a local buffer, only written back to
     // AppState on explicit Save.
-    @State private var draftDisplayName = ""
     @State private var draftTeamId = ""
     @State private var draftChannelId = ""
 
@@ -101,7 +100,6 @@ struct TeamsSettingsView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Visningsnavn (f.eks. «Studie Bærekraft Q2»)", text: $draftDisplayName)
             TextField("Team-ID (GUID)", text: $draftTeamId)
             TextField("Kanal-ID (GUID)", text: $draftChannelId)
 
@@ -134,7 +132,6 @@ struct TeamsSettingsView: View {
     }
 
     private func syncDraftFromSelection() {
-        draftDisplayName = channel.displayName
         draftTeamId = channel.teamId
         draftChannelId = channel.channelId
         channelAgeNotice = nil
@@ -156,8 +153,7 @@ struct TeamsSettingsView: View {
             let createdAt = try await GraphClient.shared.estimateChannelCreatedDate(
                 teamId: draftTeamId, channelId: draftChannelId)
 
-            var updated = TeamsChannelRef(
-                displayName: draftDisplayName, teamId: draftTeamId, channelId: draftChannelId)
+            var updated = TeamsChannelRef(teamId: draftTeamId, channelId: draftChannelId)
             updated.channelCreatedAt = createdAt
             updated.driveId = folder.driveId
             updated.filesFolderItemId = folder.itemId

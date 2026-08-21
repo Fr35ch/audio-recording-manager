@@ -8,14 +8,13 @@
 //   4. Tap "Bekreft og last opp" to proceed
 //
 // Clio has no "project" concept — there's exactly one configured Teams
-// channel (shown here for confirmation), not a picker.
+// channel every upload goes to, so there's nothing to pick or confirm here.
 
 import SwiftUI
 
 struct UploadConfirmationSheet: View {
 
     let recording: RecordingMeta
-    let channel: TeamsChannelRef
     /// Called with the remote filename when confirmed.
     let onConfirmed: (String) -> Void
     let onCancel: () -> Void
@@ -43,9 +42,6 @@ struct UploadConfirmationSheet: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.xl) {
-
-                    // Destination
-                    destinationSection
 
                     // File preview
                     filePreviewSection(remoteName: remoteName)
@@ -79,24 +75,6 @@ struct UploadConfirmationSheet: View {
     }
 
     // MARK: - Sections
-
-    private var destinationSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            Label("Destinasjon", systemImage: "folder")
-                .font(AppFont.pillLabel)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            HStack(spacing: AppSpacing.xs) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(AppColors.success)
-                    .font(.system(size: 12))
-                Text("Laster opp til: \(channel.displayName)")
-                    .font(AppFont.tableCell)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
 
     private func filePreviewSection(remoteName: String) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {

@@ -48,7 +48,6 @@ struct TeamsUploadSection: View {
                 if let channel {
                     UploadConfirmationSheet(
                         recording: recording,
-                        channel: channel,
                         onConfirmed: { remoteName in
                             showingConfirmationSheet = false
                             startUpload(channel: channel, remoteName: remoteName)

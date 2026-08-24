@@ -274,13 +274,26 @@ struct TranscriptionSettingsView: View {
                     Divider()
 
                     // Language picker
-                    LabeledContent("Språk") {
-                        Picker("", selection: $language) {
-                            Text("Bokmål").tag("no")
-                            Text("Nynorsk").tag("nn")
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("Språk") {
+                            Picker("", selection: $language) {
+                                Text("Bokmål").tag("no")
+                                Text("Nynorsk").tag("nn")
+                                Text("Auto (blandet språk)").tag("auto")
+                            }
+                            .labelsHidden()
+                            .frame(width: 180)
                         }
-                        .labelsHidden()
-                        .frame(width: 120)
+                        if language == "auto" {
+                            Text("""
+                            Modellen gjenkjenner språk automatisk per avsnitt. Bruk dette for opptak \
+                            med flere språk (f.eks. norsk og engelsk om hverandre) — tvunget språk gir \
+                            dårligere resultat på avsnitt som ikke er på det valgte språket.
+                            """)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     Divider()

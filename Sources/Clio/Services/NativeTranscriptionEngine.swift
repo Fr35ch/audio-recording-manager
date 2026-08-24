@@ -68,17 +68,34 @@ actor NativeTranscriptionEngine {
     /// bridge used to produce), with every segment's speaker set to
     /// `speakerLabel` (diarization, when it runs, overwrites this afterward
     /// — same convention as the old subprocess path).
+    ///
+    /// `language` is normally a fixed code ("no"/"nn") — Clio's primary use
+    /// case is single-language Norwegian interviews, and forcing the
+    /// language generally improves accuracy for that case. Pass the
+    /// sentinel value `"auto"` (surfaced in Settings as "Auto / blandet
+    /// språk") to instead let WhisperKit detect the language per segment —
+    /// needed for genuinely mixed-language recordings, where forcing one
+    /// language causes the model to garble or give up on segments spoken
+    /// in the other language (observed as literal, non-special-token
+    /// placeholder text like "<|nocaptions|>" leaking into the output —
+    /// a known Whisper-family hallucination pattern for audio that
+    /// doesn't match the forced language, not a bug in this decode path).
     func transcribe(
         wavPath: String, language: String, speakerLabel: String, durationSeconds: Double
     ) async throws -> TranscriptionResult {
         let whisperKit = try await ensureLoaded()
 
         var options = DecodingOptions()
-        options.language = language
+        if language == "auto" {
+            options.language = nil
+            options.detectLanguage = true
+        } else {
+            options.language = language
+            options.detectLanguage = false
+        }
         options.wordTimestamps = true
         options.task = .transcribe
         options.usePrefillPrompt = true
-        options.detectLanguage = false
         // Without this, per-segment `text` includes raw special tokens
         // (<|startoftranscript|>, <|no|>, <|transcribe|>, timestamp tokens,
         // <|endoftext|>) that would otherwise leak into the transcript
@@ -132,7 +149,7 @@ actor NativeTranscriptionEngine {
                         confidence: Double(w.probability))
                     words.append(word)
                 }
-                let trimmedText = seg.text.trimmingCharacters(in: CharacterSet.whitespaces)
+                let trimmedText = Self.sanitize(seg.text)
                 let confidence: Double = max(0, min(1, 1.0 + Double(seg.avgLogprob)))
                 let segment = TranscriptionSegment(
                     id: segId,
@@ -147,5 +164,28 @@ actor NativeTranscriptionEngine {
             }
         }
         return segments
+    }
+
+    /// Known NB-Whisper hallucination artifact: literal placeholder text
+    /// the model sometimes predicts for audio it can't confidently
+    /// transcribe (mismatched/forced language, heavy accent, cross-talk).
+    /// This is not a special/control token — `skipSpecialTokens` cannot
+    /// filter it, since it doesn't exist as a discrete token in the
+    /// bundled tokenizer at all (confirmed by inspecting tokenizer.json);
+    /// it's ordinary vocabulary the model was trained to emit for
+    /// caption-less segments in its training data. Strip it outright
+    /// rather than show it to researchers as if it were real transcript
+    /// content. If nothing legible remains, mark the gap explicitly so
+    /// it's clear (with real timing) that something is missing, rather
+    /// than silently disappearing.
+    private static let knownHallucinationMarkers = ["<|nocaptions|>"]
+
+    private static func sanitize(_ rawText: String) -> String {
+        var text = rawText
+        for marker in knownHallucinationMarkers {
+            text = text.replacingOccurrences(of: marker, with: "")
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "[uklart lydavsnitt]" : trimmed
     }
 }

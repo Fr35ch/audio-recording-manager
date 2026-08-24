@@ -155,6 +155,11 @@ struct TranscriptionSettingsView: View {
                                 Text("Bruk dette når du analyserer talemønstre eller trenger fullstendig kilde.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
+                                if !NativeTranscriptionEngine.isVerbatimBundled {
+                                    Text("Ordrett-modellen er ikke bygget inn i denne versjonen ennå — bruker standardmodellen i mellomtiden.")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.orange)
+                                }
                             } else {
                                 Text("Fyllord (ehm, liksom), nøling og gjentakelser fjernes automatisk. Gir flytende tekst klar for analyse.")
                                     .font(.system(size: 11))

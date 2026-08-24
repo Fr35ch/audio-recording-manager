@@ -312,7 +312,7 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         let duration = await audioDuration(url: wavURL)
         let result = try await NativeTranscriptionEngine.shared.transcribe(
             wavPath: wavURL.path, language: language, speakerLabel: "SPEAKER_0",
-            durationSeconds: duration)
+            durationSeconds: duration, verbatim: verbatim)
 
         DispatchQueue.main.async {
             self.progress = 1.0
@@ -346,7 +346,7 @@ final class TranscriptionService: ObservableObject, @unchecked Sendable {
         let duration = await audioDuration(url: wavURL)
         var result = try await NativeTranscriptionEngine.shared.transcribe(
             wavPath: wavURL.path, language: language, speakerLabel: speakerLabel,
-            durationSeconds: duration)
+            durationSeconds: duration, verbatim: verbatim)
 
         result.metadata.diarizationRun = true  // channel split IS our diarization
         return result

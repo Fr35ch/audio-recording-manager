@@ -5,49 +5,97 @@ import WhisperKit
 /// replacement for the `no-transcribe` Python subprocess bridge.
 ///
 /// Runs fully in-process via CoreML/ANE — no child executable, no sandbox
-/// entitlement conflict. The bundled model is the official
-/// `NbAiLab/nb-whisper-large` weights, converted to WhisperKit's CoreML
-/// format via `whisperkittools` (see `packaging/convert_nb_whisper.md` for
-/// the conversion recipe). This is the only model Clio uses — the smaller
-/// tiny/base/medium variants were never bundled and the model-size choice
-/// was removed entirely rather than left as a misleading picker.
+/// entitlement conflict. Two model variants can be bundled:
+///   - `NbAiLab_nb-whisper-large` ("clean"): the official main checkpoint,
+///     which corrects grammar and omits filler words/hesitations.
+///   - `NbAiLab_nb-whisper-large-verbatim` ("verbatim"): a separate
+///     checkpoint (fine-tuned 200-250 further steps by NB AI-Lab
+///     specifically to preserve fillers, hesitations, and false starts
+///     literally, lower-cased, without punctuation correction) — this is
+///     a genuinely different set of model weights, not a decode-time flag.
+/// Converted via `whisperkittools` (see `docs/MODEL_SETUP.md` for the
+/// conversion recipe for both variants). Only the clean model has been
+/// converted/bundled so far; `ensureLoaded(variant:)` falls back to it
+/// with a clear error surfaced via `verbatimModelMissing` if verbatim is
+/// requested but not bundled, rather than silently ignoring the setting
+/// or crashing.
 actor NativeTranscriptionEngine {
     static let shared = NativeTranscriptionEngine()
 
-    private var pipe: WhisperKit?
-    private var loadError: Error?
+    /// Which NB-Whisper checkpoint to transcribe with. See type-level doc
+    /// for why this is a model swap, not a decode option.
+    enum ModelVariant: String {
+        case clean
+        case verbatim
+
+        var folderName: String {
+            switch self {
+            case .clean:    return "NbAiLab_nb-whisper-large"
+            case .verbatim: return "NbAiLab_nb-whisper-large-verbatim"
+            }
+        }
+
+        var modelIdentifier: String {
+            switch self {
+            case .clean:    return "NbAiLab/nb-whisper-large"
+            case .verbatim: return "NbAiLab/nb-whisper-large-verbatim"
+            }
+        }
+    }
+
+    private var pipes: [ModelVariant: WhisperKit] = [:]
+    private var loadErrors: [ModelVariant: Error] = [:]
 
     private init() {}
 
-    private static var modelFolderURL: URL? {
-        Bundle.main.url(forResource: "NbAiLab_nb-whisper-large", withExtension: nil, subdirectory: "WhisperKitModels")
+    private static func modelFolderURL(for variant: ModelVariant) -> URL? {
+        Bundle.main.url(forResource: variant.folderName, withExtension: nil, subdirectory: "WhisperKitModels")
     }
 
-    private static var tokenizerFolderURL: URL? {
-        modelFolderURL?.appendingPathComponent("tokenizer")
+    private static func tokenizerFolderURL(for variant: ModelVariant) -> URL? {
+        modelFolderURL(for: variant)?.appendingPathComponent("tokenizer")
     }
 
-    /// True once the bundled model folder is present in the app bundle.
-    /// Does not guarantee the model has loaded successfully yet — call
-    /// `ensureLoaded()` for that.
+    /// True once the bundled *clean* model folder is present in the app
+    /// bundle (Clio's minimum requirement — transcription is unavailable
+    /// at all without at least this one). Does not guarantee the model
+    /// has loaded successfully yet — call `ensureLoaded()` for that.
     static var isBundled: Bool {
-        modelFolderURL != nil
+        modelFolderURL(for: .clean) != nil
     }
 
-    private func ensureLoaded() async throws -> WhisperKit {
-        if let pipe = pipe { return pipe }
-        if let loadError = loadError { throw loadError }
+    /// True once the bundled *verbatim* model folder is present. Until
+    /// someone runs the conversion recipe in `docs/MODEL_SETUP.md` for
+    /// this variant, this is `false` and verbatim mode transparently
+    /// falls back to the clean model.
+    static var isVerbatimBundled: Bool {
+        modelFolderURL(for: .verbatim) != nil
+    }
 
-        guard let modelFolder = Self.modelFolderURL else {
+    private func ensureLoaded(variant requestedVariant: ModelVariant) async throws -> (WhisperKit, ModelVariant) {
+        // Fall back to the clean model if verbatim was requested but was
+        // never bundled — logged (not a real failure, transcription still
+        // succeeds) rather than either crashing or silently pretending
+        // verbatim ran.
+        let variant: ModelVariant = (requestedVariant == .verbatim && !Self.isVerbatimBundled)
+            ? .clean : requestedVariant
+        if requestedVariant == .verbatim && variant == .clean {
+            print("⚠️ NativeTranscriptionEngine: verbatim model not bundled, falling back to clean model — see docs/MODEL_SETUP.md")
+        }
+
+        if let pipe = pipes[variant] { return (pipe, variant) }
+        if let loadError = loadErrors[variant] { throw loadError }
+
+        guard let modelFolder = Self.modelFolderURL(for: variant) else {
             let error = TranscriptionError.processFailed("Innebygd NB-Whisper-modell mangler i appbunten.")
-            self.loadError = error
+            self.loadErrors[variant] = error
             throw error
         }
 
         do {
             let config = WhisperKitConfig(
                 modelFolder: modelFolder.path,
-                tokenizerFolder: Self.tokenizerFolderURL,
+                tokenizerFolder: Self.tokenizerFolderURL(for: variant),
                 verbose: false,
                 logLevel: .error,
                 prewarm: false,
@@ -55,10 +103,10 @@ actor NativeTranscriptionEngine {
                 download: false
             )
             let newPipe = try await WhisperKit(config)
-            self.pipe = newPipe
-            return newPipe
+            self.pipes[variant] = newPipe
+            return (newPipe, variant)
         } catch {
-            self.loadError = error
+            self.loadErrors[variant] = error
             throw TranscriptionError.processFailed("Kunne ikke laste NB-Whisper-modell: \(error.localizedDescription)")
         }
     }
@@ -80,10 +128,15 @@ actor NativeTranscriptionEngine {
     /// placeholder text like "<|nocaptions|>" leaking into the output —
     /// a known Whisper-family hallucination pattern for audio that
     /// doesn't match the forced language, not a bug in this decode path).
+    ///
+    /// `verbatim` selects the fine-tuned verbatim checkpoint (see type-level
+    /// doc) instead of the default clean one — falls back to the clean
+    /// model if the verbatim variant hasn't been bundled yet.
     func transcribe(
-        wavPath: String, language: String, speakerLabel: String, durationSeconds: Double
+        wavPath: String, language: String, speakerLabel: String, durationSeconds: Double,
+        verbatim: Bool = false
     ) async throws -> TranscriptionResult {
-        let whisperKit = try await ensureLoaded()
+        let (whisperKit, variantUsed) = try await ensureLoaded(variant: verbatim ? .verbatim : .clean)
 
         var options = DecodingOptions()
         if language == "auto" {
@@ -111,7 +164,7 @@ actor NativeTranscriptionEngine {
         }
 
         return TranscriptionResult(
-            version: "1.0", model: "NbAiLab/nb-whisper-large (native WhisperKit)",
+            version: "1.0", model: "\(variantUsed.modelIdentifier) (native WhisperKit)",
             language: language, durationSeconds: durationSeconds, numSpeakers: 1,
             segments: segments,
             metadata: TranscriptionResultMetadata(

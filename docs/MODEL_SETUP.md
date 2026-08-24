@@ -59,6 +59,47 @@ done
 `NativeTranscriptionEngine.swift` looks these up via
 `Bundle.main.url(forResource: "NbAiLab_nb-whisper-large", withExtension: nil, subdirectory: "WhisperKitModels")`.
 
+## 1b. NB-Whisper-large-verbatim (optional — "Ordrett" transcription mode)
+
+`NbAiLab/nb-whisper-large-verbatim` is a **separate model checkpoint**
+(fine-tuned 200-250 additional steps from the main model above by NB
+AI-Lab specifically to preserve fillers, hesitations, and false starts
+literally, lower-cased and without punctuation correction) — not a
+decode-time flag on the main model. This is why the "Ordrett" (verbatim)
+setting in Transkripsjon-innstillinger needs its own bundled model to
+actually do anything; without it, `NativeTranscriptionEngine` transparently
+falls back to the clean model and logs a warning.
+
+**This model has not been converted/bundled as of this writing** — it was
+lost when the app moved from the Python `no-transcribe` subprocess (which
+switched between two model checkpoints for renset/verbatim) to the native
+WhisperKit port (which only ever bundled the clean checkpoint). Converting
+it follows the exact same recipe as §1, substituting the verbatim repo:
+
+```bash
+# (reuse the venv/whisperkittools checkout from §1)
+whisperkit-generate-model \
+  --model-version NbAiLab/nb-whisper-large-verbatim \
+  --output-dir /tmp/whisper-output
+
+mkdir -p Resources/WhisperKitModels/NbAiLab_nb-whisper-large-verbatim
+cp -R /tmp/whisper-output/NbAiLab_nb-whisper-large-verbatim/MelSpectrogram.mlmodelc \
+      /tmp/whisper-output/NbAiLab_nb-whisper-large-verbatim/AudioEncoder.mlmodelc \
+      /tmp/whisper-output/NbAiLab_nb-whisper-large-verbatim/TextDecoder.mlmodelc \
+      Resources/WhisperKitModels/NbAiLab_nb-whisper-large-verbatim/
+
+mkdir -p Resources/WhisperKitModels/NbAiLab_nb-whisper-large-verbatim/tokenizer
+cd Resources/WhisperKitModels/NbAiLab_nb-whisper-large-verbatim/tokenizer
+for f in tokenizer.json tokenizer_config.json vocab.json merges.txt \
+         added_tokens.json special_tokens_map.json generation_config.json config.json; do
+  curl -fsSL "https://huggingface.co/NbAiLab/nb-whisper-large-verbatim/resolve/main/$f" -o "$f"
+done
+```
+
+`NativeTranscriptionEngine.isVerbatimBundled` reflects whether this second
+model folder is present; once bundled, the "Ordrett" setting will actually
+switch to it instead of silently using the clean model.
+
 ## 2. NbAiLab/nb-bert-base-ner (anonymization — BERT NER)
 
 Converts the official `NbAiLab/nb-bert-base-ner` weights to a CoreML

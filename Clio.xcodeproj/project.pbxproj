@@ -20,9 +20,7 @@
 		15398FA9751B16DEC921258B /* RecordingExpiryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46946E8D385F3AFCB3523042 /* RecordingExpiryManager.swift */; };
 		155861C74CBFD44B56ACE200 /* TranscriptionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */; };
 		1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */; };
-		FAA03A32A2A74A399C028426 /* NBBertNER.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = B6F97FBE5D5D459CB2D1A25D /* NBBertNER.mlmodelc */; };
 		489EB2575BE64D78957E2657 /* NBBertNER-tokenizer in Resources */ = {isa = PBXBuildFile; fileRef = F260A9A4E53345BB87FC82CE /* NBBertNER-tokenizer */; };
-		0AC73FE06EB94396AE3915EC /* WhisperKitModels in Resources */ = {isa = PBXBuildFile; fileRef = 7C56456B53AF469585F2CF75 /* WhisperKitModels */; };
 		EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */ = {isa = PBXBuildFile; fileRef = A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */; };
 		2B196515E23B41E0AABB7C1F /* ambiguous_names.txt in Resources */ = {isa = PBXBuildFile; fileRef = D2B9719F830A43749A975590 /* ambiguous_names.txt */; };
 		1BC619DAFC4AEA3D636B419D /* TranscriptionResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */; };
@@ -495,6 +493,7 @@
 				A1B2C3D4E5F60001A1B2C3D4 /* Inject Git Commit Hash */,
 				BA61BE75D51E7198564D984F /* Sources */,
 				D3CB5A1E36CCD9C10CA4B983 /* Resources */,
+				B2C3D4E5F60002B2C3D4E5F6 /* Link Model Resources */,
 				F53B9310441BD6031D40EDF8 /* Frameworks */,
 			);
 			buildRules = (
@@ -549,9 +548,7 @@
 			files = (
 				760BAF2F1ECA924DD1791C5F /* Assets.xcassets in Resources */,
 				8A08187DF0D956FADD0ADE35 /* README.md in Resources */,
-				FAA03A32A2A74A399C028426 /* NBBertNER.mlmodelc in Resources */,
 				489EB2575BE64D78957E2657 /* NBBertNER-tokenizer in Resources */,
-				0AC73FE06EB94396AE3915EC /* WhisperKitModels in Resources */,
 				5966749827B677DE2B52979B /* ssb_etternavn.txt in Resources */,
 				32BC3A4A7408255CD737F67C /* ssb_fornavn.txt in Resources */,
 				EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */,
@@ -579,6 +576,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\nexit 0\n";
+			showEnvVarsInLog = 0;
+		};
+		B2C3D4E5F60002B2C3D4E5F6 /* Link Model Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Resources/WhisperKitModels",
+				"$(SRCROOT)/Resources/NBBertNER.mlmodelc",
+			);
+			name = "Link Model Resources";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/WhisperKitModels",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/NBBertNER.mlmodelc",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nDST_DIR=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DST_DIR\"\n\nlink_or_copy() {\n  local src=\"$1\"\n  local dst=\"$2\"\n  rm -rf \"$dst\"\n  if [ \"$CONFIGURATION\" = \"Debug\" ] && [ \"$ACTION\" != \"install\" ]; then\n    ln -s \"$src\" \"$dst\"\n  else\n    ditto \"$src\" \"$dst\"\n  fi\n}\n\nlink_or_copy \"$SRCROOT/Resources/WhisperKitModels\" \"$DST_DIR/WhisperKitModels\"\nlink_or_copy \"$SRCROOT/Resources/NBBertNER.mlmodelc\" \"$DST_DIR/NBBertNER.mlmodelc\"\nexit 0\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

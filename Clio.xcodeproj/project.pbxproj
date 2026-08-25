@@ -607,7 +607,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nDST_DIR=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DST_DIR\"\n\nlink_or_copy() {\n  local src=\"$1\"\n  local dst=\"$2\"\n  rm -rf \"$dst\"\n  if [ \"$CONFIGURATION\" = \"Debug\" ] && [ \"$ACTION\" != \"install\" ]; then\n    ln -s \"$src\" \"$dst\"\n  else\n    ditto \"$src\" \"$dst\"\n  fi\n}\n\nlink_or_copy \"$SRCROOT/Resources/WhisperKitModels\" \"$DST_DIR/WhisperKitModels\"\nlink_or_copy \"$SRCROOT/Resources/NBBertNER.mlmodelc\" \"$DST_DIR/NBBertNER.mlmodelc\"\nexit 0\n";
+			shellScript = "set -e\nDST_DIR=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DST_DIR\"\n\n# Sandboxed builds can't follow symlinks outside the container, so use an\n# APFS clonefile copy instead: a real file the sandbox can read, but one\n# that shares disk blocks with the source (copy-on-write) until either\n# side is modified, so it costs near-zero extra space same-volume while\n# gracefully falling back to a full copy cross-volume (e.g. archiving).\nclone_or_copy() {\n  local src=\"$1\"\n  local dst=\"$2\"\n  rm -rf \"$dst\"\n  cp -c -R -L \"$src\" \"$dst\"\n}\n\nclone_or_copy \"$SRCROOT/Resources/WhisperKitModels\" \"$DST_DIR/WhisperKitModels\"\nclone_or_copy \"$SRCROOT/Resources/NBBertNER.mlmodelc\" \"$DST_DIR/NBBertNER.mlmodelc\"\nexit 0\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

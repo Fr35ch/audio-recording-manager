@@ -18,6 +18,12 @@
 # this script provides. See docs/decisions/adr/ for the full writeup if one
 # exists, or the git history of this file for context.
 #
+# The Clio scheme's Archive pre-action guards against exactly this mistake:
+# it aborts immediately with a clear error if CLIO_ARCHIVE_VIA_SCRIPT isn't
+# set, rather than letting Xcode grind through a doomed compile and surface
+# a wall of confusing Float16 errors in FluidAudio at the very end. This
+# script sets that flag before invoking xcodebuild.
+#
 # Usage:
 #   ./scripts/archive.sh                  # archive to build/Clio.xcarchive
 #   ./scripts/archive.sh /path/to/out.xcarchive
@@ -36,6 +42,8 @@ ARCHIVE_PATH="${1:-$PROJECT_ROOT/build/Clio.xcarchive}"
 mkdir -p "$(dirname "$ARCHIVE_PATH")"
 
 echo "Archiving Clio to: $ARCHIVE_PATH"
+
+export CLIO_ARCHIVE_VIA_SCRIPT=1
 
 xcodebuild \
   -project "$PROJECT_ROOT/Clio.xcodeproj" \

@@ -83,5 +83,14 @@
    <ArchiveAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Guard: require scripts/archive.sh"
+               scriptText = "if [ -z &quot;$CLIO_ARCHIVE_VIA_SCRIPT&quot; ]; then&#10;  echo &quot;error: Do not use Xcode's Product &gt; Archive menu directly.&quot;&#10;  echo &quot;error: FluidAudio (a dependency) has Float16 usage that fails to compile for x86_64, even though Clio itself is arm64-only -- Xcode's native Archive action always builds package dependencies for both architectures regardless of Clio's own build settings.&quot;&#10;  echo &quot;error: Run ./scripts/archive.sh from Terminal instead -- it passes the required architecture override directly to xcodebuild, which is the only way that reliably reaches package sub-targets.&quot;&#10;  exit 1&#10;fi&#10;exit 0&#10;">
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
    </ArchiveAction>
 </Scheme>

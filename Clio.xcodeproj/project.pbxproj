@@ -95,6 +95,7 @@
 		AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */; };
 		B68312AE2CD9340004EE100F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E0CED9013697E6080B4188 /* main.swift */; };
 		B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */; };
+		3705B8F7DF8B4A0DB2FC4ED9 /* AnonymizationConfirmationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */; };
 		B94C8B054AF3D29E3631426E /* RecordingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */; };
 		BAA0A72D0DA18702BC074BFF /* TeamsUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */; };
 		BD37FDC476964258943BD4FD /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D9DC657F2709B54C9B527F /* TranscriptionService.swift */; };
@@ -143,6 +144,7 @@
 		32541EEA8F75B332CCC2E366 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		3446604405B6754884CBEE54 /* StorageLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLayout.swift; sourceTree = "<group>"; };
 		35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogger.swift; sourceTree = "<group>"; };
+		0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationConfirmationService.swift; sourceTree = "<group>"; };
 		36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionRunner.swift; sourceTree = "<group>"; };
 		3879A692A181A0FB1706694B /* AnonymizationModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationModal.swift; sourceTree = "<group>"; };
 		3CCF68B04B237C98F3509C43 /* SpeakerAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAlignment.swift; sourceTree = "<group>"; };
@@ -473,6 +475,7 @@
 				4C4A1FCFD71EDCBFBB130D76 /* AudioPlayer.swift */,
 				1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */,
 				35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */,
+				0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */,
 				6A37C20B0212318DB8A52FF4 /* FluidDiarizationService.swift */,
 				9D82CA89E0B0496F8DF1AF64 /* NameDetector.swift */,
 				E9EE8D5882CD2DBB99E27BB8 /* RecordingsManager.swift */,
@@ -645,6 +648,7 @@
 				BF39F5C2BF8B1891B0E33276 /* AudioRecorder.swift in Sources */,
 				D34F3B512D9324C5FF983E63 /* AuditLogViewer.swift in Sources */,
 				B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */,
+				3705B8F7DF8B4A0DB2FC4ED9 /* AnonymizationConfirmationService.swift in Sources */,
 				0C98E65F1306C3FA64458777 /* AvidentExceptionsView.swift in Sources */,
 				06F0AE2EA49C43C3A64449AA /* AvidentifiseringBekreftSection.swift in Sources */,
 				004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */,

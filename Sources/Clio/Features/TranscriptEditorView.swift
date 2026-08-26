@@ -100,10 +100,8 @@ struct TranscriptEditorView: View {
                 segmentContent
             }
 
-            if case .completed = anonymizationState {
-                Divider()
-                signOffBar
-            }
+            Divider()
+            signOffBar
 
             Divider()
             audioControls
@@ -523,6 +521,11 @@ struct TranscriptEditorView: View {
 
     // MARK: - Sign-off bar
 
+    private var editorArmToolRan: Bool {
+        if case .completed = anonymizationState { return true }
+        return false
+    }
+
     private var signOffBar: some View {
         HStack(spacing: AppSpacing.md) {
             if let date = researcherConfirmedAt {
@@ -534,7 +537,10 @@ struct TranscriptEditorView: View {
             } else {
                 Image(systemName: "exclamationmark.circle")
                     .foregroundStyle(AppColors.warning)
-                Text("Gjennomgå den avidentifiserte teksten og bekreft at den er klar for deling.")
+                Text(editorArmToolRan
+                    ? "Gjennomgå den avidentifiserte teksten og bekreft at den er klar for deling."
+                    : "Avidentifiser transkripsjonen med Clio-verktøyet eller manuelt, og bekreft før deling."
+                )
                     .font(.clioCaption)
                     .foregroundStyle(.secondary)
             }
@@ -543,7 +549,7 @@ struct TranscriptEditorView: View {
 
             if researcherConfirmedAt == nil {
                 Button("Godkjenn og signer") {
-                    confirmSignOff()
+                    Task { await confirmSignOff() }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppColors.success)
@@ -615,17 +621,22 @@ struct TranscriptEditorView: View {
         }
     }
 
-    private func confirmSignOff() {
+    private func confirmSignOff() async {
+        // Ensure any pending segment edits are flushed to transcript.txt
+        // before confirming — AnonymizationConfirmationService reads that
+        // file from disk when the automatic tool hasn't run, and
+        // editor.save() is otherwise fire-and-forget from segment edits
+        // (Task { await editor.save() }), so without this a confirm
+        // immediately after an edit could read stale content.
+        if editor.isDirty {
+            await editor.save()
+        }
         do {
-            _ = try RecordingStore.shared.updateMeta(id: recordingId) { meta in
-                meta.anonymization.researcherConfirmedAt = Date()
-            }
-            researcherConfirmedAt = Date()
-            AuditLogger.shared.logAnonymizationConfirmedByResearcher(
-                recordingId: recordingId,
-                armToolUsed: true
-            )
-        } catch {}
+            let updated = try AnonymizationConfirmationService.confirm(recordingId: recordingId)
+            researcherConfirmedAt = updated.anonymization.researcherConfirmedAt
+        } catch {
+            print("⚠️ TranscriptEditorView: confirmSignOff failed: \(error)")
+        }
     }
 
     private func saveAnonymizationOverride(segmentId: Int, text: String) {

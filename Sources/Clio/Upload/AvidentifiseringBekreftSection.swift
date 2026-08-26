@@ -125,13 +125,12 @@ struct AvidentifiseringBekreftSection: View {
     // MARK: - Action
 
     private func confirmSignOff() {
-        var updated = recording
-        updated.anonymization.researcherConfirmedAt = Date()
-        AuditLogger.shared.logAnonymizationConfirmedByResearcher(
-            recordingId: recording.id,
-            armToolUsed: recording.anonymization.status == .done
-        )
-        onMetaChanged(updated)
+        do {
+            let updated = try AnonymizationConfirmationService.confirm(recordingId: recording.id)
+            onMetaChanged(updated)
+        } catch {
+            print("⚠️ AvidentifiseringBekreftSection: confirmSignOff failed: \(error)")
+        }
     }
 
     private func revokeSignOff() {

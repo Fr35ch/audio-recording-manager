@@ -42,6 +42,7 @@
 		55C22DDDCE30FCD76E71070F /* SystemRequirement.swift in Sources */ = {isa = PBXBuildFile; fileRef = D938E21935718834F5E99700 /* SystemRequirement.swift */; };
 		5785CAE4A17277F39970D590 /* UploadConfirmationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */; };
 		5966749827B677DE2B52979B /* ssb_etternavn.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */; };
+		CB36A3B74D3245029C857E18 /* clio-wordmark.svg in Resources */ = {isa = PBXBuildFile; fileRef = 2B39AA3681454504BC555552 /* clio-wordmark.svg */; };
 		6426B2926066C6E9E9BC02AF /* WindowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEF871688C33263B5B373A1 /* WindowChrome.swift */; };
 		65F51659423C9E55705D1265 /* TranscriptPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240ED3C214FA76EBE21534FB /* TranscriptPlaybackController.swift */; };
 		6622EF9EA5E86C4DF08D49EB /* BibliotekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CD9F48562B1E4D9CAE8204 /* BibliotekView.swift */; };
@@ -132,6 +133,7 @@
 		1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		240ED3C214FA76EBE21534FB /* TranscriptPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPlaybackController.swift; sourceTree = "<group>"; };
 		26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ssb_etternavn.txt; sourceTree = "<group>"; };
+		2B39AA3681454504BC555552 /* clio-wordmark.svg */ = {isa = PBXFileReference; lastKnownFileType = text; path = "clio-wordmark.svg"; sourceTree = "<group>"; };
 		283BC0325526BEA992ADAABB /* ssb_fornavn.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ssb_fornavn.txt; sourceTree = "<group>"; };
 		295DAF8A4A6CE458A450CCD6 /* SplashWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashWindowController.swift; sourceTree = "<group>"; };
 		2C7566B03272F645096D2C74 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
@@ -355,6 +357,7 @@
 				89E722BD634E4B0A4570CA82 /* Assets.xcassets */,
 				26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */,
 				283BC0325526BEA992ADAABB /* ssb_fornavn.txt */,
+				2B39AA3681454504BC555552 /* clio-wordmark.svg */,
 				A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */,
 				D2B9719F830A43749A975590 /* ambiguous_names.txt */,
 			);
@@ -575,6 +578,7 @@
 				32BC3A4A7408255CD737F67C /* ssb_fornavn.txt in Resources */,
 				EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */,
 				2B196515E23B41E0AABB7C1F /* ambiguous_names.txt in Resources */,
+				CB36A3B74D3245029C857E18 /* clio-wordmark.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -748,7 +752,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\n' \"$BRANCH\" \"$HASH\" > \"$INFO\"\nexit 0\n";
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nBUILDDATE=$(date -u +%Y-%m-%d)\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :ClioBuildDate $BUILDDATE\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :ClioBuildDate string $BUILDDATE\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\ndate=%s\\n' \"$BRANCH\" \"$HASH\" \"$BUILDDATE\" > \"$INFO\"\nexit 0\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */

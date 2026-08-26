@@ -26,6 +26,8 @@
 		004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */; };
 		016B08B47F6082716F4FE157 /* RTFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */; };
 		058EC16989E792B0E4BB0BEA /* TeamsUploadSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACF6CDE7330324D188AFDB1 /* TeamsUploadSection.swift */; };
+		FF4B41E9A4244A7D9FFEA928 /* TranscriptDownloadSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C1DDEA7CD64F68A9A35FFB /* TranscriptDownloadSection.swift */; };
+		1FC94317666F4B14AAC241E0 /* TranscriptDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E52F13523CAE450BB1B8B9D7 /* TranscriptDownloadService.swift */; };
 		06F0AE2EA49C43C3A64449AA /* AvidentifiseringBekreftSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423E0293D3B07AF455076894 /* AvidentifiseringBekreftSection.swift */; };
 		06F95C989475654B8E23FDFC /* RecordingMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = D768BD447F094B7EEEF3703D /* RecordingMeta.swift */; };
 		0C98E65F1306C3FA64458777 /* AvidentExceptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FC4F5E2A28A5F9F8C05CC60 /* AvidentExceptionsView.swift */; };
@@ -134,6 +136,8 @@
 		2C7566B03272F645096D2C74 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		2D4A2E74385EFFDBEB2D6968 /* DesignShowcaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignShowcaseView.swift; sourceTree = "<group>"; };
 		2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsUploadService.swift; sourceTree = "<group>"; };
+		06C1DDEA7CD64F68A9A35FFB /* TranscriptDownloadSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptDownloadSection.swift; sourceTree = "<group>"; };
+		E52F13523CAE450BB1B8B9D7 /* TranscriptDownloadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptDownloadService.swift; sourceTree = "<group>"; };
 		2E3B184AB414FBCEE5CB44BA /* DependencyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyManager.swift; sourceTree = "<group>"; };
 		2F0AD2FAD7EAB666D8487EAB /* SystemRequirementChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemRequirementChecker.swift; sourceTree = "<group>"; };
 		32541EEA8F75B332CCC2E366 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
@@ -306,6 +310,8 @@
 				DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */,
 				4ACF6CDE7330324D188AFDB1 /* TeamsUploadSection.swift */,
 				2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */,
+				06C1DDEA7CD64F68A9A35FFB /* TranscriptDownloadSection.swift */,
+				E52F13523CAE450BB1B8B9D7 /* TranscriptDownloadService.swift */,
 				8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */,
 				1372C3130700AA173FC44962 /* UploadGate.swift */,
 			);
@@ -560,6 +566,8 @@
 				389A09DEE35085948F39D9ED /* SystemRequirementChecker.swift in Sources */,
 				058EC16989E792B0E4BB0BEA /* TeamsUploadSection.swift in Sources */,
 				BAA0A72D0DA18702BC074BFF /* TeamsUploadService.swift in Sources */,
+				FF4B41E9A4244A7D9FFEA928 /* TranscriptDownloadSection.swift in Sources */,
+				1FC94317666F4B14AAC241E0 /* TranscriptDownloadService.swift in Sources */,
 				5327B917920C9F08CF05309D /* TranscriptEditorState.swift in Sources */,
 				AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */,
 				93BB38BF5E431D9C5E512A66 /* TranscriptEditorWindow.swift in Sources */,

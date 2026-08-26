@@ -101,32 +101,46 @@ enum RTFExporter {
     /// Presents a native save panel and writes the RTF on confirm.
     /// Returns the chosen URL on success, nil if the user cancelled
     /// or the write failed.
+    /// Presents a native save panel and writes the RTF on confirm.
+    /// `completion` receives the chosen URL on success, `nil` if the user
+    /// cancelled or the write failed.
+    ///
+    /// The panel presentation is deferred one run-loop tick via
+    /// `DispatchQueue.main.async` — see `TranscriptDownloadService.saveTXT`
+    /// for why calling `NSSavePanel.runModal()` synchronously from a
+    /// SwiftUI `Button` action doesn't work.
     @MainActor
-    static func save(document: Document, defaultFilename: String) -> URL? {
+    static func save(document: Document, defaultFilename: String, completion: @escaping (URL?) -> Void) {
         let data: Data
         do {
             data = try buildRTF(document: document)
         } catch {
             NSAlert(error: error).runModal()
-            return nil
+            completion(nil)
+            return
         }
 
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.rtf]
-        panel.nameFieldStringValue = defaultFilename
-        panel.canCreateDirectories = true
-        panel.title = "Eksporter avidentifisert transkripsjon"
-        panel.message =
-            "Velg hvor du vil lagre RTF-filen. Bruk OneDrive- eller Teams-mappen din om filen skal deles med studieleder."
+        DispatchQueue.main.async {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.rtf]
+            panel.nameFieldStringValue = defaultFilename
+            panel.canCreateDirectories = true
+            panel.title = "Eksporter avidentifisert transkripsjon"
+            panel.message =
+                "Velg hvor du vil lagre RTF-filen. Bruk OneDrive- eller Teams-mappen din om filen skal deles med studieleder."
 
-        guard panel.runModal() == .OK, let url = panel.url else { return nil }
+            guard panel.runModal() == .OK, let url = panel.url else {
+                completion(nil)
+                return
+            }
 
-        do {
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            NSAlert(error: error).runModal()
-            return nil
+            do {
+                try data.write(to: url, options: .atomic)
+                completion(url)
+            } catch {
+                NSAlert(error: error).runModal()
+                completion(nil)
+            }
         }
     }
 

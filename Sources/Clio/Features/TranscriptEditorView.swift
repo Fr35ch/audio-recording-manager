@@ -27,20 +27,11 @@ private func colorForSpeaker(_ speaker: String) -> Color {
 }
 
 private func formatTimestamp(_ seconds: Double) -> String {
-    let m = Int(seconds) / 60
-    let s = Int(seconds) % 60
-    return String(format: "%d:%02d", m, s)
+    TranscriptionSegment.formatTimestamp(seconds)
 }
 
 private func shortSpeakerLabel(_ speaker: String) -> String {
-    if speaker.hasPrefix("SPEAKER_"), let num = Int(speaker.dropFirst(8)) {
-        return "T\(num + 1)"
-    }
-    switch speaker {
-    case "INTERVJUER": return "Intervjuer"
-    case "INFORMANT":  return "Informant"
-    default: return speaker
-    }
+    TranscriptionSegment.shortSpeakerLabel(speaker)
 }
 
 // MARK: - AnonymizationState

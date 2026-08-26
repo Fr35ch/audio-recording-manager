@@ -93,25 +93,29 @@ struct TranscriptDownloadSection: View {
 
             HStack(spacing: 8) {
                 Button("Last ned som TXT") {
-                    if let url = TranscriptDownloadService.saveTXT(recording: recording) {
-                        lastSavedURL = url
-                        AuditLogger.shared.logTranscriptExported(
-                            recordingId: recording.id.uuidString,
-                            format: "txt",
-                            filenameHint: url.lastPathComponent
-                        )
+                    TranscriptDownloadService.saveTXT(recording: recording) { url in
+                        if let url = url {
+                            lastSavedURL = url
+                            AuditLogger.shared.logTranscriptExported(
+                                recordingId: recording.id.uuidString,
+                                format: "txt",
+                                filenameHint: url.lastPathComponent
+                            )
+                        }
                     }
                 }
                 .buttonStyle(PillButtonStyle(variant: .primary))
 
                 Button("Last ned som RTF") {
-                    if let url = TranscriptDownloadService.saveRTF(recording: recording) {
-                        lastSavedURL = url
-                        AuditLogger.shared.logTranscriptExported(
-                            recordingId: recording.id.uuidString,
-                            format: "rtf",
-                            filenameHint: url.lastPathComponent
-                        )
+                    TranscriptDownloadService.saveRTF(recording: recording) { url in
+                        if let url = url {
+                            lastSavedURL = url
+                            AuditLogger.shared.logTranscriptExported(
+                                recordingId: recording.id.uuidString,
+                                format: "rtf",
+                                filenameHint: url.lastPathComponent
+                            )
+                        }
                     }
                 }
                 .buttonStyle(PillButtonStyle(variant: .secondary))

@@ -22,6 +22,30 @@ struct TranscriptionSegment: Codable, Identifiable {
     var speaker: String
     let confidence: Double
     let words: [TranscriptionWord]
+
+    /// Formats a segment start time as "m:ss", e.g. `75` → `"1:15"`.
+    /// Shared between the transcript editor's inline display and
+    /// transcript exports so timestamps read identically everywhere.
+    static func formatTimestamp(_ seconds: Double) -> String {
+        let m = Int(seconds) / 60
+        let s = Int(seconds) % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    /// Converts a raw speaker identifier (`"SPEAKER_0"`, `"INTERVJUER"`, …)
+    /// into the short label shown in the UI (`"T1"`, `"Intervjuer"`, …).
+    /// Shared between the transcript editor's inline display and
+    /// transcript exports so speaker labels read identically everywhere.
+    static func shortSpeakerLabel(_ speaker: String) -> String {
+        if speaker.hasPrefix("SPEAKER_"), let num = Int(speaker.dropFirst(8)) {
+            return "T\(num + 1)"
+        }
+        switch speaker {
+        case "INTERVJUER": return "Intervjuer"
+        case "INFORMANT":  return "Informant"
+        default: return speaker
+        }
+    }
 }
 
 // MARK: - Metadata

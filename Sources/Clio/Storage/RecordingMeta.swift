@@ -126,6 +126,27 @@ struct AnonymizationMeta: Codable, Equatable {
         self.stats = stats
         self.researcherConfirmedAt = researcherConfirmedAt
     }
+
+    /// Human-readable Norwegian summary of redaction counts by category,
+    /// e.g. "3 navn, 1 stedsnavn fjernet". Shared between the de-identification
+    /// sheet's status line and the anonymized-transcript export (RTF) stats line.
+    static func statsSummary(_ stats: [String: Int]) -> String {
+        let parts = stats.compactMap { (key, count) -> String? in
+            guard count > 0 else { return nil }
+            switch key {
+            case "NAVN": return "\(count) navn"
+            case "TELEFON": return "\(count) telefonnummer"
+            case "FØDSELSNUMMER": return "\(count) fødselsnummer"
+            case "D-NUMMER": return "\(count) d-nummer"
+            case "EPOST": return "\(count) e-postadresse"
+            case "ORG": return "\(count) organisasjon"
+            case "STED": return "\(count) stedsnavn"
+            default: return "\(count) \(key.lowercased())"
+            }
+        }
+        if parts.isEmpty { return "ingen identifiserende informasjon funnet" }
+        return parts.joined(separator: ", ") + " fjernet"
+    }
 }
 
 struct UploadMeta: Codable, Equatable {
@@ -236,9 +257,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
     /// Set by the researcher before upload. Used to generate the Teams
     /// filename. Upload is blocked if this is nil or empty.
     var neutralCode: String?
-    /// The project this recording belongs to. Nil means unassigned.
-    /// Upload is blocked when nil — researcher must assign a project first.
-    var projectId: UUID?
     /// Set when this recording was imported from a Clio Recorder iOS device
     /// via the Bonjour/USB transfer flow. `nil` for recordings captured on Mac.
     var mobileImport: MobileImportMeta?
@@ -290,7 +308,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         case upload
         case lastWarningDate
         case neutralCode
-        case projectId
         case mobileImport
     }
 
@@ -309,7 +326,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         upload = try c.decodeIfPresent(UploadState.self, forKey: .upload) ?? UploadState()
         lastWarningDate = try c.decodeIfPresent(Date.self, forKey: .lastWarningDate)
         neutralCode = try c.decodeIfPresent(String.self, forKey: .neutralCode)
-        projectId = try c.decodeIfPresent(UUID.self, forKey: .projectId)
         mobileImport = try c.decodeIfPresent(MobileImportMeta.self, forKey: .mobileImport)
     }
 
@@ -325,7 +341,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         upload: UploadState,
         lastWarningDate: Date? = nil,
         neutralCode: String? = nil,
-        projectId: UUID? = nil,
         mobileImport: MobileImportMeta? = nil
     ) {
         self.schemaVersion = schemaVersion
@@ -339,7 +354,6 @@ struct RecordingMeta: Codable, Equatable, Identifiable {
         self.upload = upload
         self.lastWarningDate = lastWarningDate
         self.neutralCode = neutralCode
-        self.projectId = projectId
         self.mobileImport = mobileImport
     }
 }

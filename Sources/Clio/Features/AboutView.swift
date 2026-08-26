@@ -1,188 +1,117 @@
 import SwiftUI
+import AppKit
 
 // MARK: - About View
+
+/// Simple brand/copyright screen — deliberately minimal. It must never
+/// claim features that aren't actually shipped (a prior version listed
+/// "Analyse" and named specific tech that had already changed or was
+/// disabled — see `AppFeatures.analysisEnabled`). Version and build date
+/// are read from values the "Inject Git Commit Hash" build phase writes
+/// at build time (`clio-build-info.txt` primary, Info.plist fallback —
+/// same dual-source pattern `SidebarPanelContent` below already uses for
+/// branch/commit hash).
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
 
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
+    private var releaseDateText: String {
+        let raw = AppRuntimeInfo.buildInfo()?.date
+            ?? Bundle.main.infoDictionary?["ClioBuildDate"] as? String
+        guard let raw else { return "Ukjent utgivelsesdato" }
+
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = parser.date(from: raw) else { return raw }
+
+        let display = DateFormatter()
+        display.dateStyle = .long
+        display.locale = Locale(identifier: "nb_NO")
+        return display.string(from: date)
+    }
+
+    private var currentYear: String {
+        String(Calendar.current.component(.year, from: Date()))
+    }
+
+    private var wordmark: NSImage? {
+        guard let url = Bundle.main.url(forResource: "clio-wordmark", withExtension: "svg") else { return nil }
+        return NSImage(contentsOf: url)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Om Clio")
-                    .font(.title)
-                    .fontWeight(.bold)
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "E91F63"), Color(hex: "8347F0")],
+                startPoint: .bottomLeading,
+                endPoint: .topTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                if let wordmark {
+                    Image(nsImage: wordmark)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 220)
+                } else {
+                    Text("Clio")
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+
+                VStack(spacing: 6) {
+                    Text("Versjon \(version)")
+                        .font(.system(size: 15, weight: .medium))
+                    Text("Utgitt \(releaseDateText)")
+                        .font(.system(size: 13))
+                }
+                .foregroundStyle(.white.opacity(0.95))
+
+                Text("© \(currentYear) Arbeids- og velferdsdirektoratet")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                }
                 Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
             }
-            .padding()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Version
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Versjon \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
-
-                        Button(action: {
-                            if let url = URL(string: "https://github.com/Fr35ch/clio/releases") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up.right.square")
-                                    .font(.system(size: 12))
-                                Text("Se endringslogg")
-                                    .font(.system(size: 13))
-                            }
-                            .foregroundStyle(AppColors.accent)
-                        }
-                        .buttonStyle(.plain)
-                        .onHover { hovering in
-                            if hovering {
-                                NSCursor.pointingHand.push()
-                            } else {
-                                NSCursor.pop()
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    // Purpose
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Formål")
-                            .font(.headline)
-                        Text(
-                            "Clio er et verktøy for Nav-innsiktsmedarbeidere som gjennomfører intervjuer. Det støtter opptak, lokal transkribering, taleutskilling, avidentifisering, analyse og opplasting til Teams – alt uten å sende data til eksterne tjenester."
-                        )
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    Divider()
-
-                    // Key Features
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Funksjoner")
-                            .font(.headline)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            FeatureRow(
-                                icon: "mic.fill",
-                                text: "Lydopptak")
-                            FeatureRow(
-                                icon: "waveform",
-                                text: "Lokal transkribering med NB-Whisper")
-                            FeatureRow(
-                                icon: "person.2.wave.2",
-                                text: "Taleutskilling – identifisering av hvem som snakker")
-                            FeatureRow(
-                                icon: "person.badge.minus",
-                                text: "Avidentifisering av personopplysninger")
-                            FeatureRow(
-                                icon: "text.magnifyingglass",
-                                text: "Analyse av transkripsjonen")
-                            FeatureRow(
-                                icon: "arrow.up.doc",
-                                text: "Opplasting til Teams etter bekreftet avidentifisering")
-                        }
-                    }
-
-                    Divider()
-
-                    // Quick Start
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Slik kommer du i gang")
-                            .font(.headline)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("1. Ta opp")
-                                .fontWeight(.semibold)
-                            Text("   Klikk «Ta opp» for å starte et nytt intervjuopptak.")
-                                .foregroundStyle(.secondary)
-
-                            Text("2. Transkriber")
-                                .fontWeight(.semibold)
-                                .padding(.top, 4)
-                            Text("   Velg opptaket og klikk «Transkriber» for lokal tale-til-tekst.")
-                                .foregroundStyle(.secondary)
-
-                            Text("3. Avidentifiser")
-                                .fontWeight(.semibold)
-                                .padding(.top, 4)
-                            Text("   Rediger transkripsjonen og bekreft avidentifisering.")
-                                .foregroundStyle(.secondary)
-
-                            Text("4. Analyser")
-                                .fontWeight(.semibold)
-                                .padding(.top, 4)
-                            Text("   Bruk analysevertøyet til å trekke ut innsikt fra transkripsjonen.")
-                                .foregroundStyle(.secondary)
-
-                            Text("5. Last opp til Teams")
-                                .fontWeight(.semibold)
-                                .padding(.top, 4)
-                            Text("   Opplasting blir tilgjengelig etter bekreftet avidentifisering.")
-                                .foregroundStyle(.secondary)
-                        }
-                        .font(.body)
-                    }
-
-                    Divider()
-
-                    // Technologies
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Teknologi")
-                            .font(.headline)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("• Swift & SwiftUI (macOS 14+)")
-                            Text("• AVFoundation – lydopptak")
-                            Text("• NB-Whisper via no-transcribe – norsk tale-til-tekst")
-                            Text("• no-anonymizer – BERT-basert avidentifisering")
-                            Text("• FluidAudio – lokal talegjenkjenning (diarisering)")
-                            Text("• Microsoft Graph API – opplasting til Teams")
-                        }
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    Divider()
-
-                    // Footer
-                    Text("© 2026 NAV. Med enerett.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 16)
-                }
-                .padding()
-            }
+            .padding(16)
         }
-        .frame(width: 600, height: 700)
+        .frame(width: 420, height: 360)
     }
 }
 
-// Helper view for feature rows
-struct FeatureRow: View {
-    let icon: String
-    let text: String
+// MARK: - Color(hex:)
 
-    var body: some View {
-        HStack(spacing: AppSpacing.sm) {
-            Image(systemName: icon)
-                .foregroundStyle(AppColors.accent)
-                .frame(width: 20)
-            Text(text)
-                .font(.body)
-                .foregroundStyle(.secondary)
-        }
+/// Scoped to this file — a one-off brand gradient for the About screen,
+/// not a reusable design token (`Design/DesignTokens.swift` remains the
+/// single source of truth for tokens used elsewhere in the app).
+private extension Color {
+    init(hex: String) {
+        var value: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&value)
+        self.init(
+            .sRGB,
+            red: Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >> 8) & 0xFF) / 255,
+            blue: Double(value & 0xFF) / 255,
+            opacity: 1
+        )
     }
 }
 

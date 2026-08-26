@@ -10,6 +10,8 @@
 		004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9743F93056C08906B86DD5 /* AvidentifiseringSheet.swift */; };
 		016B08B47F6082716F4FE157 /* RTFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013A283DF2DD3D2E703D9CB3 /* RTFExporter.swift */; };
 		058EC16989E792B0E4BB0BEA /* TeamsUploadSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ACF6CDE7330324D188AFDB1 /* TeamsUploadSection.swift */; };
+		188E42B8EF9B41E0A6764427 /* TranscriptDownloadSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 063EB054992E44ECA9A5D1BF /* TranscriptDownloadSection.swift */; };
+		87CD044A6F024A42A14E68E9 /* TranscriptDownloadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A60537DCED245F6B34EC5AC /* TranscriptDownloadService.swift */; };
 		06F0AE2EA49C43C3A64449AA /* AvidentifiseringBekreftSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423E0293D3B07AF455076894 /* AvidentifiseringBekreftSection.swift */; };
 		06F95C989475654B8E23FDFC /* RecordingMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = D768BD447F094B7EEEF3703D /* RecordingMeta.swift */; };
 		0A345FB6BCF443A098E80401 /* ViewHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */; };
@@ -17,6 +19,7 @@
 		0FD296B662B20927119CB0CC /* RecordingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC07BD410307FDE5D7752E72 /* RecordingDetailView.swift */; };
 		11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = 42FCB9B274EC3A52C96EF365 /* FluidAudio */; };
 		18BD729984ED471381F4ADB5 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = C3692886A57046468653FC1C /* WhisperKit */; };
+		B1C2D3E4F5063333A1B2C3D4 /* MSAL in Frameworks */ = {isa = PBXBuildFile; productRef = B1C2D3E4F5062222A1B2C3D4 /* MSAL */; };
 		15398FA9751B16DEC921258B /* RecordingExpiryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46946E8D385F3AFCB3523042 /* RecordingExpiryManager.swift */; };
 		155861C74CBFD44B56ACE200 /* TranscriptionRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */; };
 		1772013B1BD6FC53BBE6E2FE /* TranscriptionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17BFB04179F2CE3F797E19FA /* TranscriptionSettingsView.swift */; };
@@ -39,6 +42,7 @@
 		55C22DDDCE30FCD76E71070F /* SystemRequirement.swift in Sources */ = {isa = PBXBuildFile; fileRef = D938E21935718834F5E99700 /* SystemRequirement.swift */; };
 		5785CAE4A17277F39970D590 /* UploadConfirmationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */; };
 		5966749827B677DE2B52979B /* ssb_etternavn.txt in Resources */ = {isa = PBXBuildFile; fileRef = 26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */; };
+		CB36A3B74D3245029C857E18 /* clio-wordmark.svg in Resources */ = {isa = PBXBuildFile; fileRef = 2B39AA3681454504BC555552 /* clio-wordmark.svg */; };
 		6426B2926066C6E9E9BC02AF /* WindowChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EEF871688C33263B5B373A1 /* WindowChrome.swift */; };
 		65F51659423C9E55705D1265 /* TranscriptPlaybackController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240ED3C214FA76EBE21534FB /* TranscriptPlaybackController.swift */; };
 		6622EF9EA5E86C4DF08D49EB /* BibliotekView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CD9F48562B1E4D9CAE8204 /* BibliotekView.swift */; };
@@ -71,6 +75,9 @@
 		C725191F67324FD996B5DE42 /* NativeTranscriptionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39B51F379804114B6FE196C /* NativeTranscriptionEngine.swift */; };
 		A132A46B3FE88ABDBF95651D /* PillButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F068C655F17F8707229EB9 /* PillButton.swift */; };
 		A18DA67CEA7327CF92CA5622 /* EntraConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */; };
+		6D5725CECF2B4AE4B77DC192 /* GraphAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B3ECA14EFD8484A8AA7560C /* GraphAuthService.swift */; };
+		F025B6E80A9A4CB5ABDFCB29 /* GraphClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9774A4E1ABFB456BA0FAF040 /* GraphClient.swift */; };
+		B0667C21E6E94B2BBB5A8046 /* TeamsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49209C3AD2B6443FB9D10239 /* TeamsSettingsView.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* AppCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* AppCopy.swift */; };
 		AA001122334455667788BF01 /* MobileTransferScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788BB01 /* MobileTransferScreen.swift */; };
 		AA001122334455667788BF11 /* BonjourConfirmationServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA001122334455667788MT01 /* BonjourConfirmationServer.swift */; };
@@ -89,12 +96,13 @@
 		AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98BFF0819DE6E76206F0903E /* TranscriptEditorView.swift */; };
 		B68312AE2CD9340004EE100F /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54E0CED9013697E6080B4188 /* main.swift */; };
 		B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */; };
+		3705B8F7DF8B4A0DB2FC4ED9 /* AnonymizationConfirmationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */; };
 		B94C8B054AF3D29E3631426E /* RecordingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0225402D1F5D84DB36B1ABAB /* RecordingItem.swift */; };
 		BAA0A72D0DA18702BC074BFF /* TeamsUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */; };
 		BD37FDC476964258943BD4FD /* TranscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D9DC657F2709B54C9B527F /* TranscriptionService.swift */; };
 		BF39F5C2BF8B1891B0E33276 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */; };
 		C3628B8658F1A561F1E5D5CA /* SplashWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295DAF8A4A6CE458A450CCD6 /* SplashWindowController.swift */; };
-		C4EC9CDD91ECF5109DFF7033 /* ProjectConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8141AAF46C3D20560192B795 /* ProjectConfig.swift */; };
+		C4EC9CDD91ECF5109DFF7033 /* TeamsChannelRef.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8141AAF46C3D20560192B795 /* TeamsChannelRef.swift */; };
 		C9C3D6EC4E0B003C42153CD8 /* DefaultAvidentExceptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEDC6AD3601EADA5387EAEC1 /* DefaultAvidentExceptions.swift */; };
 		CD895129BFB9120C70438337 /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C4A1FCFD71EDCBFBB130D76 /* AudioPlayer.swift */; };
 		D01C7822378787BC215D047E /* FluidDiarizationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A37C20B0212318DB8A52FF4 /* FluidDiarizationService.swift */; };
@@ -125,16 +133,20 @@
 		1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		240ED3C214FA76EBE21534FB /* TranscriptPlaybackController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPlaybackController.swift; sourceTree = "<group>"; };
 		26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ssb_etternavn.txt; sourceTree = "<group>"; };
+		2B39AA3681454504BC555552 /* clio-wordmark.svg */ = {isa = PBXFileReference; lastKnownFileType = text; path = "clio-wordmark.svg"; sourceTree = "<group>"; };
 		283BC0325526BEA992ADAABB /* ssb_fornavn.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ssb_fornavn.txt; sourceTree = "<group>"; };
 		295DAF8A4A6CE458A450CCD6 /* SplashWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashWindowController.swift; sourceTree = "<group>"; };
 		2C7566B03272F645096D2C74 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		2D4A2E74385EFFDBEB2D6968 /* DesignShowcaseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignShowcaseView.swift; sourceTree = "<group>"; };
 		2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsUploadService.swift; sourceTree = "<group>"; };
+		063EB054992E44ECA9A5D1BF /* TranscriptDownloadSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptDownloadSection.swift; sourceTree = "<group>"; };
+		0A60537DCED245F6B34EC5AC /* TranscriptDownloadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptDownloadService.swift; sourceTree = "<group>"; };
 		2E3B184AB414FBCEE5CB44BA /* DependencyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyManager.swift; sourceTree = "<group>"; };
 		2F0AD2FAD7EAB666D8487EAB /* SystemRequirementChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemRequirementChecker.swift; sourceTree = "<group>"; };
 		32541EEA8F75B332CCC2E366 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		3446604405B6754884CBEE54 /* StorageLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageLayout.swift; sourceTree = "<group>"; };
 		35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogger.swift; sourceTree = "<group>"; };
+		0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationConfirmationService.swift; sourceTree = "<group>"; };
 		36001FF6B081AA7EF4D8D5E2 /* TranscriptionRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionRunner.swift; sourceTree = "<group>"; };
 		3879A692A181A0FB1706694B /* AnonymizationModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymizationModal.swift; sourceTree = "<group>"; };
 		3CCF68B04B237C98F3509C43 /* SpeakerAlignment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeakerAlignment.swift; sourceTree = "<group>"; };
@@ -172,7 +184,7 @@
 		C8ABFC1CD4D44B11A7C47A87 /* BertNERDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BertNERDetector.swift; sourceTree = "<group>"; };
 		7731BBDE69C0425A862A85C9 /* NativeAnonymizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAnonymizer.swift; sourceTree = "<group>"; };
 		D39B51F379804114B6FE196C /* NativeTranscriptionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptionEngine.swift; sourceTree = "<group>"; };
-		8141AAF46C3D20560192B795 /* ProjectConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConfig.swift; sourceTree = "<group>"; };
+		8141AAF46C3D20560192B795 /* TeamsChannelRef.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsChannelRef.swift; sourceTree = "<group>"; };
 		8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadConfirmationSheet.swift; sourceTree = "<group>"; };
 		82449D3C48B04C91A8D69A62 /* ViewHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewHelpers.swift; sourceTree = "<group>"; };
 		877BD6E28D486BCD0D68A29C /* AuditLogViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuditLogViewer.swift; sourceTree = "<group>"; };
@@ -209,6 +221,9 @@
 		D768BD447F094B7EEEF3703D /* RecordingMeta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMeta.swift; sourceTree = "<group>"; };
 		D938E21935718834F5E99700 /* SystemRequirement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemRequirement.swift; sourceTree = "<group>"; };
 		DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntraConfig.swift; sourceTree = "<group>"; };
+		6B3ECA14EFD8484A8AA7560C /* GraphAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphAuthService.swift; sourceTree = "<group>"; };
+		9774A4E1ABFB456BA0FAF040 /* GraphClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GraphClient.swift; sourceTree = "<group>"; };
+		49209C3AD2B6443FB9D10239 /* TeamsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamsSettingsView.swift; sourceTree = "<group>"; };
 		E056E09D9198F48C6D484127 /* AudioLevelVisualization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelVisualization.swift; sourceTree = "<group>"; };
 		E1E04891E96C5F5E575D9178 /* TranscriptionResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionResult.swift; sourceTree = "<group>"; };
 		E3A2B67087421F36783F71F2 /* CheckResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckResult.swift; sourceTree = "<group>"; };
@@ -228,6 +243,7 @@
 			files = (
 				11BC44C7B6D3E3CF51DA8628 /* FluidAudio in Frameworks */,
 				18BD729984ED471381F4ADB5 /* WhisperKit in Frameworks */,
+				B1C2D3E4F5063333A1B2C3D4 /* MSAL in Frameworks */,
 				AA001122334455667788FW01 /* MultipeerConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -257,8 +273,13 @@
 				423E0293D3B07AF455076894 /* AvidentifiseringBekreftSection.swift */,
 				F1530437CF1FEEE629B38DA7 /* ComplianceChecklistSheet.swift */,
 				DCB6FAF7BB16FCB1AC66274B /* EntraConfig.swift */,
+				6B3ECA14EFD8484A8AA7560C /* GraphAuthService.swift */,
+				9774A4E1ABFB456BA0FAF040 /* GraphClient.swift */,
+				49209C3AD2B6443FB9D10239 /* TeamsSettingsView.swift */,
 				4ACF6CDE7330324D188AFDB1 /* TeamsUploadSection.swift */,
 				2E0395AA5BDFD9E40B012101 /* TeamsUploadService.swift */,
+				063EB054992E44ECA9A5D1BF /* TranscriptDownloadSection.swift */,
+				0A60537DCED245F6B34EC5AC /* TranscriptDownloadService.swift */,
 				8203F83CDAEF20C8AEA6E5ED /* UploadConfirmationSheet.swift */,
 				1372C3130700AA173FC44962 /* UploadGate.swift */,
 			);
@@ -336,6 +357,7 @@
 				89E722BD634E4B0A4570CA82 /* Assets.xcassets */,
 				26CF5DC51FE22C14D9B0385B /* ssb_etternavn.txt */,
 				283BC0325526BEA992ADAABB /* ssb_fornavn.txt */,
+				2B39AA3681454504BC555552 /* clio-wordmark.svg */,
 				A12E3FC502CE4A48A69A1A35 /* kartverket_steder.txt */,
 				D2B9719F830A43749A975590 /* ambiguous_names.txt */,
 			);
@@ -456,6 +478,7 @@
 				4C4A1FCFD71EDCBFBB130D76 /* AudioPlayer.swift */,
 				1BAFF8EAEA679569111CBD46 /* AudioRecorder.swift */,
 				35FA9D9D30BAB6A9CC6211C8 /* AuditLogger.swift */,
+				0DFC56F2B80A4F288CAA8BAA /* AnonymizationConfirmationService.swift */,
 				6A37C20B0212318DB8A52FF4 /* FluidDiarizationService.swift */,
 				9D82CA89E0B0496F8DF1AF64 /* NameDetector.swift */,
 				E9EE8D5882CD2DBB99E27BB8 /* RecordingsManager.swift */,
@@ -474,7 +497,7 @@
 			children = (
 				0EC7F9C0FE219DAA75AC0FD9 /* AppState.swift */,
 				BEDC6AD3601EADA5387EAEC1 /* DefaultAvidentExceptions.swift */,
-				8141AAF46C3D20560192B795 /* ProjectConfig.swift */,
+				8141AAF46C3D20560192B795 /* TeamsChannelRef.swift */,
 				46946E8D385F3AFCB3523042 /* RecordingExpiryManager.swift */,
 				D768BD447F094B7EEEF3703D /* RecordingMeta.swift */,
 				7E29A4B575739DC0D20AC08F /* RecordingStore.swift */,
@@ -504,6 +527,7 @@
 			packageProductDependencies = (
 				42FCB9B274EC3A52C96EF365 /* FluidAudio */,
 				C3692886A57046468653FC1C /* WhisperKit */,
+				B1C2D3E4F5062222A1B2C3D4 /* MSAL */,
 			);
 			productName = Clio;
 			productReference = FB38CDA2EE93F624A724B0B4 /* Clio.app */;
@@ -530,6 +554,7 @@
 			packageReferences = (
 				76C11878C6178AC7D83D115F /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				E938F7237B374ECFB9F546BB /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
+				B1C2D3E4F5061111A1B2C3D4 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 528AC45447AA2C0FE8E14001 /* Products */;
@@ -553,6 +578,7 @@
 				32BC3A4A7408255CD737F67C /* ssb_fornavn.txt in Resources */,
 				EB6567939F06452895745A50 /* kartverket_steder.txt in Resources */,
 				2B196515E23B41E0AABB7C1F /* ambiguous_names.txt in Resources */,
+				CB36A3B74D3245029C857E18 /* clio-wordmark.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -626,6 +652,7 @@
 				BF39F5C2BF8B1891B0E33276 /* AudioRecorder.swift in Sources */,
 				D34F3B512D9324C5FF983E63 /* AuditLogViewer.swift in Sources */,
 				B84359AE2D4EC06B348FCE77 /* AuditLogger.swift in Sources */,
+				3705B8F7DF8B4A0DB2FC4ED9 /* AnonymizationConfirmationService.swift in Sources */,
 				0C98E65F1306C3FA64458777 /* AvidentExceptionsView.swift in Sources */,
 				06F0AE2EA49C43C3A64449AA /* AvidentifiseringBekreftSection.swift in Sources */,
 				004567DC02F555228635569B /* AvidentifiseringSheet.swift in Sources */,
@@ -638,6 +665,9 @@
 				67E82B3E39C1BBDC1977F034 /* DesignShowcaseView.swift in Sources */,
 				91C1E436D90C1B19C0205B3F /* DesignTokens.swift in Sources */,
 				A18DA67CEA7327CF92CA5622 /* EntraConfig.swift in Sources */,
+				6D5725CECF2B4AE4B77DC192 /* GraphAuthService.swift in Sources */,
+				F025B6E80A9A4CB5ABDFCB29 /* GraphClient.swift in Sources */,
+				B0667C21E6E94B2BBB5A8046 /* TeamsSettingsView.swift in Sources */,
 				DE0A67ED5333CC83CAE2BC0E /* ExpiryWarningBanner.swift in Sources */,
 				D01C7822378787BC215D047E /* FluidDiarizationService.swift in Sources */,
 				2C8D7F959CC55BDD64BBD625 /* GlassStyles.swift in Sources */,
@@ -645,7 +675,7 @@
 				E354FC341495DD3C5B125FF3 /* NameDetector.swift in Sources */,
 				A132A46B3FE88ABDBF95651D /* PillButton.swift in Sources */,
 				683EDFCF1AA15B9AAD73F88E /* ProcessingState.swift in Sources */,
-				C4EC9CDD91ECF5109DFF7033 /* ProjectConfig.swift in Sources */,
+				C4EC9CDD91ECF5109DFF7033 /* TeamsChannelRef.swift in Sources */,
 				016B08B47F6082716F4FE157 /* RTFExporter.swift in Sources */,
 				0FD296B662B20927119CB0CC /* RecordingDetailView.swift in Sources */,
 				15398FA9751B16DEC921258B /* RecordingExpiryManager.swift in Sources */,
@@ -664,6 +694,8 @@
 				389A09DEE35085948F39D9ED /* SystemRequirementChecker.swift in Sources */,
 				058EC16989E792B0E4BB0BEA /* TeamsUploadSection.swift in Sources */,
 				BAA0A72D0DA18702BC074BFF /* TeamsUploadService.swift in Sources */,
+				188E42B8EF9B41E0A6764427 /* TranscriptDownloadSection.swift in Sources */,
+				87CD044A6F024A42A14E68E9 /* TranscriptDownloadService.swift in Sources */,
 				5327B917920C9F08CF05309D /* TranscriptEditorState.swift in Sources */,
 				AFF20FBBED65035A49A65FA5 /* TranscriptEditorView.swift in Sources */,
 				93BB38BF5E431D9C5E512A66 /* TranscriptEditorWindow.swift in Sources */,
@@ -720,7 +752,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\n' \"$BRANCH\" \"$HASH\" > \"$INFO\"\nexit 0\n";
+			shellScript = "HASH=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBRANCH=$(git -C \"$SRCROOT\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nBUILDDATE=$(date -u +%Y-%m-%d)\nPLIST=\"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\nINFO=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/clio-build-info.txt\"\n/usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitCommitHash string $HASH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :GitBranch $BRANCH\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :GitBranch string $BRANCH\" \"$PLIST\"\n/usr/libexec/PlistBuddy -c \"Set :ClioBuildDate $BUILDDATE\" \"$PLIST\" 2>/dev/null || /usr/libexec/PlistBuddy -c \"Add :ClioBuildDate string $BUILDDATE\" \"$PLIST\"\nprintf 'branch=%s\\nhash=%s\\ndate=%s\\n' \"$BRANCH\" \"$HASH\" \"$BUILDDATE\" > \"$INFO\"\nexit 0\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -866,6 +898,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = GC9RAU27PY;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
@@ -905,6 +938,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				DEVELOPMENT_TEAM = GC9RAU27PY;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
@@ -971,6 +1005,14 @@
 				minimumVersion = 0.9.0;
 			};
 		};
+		B1C2D3E4F5061111A1B2C3D4 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/AzureAD/microsoft-authentication-library-for-objc.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.15.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -983,6 +1025,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E938F7237B374ECFB9F546BB /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
 			productName = WhisperKit;
+		};
+		B1C2D3E4F5062222A1B2C3D4 /* MSAL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1C2D3E4F5061111A1B2C3D4 /* XCRemoteSwiftPackageReference "microsoft-authentication-library-for-objc" */;
+			productName = MSAL;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

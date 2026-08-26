@@ -665,7 +665,7 @@ struct RecordingPlayerNative: View {
                     }
 
                     avidentifiseringBekreftSection
-                    teamsUploadSection
+                    transcriptDownloadSection
 
                     Section("Fil informasjon") {
                         LabeledContent("Filnavn") {
@@ -807,7 +807,7 @@ struct RecordingPlayerNative: View {
         }
     }
 
-    @ViewBuilder private var teamsUploadSection: some View {
+    @ViewBuilder private var transcriptDownloadSection: some View {
         let meta = loadMeta() ?? RecordingMeta(
             schemaVersion: RecordingMeta.currentSchemaVersion,
             id: recording.id,
@@ -819,8 +819,8 @@ struct RecordingPlayerNative: View {
             anonymization: AnonymizationMeta(),
             upload: UploadState()
         )
-        Section("Opplasting til Teams") {
-            TeamsUploadSection(recording: meta)
+        Section("Last ned transkripsjon") {
+            TranscriptDownloadSection(recording: meta)
         }
     }
 

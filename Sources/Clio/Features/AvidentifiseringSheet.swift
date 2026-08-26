@@ -570,20 +570,6 @@ struct AvidentifiseringSheet: View {
     // MARK: - Export to Word (RTF)
 
     private func statsSummary(_ stats: [String: Int]) -> String {
-        let parts = stats.compactMap { (key, count) -> String? in
-            guard count > 0 else { return nil }
-            switch key {
-            case "NAVN": return "\(count) navn"
-            case "TELEFON": return "\(count) telefonnummer"
-            case "FØDSELSNUMMER": return "\(count) fødselsnummer"
-            case "D-NUMMER": return "\(count) d-nummer"
-            case "EPOST": return "\(count) e-postadresse"
-            case "ORG": return "\(count) organisasjon"
-            case "STED": return "\(count) stedsnavn"
-            default: return "\(count) \(key.lowercased())"
-            }
-        }
-        if parts.isEmpty { return "ingen identifiserende informasjon funnet" }
-        return parts.joined(separator: ", ") + " fjernet"
+        AnonymizationMeta.statsSummary(stats)
     }
 }

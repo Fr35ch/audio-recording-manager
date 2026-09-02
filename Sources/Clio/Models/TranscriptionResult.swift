@@ -22,6 +22,39 @@ struct TranscriptionSegment: Codable, Identifiable {
     var speaker: String
     let confidence: Double
     let words: [TranscriptionWord]
+    /// Set by `TranscriptValidation` when `transcription.validateMode` is
+    /// `"flag"` and this segment overlaps a detected quality issue (gap,
+    /// energy mismatch, low word density, or a known hallucination
+    /// phrase) — a hint to the researcher to double-check this segment
+    /// against the audio, not a claim that it's necessarily wrong.
+    /// Optional (rather than defaulted to `false`) so existing transcript
+    /// JSON files saved before this field existed still decode — treat
+    /// `nil` the same as `false` wherever this is read.
+    var lowConfidence: Bool?
+
+    /// Formats a segment start time as "m:ss", e.g. `75` → `"1:15"`.
+    /// Shared between the transcript editor's inline display and
+    /// transcript exports so timestamps read identically everywhere.
+    static func formatTimestamp(_ seconds: Double) -> String {
+        let m = Int(seconds) / 60
+        let s = Int(seconds) % 60
+        return String(format: "%d:%02d", m, s)
+    }
+
+    /// Converts a raw speaker identifier (`"SPEAKER_0"`, `"INTERVJUER"`, …)
+    /// into the short label shown in the UI (`"T1"`, `"Intervjuer"`, …).
+    /// Shared between the transcript editor's inline display and
+    /// transcript exports so speaker labels read identically everywhere.
+    static func shortSpeakerLabel(_ speaker: String) -> String {
+        if speaker.hasPrefix("SPEAKER_"), let num = Int(speaker.dropFirst(8)) {
+            return "T\(num + 1)"
+        }
+        switch speaker {
+        case "INTERVJUER": return "Intervjuer"
+        case "INFORMANT":  return "Informant"
+        default: return speaker
+        }
+    }
 }
 
 // MARK: - Metadata
@@ -35,6 +68,56 @@ struct TranscriptionResultMetadata: Codable {
     /// Set to `true` after the diarization pass runs. Persisted in JSON
     /// so we can detect "transcribed but not yet diarised" recordings.
     var diarizationRun: Bool?
+}
+
+// MARK: - Quality validation
+//
+// Native Swift port of `no-transcribe`'s post-decode quality checks
+// (`detect_hallucination_phrases`, `detect_gaps`, `detect_low_density_regions`,
+// `detect_energy_mismatch`, `detect_repetition_loops` in `navt.py`), wired to
+// the `transcription.validateMode` setting. See `TranscriptValidation.swift`
+// for the detectors that produce these.
+
+struct TranscriptValidationIssue: Codable, Equatable {
+    enum Kind: String, Codable {
+        case gap
+        case lowDensity
+        case repetition
+        case hallucinationPhrase
+        case energyMismatchMissed
+        case energyMismatchHallucination
+        /// Whole-recording check, no port from `navt.py` — RØDE-specific,
+        /// discovered directly from real-world use. Both stereo channels
+        /// carry the same (or near-identical) audio, meaning the RØDE
+        /// capture app was set to "merge" rather than "split" channel mode
+        /// before Clio ever received the file. No timestamp range, like
+        /// `.repetition` — this is a hardware/capture-setting problem, not
+        /// something any segment-level fix can address.
+        case mergedChannelsDetected
+    }
+    let kind: Kind
+    /// `nil` for `.repetition` and `.mergedChannelsDetected` — whole-
+    /// transcript checks with no single timestamp range, matching
+    /// `navt.py`'s own behavior (its repetition issues carry no
+    /// "start"/"end" keys and never flag a segment).
+    let start: Double?
+    let end: Double?
+    /// Short, non-sensitive detail for display — either a fixed phrase
+    /// from the curated hallucination-phrase denylist (not arbitrary
+    /// transcript text), or a computed description ("12.3s gap",
+    /// "18 wpm"). Safe to store alongside the transcript itself (same
+    /// sensitivity level as the transcript), but never copied into the
+    /// audit log — see `AuditLogger` usage in `TranscriptionService`.
+    let detail: String
+}
+
+struct TranscriptValidationSummary: Codable, Equatable {
+    var issues: [TranscriptValidationIssue]
+    /// Short Norwegian summary string, e.g. "2 gap, 1 hallucinationPhrase".
+    var summary: String
+    /// 0-100, mirrors `navt.py`'s scoring weights. 100 = no issues found.
+    var score: Int
+    var issueCount: Int
 }
 
 // MARK: - Top-level result (mirrors no-transcribe JSON contract v1.0)
@@ -54,4 +137,8 @@ struct TranscriptionResult: Codable {
     /// `var` so the diarization pass can flip `diarizationRun = true`
     /// without rebuilding the whole struct.
     var metadata: TranscriptionResultMetadata
+    /// Set when `transcription.validateMode` is not `"none"`. `nil` for
+    /// recordings transcribed before this existed, or with validation
+    /// switched off.
+    var validation: TranscriptValidationSummary?
 }

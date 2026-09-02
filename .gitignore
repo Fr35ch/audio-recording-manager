@@ -169,3 +169,14 @@ DerivedData/
 Resources/WhisperKitModels
 Resources/NBBertNER.mlmodelc
 Resources/NBBertNER-tokenizer
+
+# Bundled whisper.cpp GGML model weights (~1GB each — same reasoning as
+# above, published directly by NB AI-Lab on HuggingFace, no conversion
+# needed). See docs/MODEL_SETUP.md §1c.
+Resources/WhisperCppModels
+
+# whisper.cpp xcframework — a compiled build artifact from
+# github.com/ggml-org/whisper.cpp source, not source code itself.
+# Deterministically reproducible; see Frameworks/README.md for the exact
+# build recipe.
+Frameworks/whisper.xcframework

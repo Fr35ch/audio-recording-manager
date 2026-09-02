@@ -36,6 +36,7 @@ Arkitektoniske beslutninger under `decisions/adr/`. Bruk [malen](decisions/adr/T
 
 | ADR | Tittel | Status |
 |-----|--------|--------|
+| [ADR-1015](decisions/adr/ADR-1015-app-lock-and-file-encryption-assessment.md) | App Lock (Touch ID + passordfallback), ingen egen filkryptering | Aktiv |
 | [ADR-1014](decisions/adr/ADR-1014-file-storage-architecture-pivot.md) | File Storage Architecture Pivot | Aktiv — Phase 0 delvis implementert |
 | [ADR-1007](decisions/adr/ADR-1007-nav-design-system-integration.md) | NAV Design System Integration | Superseded (Liquid Glass v1.4.0) |
 | [ADR-1006](decisions/adr/ADR-1006-network-isolation-default.md) | Network Isolation Default | Superseded |

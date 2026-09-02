@@ -37,12 +37,11 @@ final class TranscriptionRunner: ObservableObject {
         let modelRaw = defaults.string(forKey: "transcription.defaultModel")
             ?? TranscriptionModel.large.rawValue
         let model = TranscriptionModel(rawValue: modelRaw) ?? .large
-        let numBeams: Int = {
-            let v = defaults.integer(forKey: "transcription.numBeams")
-            return v == 0 ? 3 : v
-        }()
         let verbatim = defaults.bool(forKey: "transcription.verbatim")
         let language = defaults.string(forKey: "transcription.language") ?? "no"
+        let accuracyLevel = TranscriptionAccuracyLevel(
+            rawValue: defaults.integer(forKey: "transcription.accuracyLevel")
+        ) ?? .default
 
         inFlight.insert(recordingId)
         progress[recordingId] = 0
@@ -83,7 +82,8 @@ final class TranscriptionRunner: ObservableObject {
                     speakers: 1,
                     model: model,
                     verbatim: verbatim,
-                    language: language
+                    language: language,
+                    accuracyLevel: accuracyLevel
                 )
                 guard !Task.isCancelled else { return }
 
@@ -102,8 +102,9 @@ final class TranscriptionRunner: ObservableObject {
                     meta.transcript.status = .done
                     meta.transcript.completedAt = Date()
                     meta.transcript.engine = model.rawValue
-                    meta.transcript.numBeams = numBeams
                     meta.transcript.processingTimeSeconds = result.metadata.processingTimeSeconds
+                    meta.transcript.validationScore = result.validation?.score
+                    meta.transcript.validationIssueCount = result.validation?.issueCount
                 }
 
                 AuditLogger.shared.log(.transcriptCompleted, payload: [

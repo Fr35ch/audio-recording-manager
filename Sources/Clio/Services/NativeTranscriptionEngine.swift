@@ -134,7 +134,8 @@ actor NativeTranscriptionEngine {
     /// model if the verbatim variant hasn't been bundled yet.
     func transcribe(
         wavPath: String, language: String, speakerLabel: String, durationSeconds: Double,
-        verbatim: Bool = false
+        verbatim: Bool = false, disableNoSpeechSkip: Bool = false, forcedTemperature: Float? = nil,
+        temperatureFallbackCount: Int? = nil
     ) async throws -> TranscriptionResult {
         let (whisperKit, variantUsed) = try await ensureLoaded(variant: verbatim ? .verbatim : .clean)
 
@@ -146,7 +147,29 @@ actor NativeTranscriptionEngine {
             options.language = language
             options.detectLanguage = false
         }
-        options.wordTimestamps = true
+        // Deliberately OFF. The old Python `no-transcribe` pipeline
+        // (navt.py) never produced word-level timestamps at all — its
+        // own comments record that HuggingFace's word-level extraction
+        // was "very experimental" and caused hallucinated filler words
+        // ("Ok.", "Så") spanning 5-22s at chunk boundaries, so it stuck
+        // to sentence-level timestamps for the main pass. WhisperKit's
+        // word-timestamp path is architecturally different (DTW-style
+        // alignment, not a post-hoc heuristic) but has a similar sharp
+        // edge that's worse than a plain accuracy trade-off: per
+        // `TranscribeTask.swift`, when `wordTimestamps` is on, the seek
+        // position for the *next* decode window is recomputed from the
+        // last aligned word's end time instead of the raw segment
+        // timestamp token. If that alignment is off for noisy/cross-talk
+        // audio (exactly the RØDE two-transmitter case), the next
+        // window can start in the wrong place — skipped or duplicated
+        // audio, matching exactly what was reported. Leaving this off
+        // restores the old pipeline's behavior exactly: `segment.words`
+        // is always empty, which `TranscriptEditorView`'s word-flow
+        // rendering already treats as the normal case (single hit
+        // target per segment) — nothing regresses, since the karaoke
+        // word-highlight UI was never exercised end-to-end before the
+        // WhisperKit port anyway.
+        options.wordTimestamps = false
         options.task = .transcribe
         options.usePrefillPrompt = true
         // Without this, per-segment `text` includes raw special tokens
@@ -154,6 +177,85 @@ actor NativeTranscriptionEngine {
         // <|endoftext|>) that would otherwise leak into the transcript
         // shown to researchers. Confirmed via a real end-to-end smoke test.
         options.skipSpecialTokens = true
+        // `chunkingStrategy` deliberately left at its default (`nil` / fixed
+        // seek-loop windowing), NOT `.vad`. `.vad` was tried and reverted the
+        // same day: it looked like the officially-supported answer to
+        // boundary-cut hallucinations, but tracing `VADAudioChunker
+        // .chunkAll` + `TranscribeTask.run` shows each VAD chunk gets
+        // re-transcribed via a fully separate, recursive
+        // `self.transcribe(audioArray:...)` call — which applies
+        // `TranscribeTask`'s own `windowClipTime`-based end-of-clip
+        // trimming (see `windowPadding` in `TranscribeTask.run`) *per
+        // chunk*, not once per file. A 14-minute recording split into
+        // dozens of VAD chunks therefore silently drops up to ~1s at
+        // *every* chunk boundary instead of just once at the very end —
+        // and each chunk restarts the decoder's prompt/KV-cache from
+        // scratch, multiplying exactly the kind of context-free boundary
+        // hallucination risk `no-transcribe` fought hard to minimize with
+        // large, overlapping (not silence-cut) windows. Reported symptoms
+        // after enabling `.vad` (several new precise-timestamp skips
+        // scattered through a recording, plus a new hallucinated
+        // interjection) match this mechanism far better than they match
+        // a single global setting. The plain fixed-window seek loop only
+        // has one such boundary per ~30s of audio and only trims once at
+        // the true end of the file; `repairTimelineGaps` (below) is the
+        // safety net for whatever it still misses, without multiplying
+        // the number of fresh-start decode boundaries in the first place.
+        // `disableNoSpeechSkip`: used only by the repair/retry paths
+        // (`TranscriptionService.repairUnclearSegments`,
+        // `.repairTimelineGaps`) re-decoding a short, isolated clip a human
+        // has already confirmed contains real speech. Originally reasoned
+        // (from source alone) that WhisperKit's own quality gates
+        // (`noSpeechThreshold`, `compressionRatioThreshold`,
+        // `logProbThreshold`) were rejecting good decodes and forcing
+        // pointless re-rolls. **Empirically falsified**: rebuilt with that
+        // exact fix in place (confirmed via build timestamp — binary newer
+        // than the source edit) and re-ran the exact real recording that
+        // exposed the bug. Output was byte-for-byte identical, placeholder
+        // included. If any of those gates had actually been the blocker,
+        // disabling them would have changed *something* about the decode
+        // that was taken. It changed nothing, which only makes sense if
+        // `DecodingFallback.init(...)` never flagged `needsFallback` in the
+        // first place for this clip — i.e. the model wasn't rejected by a
+        // threshold, it was *confidently wrong*: high enough avgLogProb,
+        // low enough compressionRatio and noSpeechProb, while still
+        // decoding hallucinated/empty content at temperature 0 (greedy).
+        // None of these gates catch that failure mode by design — they all
+        // assume the model "knows" when it's struggling, which a
+        // confidently-wrong decode contradicts outright. Kept these three
+        // relaxed anyway (harmless, occasionally still relevant for a
+        // *genuinely* low-confidence case), but no longer relied upon alone.
+        if disableNoSpeechSkip {
+            options.noSpeechThreshold = nil
+            options.compressionRatioThreshold = nil
+            options.logProbThreshold = nil
+        }
+        // `forcedTemperature`: the actual fix for a confidently-wrong
+        // greedy decode. Greedy (temperature 0) always walks the single
+        // highest-probability token at each step — deterministic, and if
+        // that path leads to a hallucination/empty output the model is
+        // "confident" in, no quality gate above will ever second-guess it,
+        // and WhisperKit's own fallback ladder never even starts (no
+        // `needsFallback`, so temperatures 0.2-1.0 in the ladder are never
+        // tried). Retry callers that already got an empty/placeholder
+        // result back once can call again with a nonzero starting
+        // temperature to force genuine sampling diversity from the first
+        // attempt, instead of hoping a fallback ladder that never triggers
+        // will eventually kick in on its own.
+        if let forcedTemperature {
+            options.temperature = forcedTemperature
+        }
+        // `temperatureFallbackCount`: the real, honestly-wired lever
+        // behind the restored "Transkripsjonsnøyaktighet" setting (see
+        // `TranscriptionAccuracyLevel`) — how many times a single decode
+        // window retries at a higher temperature when its own quality
+        // gates trip. `nil` leaves WhisperKit's own default (`5`)
+        // untouched. Confirmed real via `Configurations.swift`, unlike
+        // the old `numBeams`/beam-search setting this replaces, which
+        // WhisperKit has no code path for at all.
+        if let temperatureFallbackCount {
+            options.temperatureFallbackCount = temperatureFallbackCount
+        }
 
         let segments: [TranscriptionSegment]
         do {
@@ -231,14 +333,59 @@ actor NativeTranscriptionEngine {
     /// content. If nothing legible remains, mark the gap explicitly so
     /// it's clear (with real timing) that something is missing, rather
     /// than silently disappearing.
-    private static let knownHallucinationMarkers = ["<|nocaptions|>"]
+    ///
+    /// Matched case-insensitively against several observed spellings —
+    /// the model doesn't reliably emit the same bracket/casing every
+    /// time ("<|nocaptions|>" is the Whisper-family token-syntax form,
+    /// but "<no captions>", "[no captions]", "(no captions)" have all
+    /// been observed in real output). Shared with `WhisperCppEngine
+    /// .sanitize` — this is a property of the NB-Whisper model's own
+    /// training data, not this specific runtime, so both engines need the
+    /// identical marker list (confirmed via a real user report: whisper.cpp
+    /// output showed a literal, un-stripped "<|nocaptions|>" on a short
+    /// test recording after this list was accidentally left out of that
+    /// engine's own sanitize implementation).
+    static let knownHallucinationMarkers = [
+        "<|nocaptions|>",
+        "<no captions>",
+        "[no captions]",
+        "(no captions)",
+        "<no caption>",
+        "[no caption]",
+        "(no caption)",
+    ]
+
+    /// Placeholder shown in place of a segment whose entire decoded text
+    /// was a known hallucination marker (see `knownHallucinationMarkers`)
+    /// with nothing legible left after stripping it. Exposed so
+    /// `TranscriptionService`'s cross-channel deduplication can recognize
+    /// and prefer a real transcription from the other RØDE channel over
+    /// this placeholder when both channels produced overlapping segments
+    /// for the same moment — a hallucinated placeholder on one channel
+    /// does not mean the *other* channel's mic, which may have picked up
+    /// the same speech more clearly, also failed.
+    static let unclearAudioPlaceholder = "[uklart lydavsnitt]"
 
     private static func sanitize(_ rawText: String) -> String {
         var text = rawText
         for marker in knownHallucinationMarkers {
-            text = text.replacingOccurrences(of: marker, with: "")
+            text = text.replacingOccurrences(
+                of: marker, with: "", options: [.caseInsensitive])
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "[uklart lydavsnitt]" : trimmed
+        guard !trimmed.isEmpty else { return unclearAudioPlaceholder }
+        // A decoded segment with no letters at all — just stray
+        // punctuation/symbols, e.g. a lone ">" observed in real output —
+        // is a tokenizer/decode artifact, not real speech content. No
+        // transcribable Norwegian utterance is ever letter-free. Treat it
+        // the same as an empty decode so it reads as an explicit gap
+        // rather than meaningless symbols shown as if they were real
+        // transcript content, and so `TranscriptionService`'s repair
+        // mechanisms (which specifically target this placeholder) get a
+        // chance to recover it, exactly like a fully-empty decode.
+        guard trimmed.contains(where: { $0.isLetter }) else {
+            return unclearAudioPlaceholder
+        }
+        return trimmed
     }
 }

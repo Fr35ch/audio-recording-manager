@@ -665,7 +665,7 @@ struct RecordingPlayerNative: View {
                     }
 
                     avidentifiseringBekreftSection
-                    teamsUploadSection
+                    transcriptDownloadSection
 
                     Section("Fil informasjon") {
                         LabeledContent("Filnavn") {
@@ -685,8 +685,10 @@ struct RecordingPlayerNative: View {
                             if let engine = meta.engine {
                                 LabeledContent("Modell") { Text(transcriptionModelDisplayName(engine)) }
                             }
-                            if let beams = meta.numBeams {
-                                LabeledContent("Nøyaktighet") { Text(beamsDisplayName(beams)) }
+                            if let score = meta.validationScore {
+                                LabeledContent("Kvalitetsvurdering") {
+                                    Text(validationDisplayText(score: score, issueCount: meta.validationIssueCount))
+                                }
                             }
                             if let secs = meta.processingTimeSeconds {
                                 LabeledContent("Transkripsjonstid") { Text(formattedProcessingTime(secs)) }
@@ -762,15 +764,17 @@ struct RecordingPlayerNative: View {
         }
     }
 
-    private func beamsDisplayName(_ beams: Int) -> String {
-        switch beams {
-        case 1: return "Raskest (1)"
-        case 2: return "Rask (2)"
-        case 3: return "Middels (3)"
-        case 4: return "Treg (4)"
-        case 5: return "Svært treg (5)"
-        default: return "\(beams)"
-        }
+    /// Norwegian display string for a cached `TranscriptValidationSummary`
+    /// score, restoring the researcher-facing quality signal the old
+    /// Python pipeline's `--validate` mode used to surface. Never shows
+    /// the underlying issues' text — those may reference sensitive
+    /// transcript content and live only in the transcript JSON itself,
+    /// opened via the transcript editor, not this summary badge.
+    private func validationDisplayText(score: Int, issueCount: Int?) -> String {
+        let count = issueCount ?? 0
+        if count == 0 { return "Ingen problemer funnet (100/100)" }
+        let noun = count == 1 ? "mulig problem" : "mulige problemer"
+        return "\(score)/100 (\(count) \(noun))"
     }
 
     private func formattedProcessingTime(_ seconds: Double) -> String {
@@ -807,7 +811,7 @@ struct RecordingPlayerNative: View {
         }
     }
 
-    @ViewBuilder private var teamsUploadSection: some View {
+    @ViewBuilder private var transcriptDownloadSection: some View {
         let meta = loadMeta() ?? RecordingMeta(
             schemaVersion: RecordingMeta.currentSchemaVersion,
             id: recording.id,
@@ -819,8 +823,8 @@ struct RecordingPlayerNative: View {
             anonymization: AnonymizationMeta(),
             upload: UploadState()
         )
-        Section("Opplasting til Teams") {
-            TeamsUploadSection(recording: meta)
+        Section("Last ned transkripsjon") {
+            TranscriptDownloadSection(recording: meta)
         }
     }
 
@@ -904,8 +908,7 @@ struct RecordingPlayerNative: View {
                     stageName: transcriptionService.stage.displayName,
                     startTime: transcriptionRunner.startTimes[recording.id],
                     audioDuration: transcriptionRunner.audioDurations[recording.id],
-                    model: defaultModelRaw,
-                    numBeams: { let v = UserDefaults.standard.integer(forKey: "transcription.numBeams"); return v == 0 ? 3 : v }()
+                    model: defaultModelRaw
                 )
                 Button(AppCopy.Common.cancel, role: .destructive) {
                     transcriptionRunner.cancel(recordingId: recording.id)

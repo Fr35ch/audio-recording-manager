@@ -12,7 +12,7 @@ struct TranscriptionSettingsView: View {
     @AppStorage("transcription.verbatim")        private var verbatim = false
     @AppStorage("transcription.language")        private var language = "no"
     @AppStorage("transcription.validateMode")    private var validateMode = "warn"
-    @AppStorage("transcription.numBeams")        private var numBeams = 3
+    @AppStorage("transcription.accuracyLevel")   private var accuracyLevelRaw = TranscriptionAccuracyLevel.default.rawValue
     // Transient UI state
     @State private var installState: ActionState = .idle
     @State private var updateState: ActionState = .idle
@@ -155,7 +155,7 @@ struct TranscriptionSettingsView: View {
                                 Text("Bruk dette når du analyserer talemønstre eller trenger fullstendig kilde.")
                                     .font(.system(size: 11))
                                     .foregroundStyle(.secondary)
-                                if !NativeTranscriptionEngine.isVerbatimBundled {
+                                if !WhisperCppEngine.isVerbatimBundled {
                                     Text("Ordrett-modellen er ikke bygget inn i denne versjonen ennå — bruker standardmodellen i mellomtiden.")
                                         .font(.system(size: 11))
                                         .foregroundStyle(.orange)
@@ -170,27 +170,6 @@ struct TranscriptionSettingsView: View {
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Divider()
-
-                    // Transcription precision
-                    VStack(alignment: .leading, spacing: 6) {
-                        LabeledContent("Transkripsjonsnøyaktighet") {
-                            Picker("", selection: $numBeams) {
-                                Text("Raskest – mer manuell retting").tag(1)
-                                Text("Rask – anbefalt").tag(2)
-                                Text("Middels – god balanse").tag(3)
-                                Text("Treg – høy nøyaktighet").tag(4)
-                                Text("Svært treg – best mulig").tag(5)
-                            }
-                            .labelsHidden()
-                            .frame(width: 220)
-                        }
-                        Text(numBeamsDescription)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Divider()
@@ -220,6 +199,25 @@ struct TranscriptionSettingsView: View {
 
                     Divider()
 
+                    // Transcription accuracy (real beam-search width via whisper.cpp)
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("Transkripsjonsnøyaktighet") {
+                            Picker("", selection: $accuracyLevelRaw) {
+                                ForEach(TranscriptionAccuracyLevel.allCases) { level in
+                                    Text(level.displayName).tag(level.rawValue)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 220)
+                        }
+                        Text(accuracyLevel.levelDescription)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider()
+
                     // Validation mode
                     VStack(alignment: .leading, spacing: 6) {
                         LabeledContent("Kvalitetskontroll") {
@@ -245,22 +243,15 @@ struct TranscriptionSettingsView: View {
         }
     }
 
-    private var numBeamsDescription: String {
-        switch numBeams {
-        case 1: return "Raskest mulig, men modellen tar snarveier og hopper over usikker tale. Forvent hyppigere feil som du må rette manuelt."
-        case 2: return "Rask med god kvalitet. Anbefalt for de fleste intervjuer."
-        case 3: return "Noe tregere, men fanger opp mer tvetydig tale. Bra for opptak med mye bakgrunnsstøy eller sterke dialekter."
-        case 4: return "Treg. Brukes til opptak der nøyaktighet er viktigere enn ventetid."
-        case 5: return "Svært treg (3–5× lenger enn rask). Bruk kun når du absolutt trenger best mulig resultat."
-        default: return ""
-        }
+    private var accuracyLevel: TranscriptionAccuracyLevel {
+        TranscriptionAccuracyLevel(rawValue: accuracyLevelRaw) ?? .default
     }
 
     private var validateModeDescription: String {
         switch validateMode {
         case "warn":  return "Logger potensielle problemer (hull, gjentakelser, hallusinasjoner) til diagnoseloggen uten å endre resultatet."
         case "flag":  return "Markerer usikre segmenter i JSON-utdataene. Disse kan vises dempet i editoren."
-        case "retry": return "Transkriberer usikre regioner på nytt med høyere beam-bredde (saktere, men mer nøyaktig)."
+        case "retry": return "Ikke støttet ennå i denne versjonen — fungerer som «Advar» i mellomtiden."
         case "none":  return "Ingen kvalitetskontroll kjøres etter transkripsjon."
         default:      return ""
         }

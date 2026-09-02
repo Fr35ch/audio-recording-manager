@@ -7,6 +7,7 @@ struct MainView: View {
     @StateObject private var recordingsManager = RecordingsManager.shared
     @StateObject private var audioPlayer = AudioPlayer.shared
     @ObservedObject private var transcriptionService = TranscriptionService.shared
+    @ObservedObject private var appLockManager = AppLockManager.shared
 
     @State private var selectedTab: AppTab = .record
     @State private var selectedRecording: RecordingItem? = nil
@@ -105,6 +106,25 @@ struct MainView: View {
             if selectedTab == .recordings { autoSelectFirst() }
         }
         .onAppear { /* RecordingsManager loads on init and stays in sync via notifications */ }
+        // `.sheet`s render as their own window layer, above any in-view
+        // `.overlay` — so locking must also dismiss whatever sheet is
+        // open, or its content would stay visible on top of the lock
+        // screen.
+        .onChange(of: appLockManager.isLocked) { _, isLocked in
+            guard isLocked else { return }
+            showAbout = false
+            showLogViewer = false
+            showDesignShowcase = false
+            showSettings = false
+        }
+        // Topmost overlay: covers all real content the instant the app
+        // locks (launch, idle timeout, sleep/screen-lock). See
+        // `AppLockManager` / `LockScreenView` in `Security/`.
+        .overlay {
+            if appLockManager.isLocked {
+                LockScreenView(lockManager: appLockManager)
+            }
+        }
     }
 
     @ViewBuilder

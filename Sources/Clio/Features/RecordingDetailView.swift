@@ -426,8 +426,10 @@ struct RecordingDetailView: View {
                         infoRow(label: "Modell", value: modelDisplayName(engine))
                         Divider().background(Color.gray.opacity(0.2))
                     }
-                    if let beams = meta.numBeams {
-                        infoRow(label: "Nøyaktighet", value: beamsDisplayName(beams))
+                    if let score = meta.validationScore {
+                        infoRow(
+                            label: "Kvalitetsvurdering",
+                            value: validationDisplayText(score: score, issueCount: meta.validationIssueCount))
                         Divider().background(Color.gray.opacity(0.2))
                     }
                     if let secs = meta.processingTimeSeconds {
@@ -459,15 +461,17 @@ struct RecordingDetailView: View {
         }
     }
 
-    private func beamsDisplayName(_ beams: Int) -> String {
-        switch beams {
-        case 1: return "Raskest (1)"
-        case 2: return "Rask (2)"
-        case 3: return "Middels (3)"
-        case 4: return "Treg (4)"
-        case 5: return "Svært treg (5)"
-        default: return "\(beams)"
-        }
+    /// Norwegian display string for a cached `TranscriptValidationSummary`
+    /// score, restoring the researcher-facing quality signal the old
+    /// Python pipeline's `--validate` mode used to surface. Never shows
+    /// the underlying issues' text — those may reference sensitive
+    /// transcript content and live only in the transcript JSON itself,
+    /// opened via the transcript editor, not this summary badge.
+    private func validationDisplayText(score: Int, issueCount: Int?) -> String {
+        let count = issueCount ?? 0
+        if count == 0 { return "Ingen problemer funnet (100/100)" }
+        let noun = count == 1 ? "mulig problem" : "mulige problemer"
+        return "\(score)/100 (\(count) \(noun))"
     }
 
     private func formattedProcessingTime(_ seconds: Double) -> String {

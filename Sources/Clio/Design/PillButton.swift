@@ -147,34 +147,35 @@ struct RunningPill: View {
 
 /// Indeterminate progress block shown in the detail pane during transcription.
 /// Shows a spinner, stage label, elapsed time, and an estimated remaining time
-/// derived from audio duration × a per-model-and-beams speed factor.
+/// derived from audio duration × a per-model speed factor.
 struct TranscriptionProgressView: View {
     let stageName: String
     let startTime: Date?
     let audioDuration: Double?
     /// NB-Whisper model variant, e.g. "large", "medium". Nil = use safe default.
     var model: String? = nil
-    /// Number of beams used. Nil = use safe default.
-    var numBeams: Int? = nil
 
     /// Realtime factor (processing time / audio duration) for NB-Whisper on
-    /// Apple Silicon MPS (float32). Measured empirically; beams scale roughly
-    /// linearly. Values are conservative (slightly high) so the estimate rarely
-    /// undershoots — surprising the user with "done" is better than "5 min left"
-    /// that never arrives.
+    /// Apple Silicon MPS (float32). Measured empirically. Values are
+    /// conservative (slightly high) so the estimate rarely undershoots —
+    /// surprising the user with "done" is better than "5 min left" that
+    /// never arrives.
+    ///
+    /// Previously also scaled by a user-configurable beam count
+    /// ("Transkripsjonsnøyaktighet" in Settings) — removed along with that
+    /// setting, since WhisperKit has no beam-search parameter to honor it
+    /// with (see `CHANGELOG.md`); these factors were measured at what was
+    /// always its effective default (3 beams / beamScale 1.0), so the
+    /// estimate is unchanged.
     private var realtimeFactor: Double {
-        let beams = numBeams ?? 3
-        let beamScale = 0.6 + Double(beams - 1) * 0.2  // 1→0.6, 2→0.8, 3→1.0, 4→1.2, 5→1.4
-        let baseForModel: Double
         switch model ?? "medium" {
-        case "tiny":   baseForModel = 0.09
-        case "base":   baseForModel = 0.13
-        case "small":  baseForModel = 0.19
-        case "medium": baseForModel = 0.32
-        case "large":  baseForModel = 0.48
-        default:       baseForModel = 0.32
+        case "tiny":   return 0.09
+        case "base":   return 0.13
+        case "small":  return 0.19
+        case "medium": return 0.32
+        case "large":  return 0.48
+        default:       return 0.32
         }
-        return baseForModel * beamScale
     }
 
     var body: some View {

@@ -540,11 +540,25 @@ struct AvidentifiseringSheet: View {
                 try result.anonymizedText.write(to: anonURL, atomically: true, encoding: .utf8)
 
                 // 2. Update sidecar
+                //
+                // Real bug found via a live user report: a fresh auto-anonymize
+                // run left any PREVIOUS researcher confirmation in place, so
+                // re-running the tool silently made the recording look already
+                // confirmed for text the researcher had never actually
+                // reviewed. Must invalidate any prior confirmation every time
+                // the anonymized content changes.
+                let hadPriorConfirmation = (try? RecordingStore.shared.load(id: recordingId))?
+                    .anonymization.researcherConfirmedAt != nil
+
                 _ = try RecordingStore.shared.updateMeta(id: recordingId) { meta in
                     meta.anonymization.status = .done
                     meta.anonymization.completedAt = Date()
                     meta.anonymization.filename = "transcript_anonymized.txt"
                     meta.anonymization.stats = result.stats
+                    meta.anonymization.researcherConfirmedAt = nil
+                }
+                if hadPriorConfirmation {
+                    AuditLogger.shared.logAnonymizationConfirmationRevoked(recordingId: recordingId)
                 }
 
                 // 3. Audit (keep legacy event name for log back-compat)
@@ -570,20 +584,6 @@ struct AvidentifiseringSheet: View {
     // MARK: - Export to Word (RTF)
 
     private func statsSummary(_ stats: [String: Int]) -> String {
-        let parts = stats.compactMap { (key, count) -> String? in
-            guard count > 0 else { return nil }
-            switch key {
-            case "NAVN": return "\(count) navn"
-            case "TELEFON": return "\(count) telefonnummer"
-            case "FØDSELSNUMMER": return "\(count) fødselsnummer"
-            case "D-NUMMER": return "\(count) d-nummer"
-            case "EPOST": return "\(count) e-postadresse"
-            case "ORG": return "\(count) organisasjon"
-            case "STED": return "\(count) stedsnavn"
-            default: return "\(count) \(key.lowercased())"
-            }
-        }
-        if parts.isEmpty { return "ingen identifiserende informasjon funnet" }
-        return parts.joined(separator: ", ") + " fjernet"
+        AnonymizationMeta.statsSummary(stats)
     }
 }

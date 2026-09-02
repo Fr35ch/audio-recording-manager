@@ -158,4 +158,119 @@ enum AudioWAVConverter {
         outputFile = nil
         return outURL
     }
+
+    /// Extracts `[start - padding, end + padding]` (clamped to the file's
+    /// actual bounds) of an existing 16kHz mono WAV into a new temp WAV.
+    /// Used to re-transcribe a single segment in isolation — WhisperKit's
+    /// long-running decode carries seek/state across the whole file, and
+    /// giving it just the narrow clip alone (its own true start/end
+    /// instead of a mid-stream window) sometimes produces a materially
+    /// better result for the same audio, mirroring why `no-transcribe`'s
+    /// own `_fill_gap` mechanism re-transcribed short isolated clips
+    /// rather than trusting the single full-file pass. Caller owns the
+    /// returned URL and is responsible for deleting it.
+    static func extractSubClip(
+        wavURL: URL, start: Double, end: Double, padding: Double = 2.0
+    ) throws -> URL {
+        // Need the *actual* on-disk sample rate before we can pin a
+        // matching read format below, since `AVAudioFormat` requires it
+        // up front — a throwaway open just to read that one property.
+        let probeSampleRate: Double
+        do {
+            probeSampleRate = try AVAudioFile(forReading: wavURL).fileFormat.sampleRate
+        } catch {
+            throw AudioWAVConverterError.setupFailed(error.localizedDescription)
+        }
+        guard probeSampleRate > 0 else {
+            throw AudioWAVConverterError.processingFailed("Ugyldig samplingsrate")
+        }
+
+        // Explicitly pin the read-side processing format to Int16
+        // interleaved — matching the write side below. Without this,
+        // `AVAudioFile`'s default `processingFormat` for PCM sources is
+        // typically float32 regardless of on-disk bit depth, so a buffer
+        // allocated from it would silently mismatch the Int16 writer
+        // further down and crash with an uncatchable Objective-C
+        // exception (the exact failure mode already documented and
+        // avoided in `convertToWAV` above — this function missed it on
+        // its first pass and crashed under test before being caught here).
+        let inputFile: AVAudioFile
+        do {
+            inputFile = try AVAudioFile(
+                forReading: wavURL, commonFormat: .pcmFormatInt16, interleaved: true)
+        } catch {
+            throw AudioWAVConverterError.setupFailed(error.localizedDescription)
+        }
+
+        let format = inputFile.processingFormat
+        let sampleRate = format.sampleRate
+        let totalSeconds = Double(inputFile.length) / sampleRate
+
+        let clipStart = max(0.0, start - padding)
+        let clipEnd = min(totalSeconds, end + padding)
+        guard clipEnd > clipStart else {
+            throw AudioWAVConverterError.processingFailed("Ugyldig lydutdrag (tom eller negativ varighet)")
+        }
+
+        let startFrame = AVAudioFramePosition(clipStart * sampleRate)
+        let frameCount = AVAudioFrameCount((clipEnd - clipStart) * sampleRate)
+        guard frameCount > 0 else {
+            throw AudioWAVConverterError.processingFailed("Ugyldig lydutdrag (null rammer)")
+        }
+
+        inputFile.framePosition = startFrame
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
+            throw AudioWAVConverterError.processingFailed("Kan ikke allokere buffer for lydutdrag")
+        }
+        do {
+            // `read(into:frameCount:)` is not guaranteed to fill the whole
+            // requested count in a single call (confirmed empirically —
+            // it silently returned ~1.5% short on a plain in-bounds read
+            // during testing here) — loop until the buffer is actually
+            // full or the file is exhausted, the same chunked-read
+            // pattern already used elsewhere in this file
+            // (`splitStereoM4A`, `convertToWAV`).
+            while buffer.frameLength < frameCount {
+                let remaining = frameCount - buffer.frameLength
+                guard let chunk = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: remaining) else {
+                    throw AudioWAVConverterError.processingFailed("Kan ikke allokere buffer for lydutdrag")
+                }
+                try inputFile.read(into: chunk, frameCount: remaining)
+                if chunk.frameLength == 0 { break }  // hit EOF before filling the request
+                memcpy(
+                    buffer.int16ChannelData![0] + Int(buffer.frameLength),
+                    chunk.int16ChannelData![0],
+                    Int(chunk.frameLength) * MemoryLayout<Int16>.size)
+                buffer.frameLength += chunk.frameLength
+            }
+        } catch {
+            throw AudioWAVConverterError.processingFailed(error.localizedDescription)
+        }
+
+        let tmpDir = FileManager.default.temporaryDirectory
+        let outURL = tmpDir.appendingPathComponent("clio-subclip-\(UUID().uuidString).wav")
+        try? FileManager.default.removeItem(at: outURL)
+
+        let outSettings: [String: Any] = [
+            AVFormatIDKey:            kAudioFormatLinearPCM,
+            AVSampleRateKey:          sampleRate,
+            AVNumberOfChannelsKey:    1,
+            AVLinearPCMBitDepthKey:   16,
+            AVLinearPCMIsFloatKey:    false,
+            AVLinearPCMIsBigEndianKey: false,
+        ]
+        do {
+            let outputFile = try AVAudioFile(
+                forWriting: outURL,
+                settings: outSettings,
+                commonFormat: .pcmFormatInt16,
+                interleaved: true)
+            try outputFile.write(from: buffer)
+        } catch {
+            try? FileManager.default.removeItem(at: outURL)
+            throw AudioWAVConverterError.processingFailed(error.localizedDescription)
+        }
+
+        return outURL
+    }
 }

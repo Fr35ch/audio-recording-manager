@@ -53,12 +53,12 @@ class SystemRequirementChecker {
         )
     }
 
-    /// Verifies the bundled native transcription (WhisperKit) and
+    /// Verifies the bundled native transcription (whisper.cpp) and
     /// anonymization (CoreML BERT NER) models are present in the app
     /// bundle. Replaces the old Python interpreter/venv check — both
     /// pipelines now run fully in-process, no external runtime needed.
     static func checkNativeModels() -> SystemRequirement {
-        let transcriptionOK = NativeTranscriptionEngine.isBundled
+        let transcriptionOK = WhisperCppEngine.isBundled
         let anonymizerOK = BertNERDetector.isAvailable
         let passed = transcriptionOK && anonymizerOK
         let actual: String

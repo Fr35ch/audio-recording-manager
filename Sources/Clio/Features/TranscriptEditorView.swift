@@ -27,20 +27,11 @@ private func colorForSpeaker(_ speaker: String) -> Color {
 }
 
 private func formatTimestamp(_ seconds: Double) -> String {
-    let m = Int(seconds) / 60
-    let s = Int(seconds) % 60
-    return String(format: "%d:%02d", m, s)
+    TranscriptionSegment.formatTimestamp(seconds)
 }
 
 private func shortSpeakerLabel(_ speaker: String) -> String {
-    if speaker.hasPrefix("SPEAKER_"), let num = Int(speaker.dropFirst(8)) {
-        return "T\(num + 1)"
-    }
-    switch speaker {
-    case "INTERVJUER": return "Intervjuer"
-    case "INFORMANT":  return "Informant"
-    default: return speaker
-    }
+    TranscriptionSegment.shortSpeakerLabel(speaker)
 }
 
 // MARK: - AnonymizationState
@@ -109,10 +100,8 @@ struct TranscriptEditorView: View {
                 segmentContent
             }
 
-            if case .completed = anonymizationState {
-                Divider()
-                signOffBar
-            }
+            Divider()
+            signOffBar
 
             Divider()
             audioControls
@@ -273,6 +262,7 @@ struct TranscriptEditorView: View {
 
     private func displaySegmentRow(segment: TranscriptionSegment, currentTime: Double) -> some View {
         let isCurrent = segment.start <= currentTime && currentTime < segment.end
+        let isLowConfidence = segment.lowConfidence ?? false
 
         return HStack(alignment: .center, spacing: 12) {
             // Speaker badge — coloured dot + short label ("T1", "T2") so
@@ -302,6 +292,18 @@ struct TranscriptEditorView: View {
                 .onTapGesture(count: 2) { enterEditMode(for: segment) }
                 .onTapGesture(count: 1) { playback.playSegment(from: segment.start, to: segment.end) }
 
+            // Quality-validation flag — set by `TranscriptValidation` (see
+            // `transcription.validateMode` = "flag") when this segment
+            // overlaps a detected gap, energy mismatch, low word density,
+            // or known hallucination phrase. A hint to double-check
+            // against the audio, distinct from the anonymization
+            // redaction highlight (orange) elsewhere in this view.
+            if isLowConfidence {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppColors.warning)
+                    .help("Denne linjen er merket for mulig lav kvalitet — sjekk mot lyden.")
+            }
+
             // Edit button — Buttons absorb taps so the row gestures do
             // not also fire when "Rediger" is clicked.
             Button {
@@ -321,6 +323,13 @@ struct TranscriptEditorView: View {
                 : Color.clear,
             in: RoundedRectangle(cornerRadius: AppRadius.small)
         )
+        .overlay(alignment: .leading) {
+            if isLowConfidence {
+                Rectangle()
+                    .fill(AppColors.warning.opacity(0.6))
+                    .frame(width: 3)
+            }
+        }
         // Final fallback for clicks in the row's padding (between the
         // inner HStack edge and the row's outer bounds). Children with
         // their own gestures take precedence; this fires only for clicks
@@ -532,6 +541,11 @@ struct TranscriptEditorView: View {
 
     // MARK: - Sign-off bar
 
+    private var editorArmToolRan: Bool {
+        if case .completed = anonymizationState { return true }
+        return false
+    }
+
     private var signOffBar: some View {
         HStack(spacing: AppSpacing.md) {
             if let date = researcherConfirmedAt {
@@ -543,7 +557,10 @@ struct TranscriptEditorView: View {
             } else {
                 Image(systemName: "exclamationmark.circle")
                     .foregroundStyle(AppColors.warning)
-                Text("Gjennomgå den avidentifiserte teksten og bekreft at den er klar for deling.")
+                Text(editorArmToolRan
+                    ? "Gjennomgå den avidentifiserte teksten og bekreft at den er klar for deling."
+                    : "Avidentifiser transkripsjonen med Clio-verktøyet eller manuelt, og bekreft før deling."
+                )
                     .font(.clioCaption)
                     .foregroundStyle(.secondary)
             }
@@ -552,7 +569,7 @@ struct TranscriptEditorView: View {
 
             if researcherConfirmedAt == nil {
                 Button("Godkjenn og signer") {
-                    confirmSignOff()
+                    Task { await confirmSignOff() }
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppColors.success)
@@ -599,10 +616,28 @@ struct TranscriptEditorView: View {
         segmentAnonymizedTexts = [:]
 
         do {
-            if let meta = try RecordingStore.shared.load(id: recordingId),
-               meta.anonymization.status == .done,
-               let date = meta.anonymization.completedAt {
-                anonymizationState = .completed(date: date, stats: meta.anonymization.stats ?? [:])
+            if let meta = try RecordingStore.shared.load(id: recordingId) {
+                // Real bug found via a live user report: pressing "Godkjenn
+                // og signer" appeared to do nothing until the editor was
+                // closed and reopened. Root cause — `researcherConfirmedAt`
+                // was only ever read here from inside this `status == .done`
+                // branch, but confirming WITHOUT running the automatic
+                // anonymizer (`AnonymizationConfirmationService.confirm`,
+                // by design, for exactly this case) never sets `status` to
+                // `.done` — only `researcherConfirmedAt` itself. Combined
+                // with `RecordingStore.notifyDidChange` deferring its
+                // notification via `DispatchQueue.main.async`, that
+                // deferred post's `loadExistingState()` call (via the
+                // `.onReceive` below) ran *after* `confirmSignOff` had
+                // already set the correct value locally, and silently
+                // clobbered it back to `nil` because this gate hid the
+                // just-persisted confirmation. Confirmation is orthogonal
+                // to whether the automatic tool ran (the Library view's
+                // own `AvidentifiseringBekreftSection` already treats it
+                // this way) — read it unconditionally whenever meta loads.
+                if meta.anonymization.status == .done, let date = meta.anonymization.completedAt {
+                    anonymizationState = .completed(date: date, stats: meta.anonymization.stats ?? [:])
+                }
                 researcherConfirmedAt = meta.anonymization.researcherConfirmedAt
             }
         } catch {}
@@ -624,17 +659,22 @@ struct TranscriptEditorView: View {
         }
     }
 
-    private func confirmSignOff() {
+    private func confirmSignOff() async {
+        // Ensure any pending segment edits are flushed to transcript.txt
+        // before confirming — AnonymizationConfirmationService reads that
+        // file from disk when the automatic tool hasn't run, and
+        // editor.save() is otherwise fire-and-forget from segment edits
+        // (Task { await editor.save() }), so without this a confirm
+        // immediately after an edit could read stale content.
+        if editor.isDirty {
+            await editor.save()
+        }
         do {
-            _ = try RecordingStore.shared.updateMeta(id: recordingId) { meta in
-                meta.anonymization.researcherConfirmedAt = Date()
-            }
-            researcherConfirmedAt = Date()
-            AuditLogger.shared.logAnonymizationConfirmedByResearcher(
-                recordingId: recordingId,
-                armToolUsed: true
-            )
-        } catch {}
+            let updated = try AnonymizationConfirmationService.confirm(recordingId: recordingId)
+            researcherConfirmedAt = updated.anonymization.researcherConfirmedAt
+        } catch {
+            print("⚠️ TranscriptEditorView: confirmSignOff failed: \(error)")
+        }
     }
 
     private func saveAnonymizationOverride(segmentId: Int, text: String) {
@@ -686,11 +726,27 @@ struct TranscriptEditorView: View {
                 let anonURL = StorageLayout.anonymizedTranscriptURL(id: recordingId)
                 try result.anonymizedText.write(to: anonURL, atomically: true, encoding: .utf8)
 
+                // Real bug found via a live user report: a fresh auto-anonymize
+                // run left any PREVIOUS researcher confirmation in place, so
+                // re-running the tool (e.g. via "Kjør avidentifisering på nytt")
+                // silently made the recording look already confirmed for text
+                // the researcher had never actually reviewed. The researcher
+                // must re-confirm every time the anonymized content changes —
+                // clearing this here is what makes the sign-off bar demand a
+                // fresh "Godkjenn og signer" click again.
+                let hadPriorConfirmation = (try? RecordingStore.shared.load(id: recordingId))?
+                    .anonymization.researcherConfirmedAt != nil
+
                 _ = try RecordingStore.shared.updateMeta(id: recordingId) { meta in
                     meta.anonymization.status = .done
                     meta.anonymization.completedAt = Date()
                     meta.anonymization.filename = "transcript_anonymized.txt"
                     meta.anonymization.stats = result.stats
+                    meta.anonymization.researcherConfirmedAt = nil
+                }
+                researcherConfirmedAt = nil
+                if hadPriorConfirmation {
+                    AuditLogger.shared.logAnonymizationConfirmationRevoked(recordingId: recordingId)
                 }
 
                 AuditLogger.shared.log(.transcriptAnonymized, payload: [

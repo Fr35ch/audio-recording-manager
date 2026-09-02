@@ -116,6 +116,16 @@ enum AuditEventType: String {
     case transcriptionStereoSplitStarted
     case transcriptionStereoSplitCompleted
     case transcriptionStereoSplitFailed
+    /// Logged when `StereoSplitter.isLikelyMergedChannels` detects that
+    /// both RØDE channels carry the same (or near-identical) audio — a
+    /// hardware/capture-app misconfiguration ("merge" instead of "split"
+    /// channel mode), not a Clio-side bug. Never carries transcript
+    /// content, only the detected ratio.
+    case transcriptionMergedChannelsDetected
+    /// Never carries matched phrase text or other transcript content —
+    /// only the validation mode, score, and issue count. See
+    /// `TranscriptionService.applyValidation`.
+    case transcriptValidationCompleted
 
     // Legacy
     case anonymizationRun

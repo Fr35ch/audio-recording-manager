@@ -1,4 +1,38 @@
-# Clio — Distribution Runbook
+# Clio — Distribution Runbook (STALE — pre-WhisperKit-port era, see warning)
+
+> [!WARNING]
+> **This entire document is stale as of 2026-09-01 and does not describe
+> how Clio is actually distributed.** It was written for the pre-port
+> architecture that embedded a Python interpreter and subprocess-spawned
+> it (`packaging/embed-python.sh`, referenced throughout below, **no
+> longer exists** — deleted when the app moved to native WhisperKit, see
+> `CHANGELOG.md` and commit `233a9fe`). That architecture required
+> Developer ID + notarized DMG distribution with **App Sandbox
+> disabled**, because a subprocess-spawning, arbitrary-file-path-
+> accessing Python interpreter is fundamentally incompatible with the
+> sandbox.
+>
+> **Clio actually targets the Mac App Store / TestFlight** (confirmed
+> directly by the project owner), which requires App Sandbox
+> unconditionally — Apple offers no exception for this, unlike Developer
+> ID distribution. The current app has `ENABLE_APP_SANDBOX = YES` in both
+> Xcode build configurations, and the WhisperKit port's own commit message
+> states it is "confirmed working in production via TestFlight
+> distribution." None of the DMG-building, notarization, or
+> Python-embedding steps below apply to that workflow — a real App Store
+> Connect / TestFlight submission instead goes through Xcode Organizer
+> (Product → Archive → Distribute App) or `xcodebuild -exportArchive`
+> with `packaging/ExportOptions.plist`'s `method: app-store-connect`,
+> followed by upload via Transporter or `xcrun altool`/App Store
+> Connect's own upload tooling — not the DMG/`notarytool`/`stapler`
+> pipeline this document describes.
+>
+> This document is being kept for historical reference (and because the
+> signing/entitlements troubleshooting sections may still be useful if
+> Clio ever needs a secondary Developer-ID-distributed build), but
+> **do not follow these steps to distribute the current app.** A correct,
+> current TestFlight/App Store Connect runbook still needs to be written
+> by someone with direct access to that submission process.
 
 This document describes how to build, sign, notarize and distribute the
 Clio macOS app as a DMG with an embedded Python interpreter.

@@ -59,7 +59,7 @@ done
 `NativeTranscriptionEngine.swift` looks these up via
 `Bundle.main.url(forResource: "NbAiLab_nb-whisper-large", withExtension: nil, subdirectory: "WhisperKitModels")`.
 
-## 1b. NB-Whisper-large-verbatim (optional — "Ordrett" transcription mode)
+## 1b. NB-Whisper-large-verbatim ("Ordrett" transcription mode)
 
 `NbAiLab/nb-whisper-large-verbatim` is a **separate model checkpoint**
 (fine-tuned 200-250 additional steps from the main model above by NB
@@ -70,11 +70,14 @@ setting in Transkripsjon-innstillinger needs its own bundled model to
 actually do anything; without it, `NativeTranscriptionEngine` transparently
 falls back to the clean model and logs a warning.
 
-**This model has not been converted/bundled as of this writing** — it was
-lost when the app moved from the Python `no-transcribe` subprocess (which
-switched between two model checkpoints for renset/verbatim) to the native
-WhisperKit port (which only ever bundled the clean checkpoint). Converting
-it follows the exact same recipe as §1, substituting the verbatim repo:
+**Now converted and bundled** (as of 2026-09-01). Note: an earlier version
+of this doc claimed the old Python `no-transcribe` subprocess "switched
+between two model checkpoints for renset/verbatim" — that was incorrect.
+Direct inspection of `navt.py`'s source (and its full commit history)
+confirmed its `--verbatim` CLI flag was dead code, never wired to select a
+different checkpoint or otherwise change behavior; verbatim mode never
+actually worked in the Python pipeline either. The conversion follows the
+exact same recipe as §1, substituting the verbatim repo:
 
 ```bash
 # (reuse the venv/whisperkittools checkout from §1)
@@ -96,9 +99,65 @@ for f in tokenizer.json tokenizer_config.json vocab.json merges.txt \
 done
 ```
 
+**Gotcha encountered during conversion**: `whisperkittools`'s
+`TestWhisperTextDecoder.test_torch2coreml_correctness_and_speedup` gates
+saving `TextDecoder.mlmodelc` behind an internal PSNR precision assertion
+(`tests/test_text_decoder.py`, `TEST_PSNR_THR = 35`) calibrated against the
+official OpenAI Whisper family. The verbatim checkpoint's PSNR varied
+across separate runs from ~32 (fails) to ~41 (passes comfortably) with
+otherwise-identical inputs — apparent run-to-run numerical variance in the
+PyTorch tracing step, not a fundamental incompatibility. If a conversion
+attempt fails this specific assertion, either retry (variance may pass
+next time) or temporarily lower `TEST_PSNR_THR` in that **local
+whisperkittools checkout only** (never in Clio's own source) to ~30 and
+re-run; the AudioEncoder/MelSpectrogram conversions did not need this
+adjustment. Worth reporting upstream to `argmaxinc/whisperkittools` as a
+possibly overly strict default for non-OpenAI Whisper fine-tunes.
+
+**Also encountered**: on a shared/busy machine, conversion can stall
+indefinitely waiting on the system's `ANECompilerService.xpc` daemon if
+something else is already monopolizing it (visible via `ps aux | grep
+ANECompiler` — high sustained CPU from an unrelated process). This isn't
+a whisperkittools bug; just don't run the conversion on a machine with
+other heavy CoreML/ANE work already in flight.
+
 `NativeTranscriptionEngine.isVerbatimBundled` reflects whether this second
-model folder is present; once bundled, the "Ordrett" setting will actually
-switch to it instead of silently using the clean model.
+model folder is present; now that it's bundled, the "Ordrett" setting
+switches to it for real instead of silently falling back to the clean
+model.
+
+## 1c. NB-Whisper GGML weights + whisper.xcframework (transcription — whisper.cpp)
+
+Clio's transcription pipeline now runs on **whisper.cpp**, not WhisperKit
+(see `CHANGELOG.md` for the reasoning — WhisperKit has no beam-search
+decode path at all; whisper.cpp does, matching the original Python
+pipeline's real `num_beams` behavior). `NativeTranscriptionEngine`/
+`Resources/WhisperKitModels` above are kept in the tree as an inert
+fallback, not actively used.
+
+This needs two things neither of which are committed to git (see
+`.gitignore` — same "large, reproducible binary artifact" reasoning as
+§1/§2 below, and the GGML weights would also hard-fail a GitHub push at
+over 1GB each, past the 100MB per-file limit):
+
+**GGML model weights** — NB AI-Lab publishes these directly, no
+conversion needed (unlike WhisperKit's CoreML step above):
+
+```bash
+mkdir -p Resources/WhisperCppModels
+curl -fsSL -o Resources/WhisperCppModels/ggml-nb-whisper-large-q5_0.bin \
+  https://huggingface.co/NbAiLab/nb-whisper-large/resolve/main/ggml-model-q5_0.bin
+curl -fsSL -o Resources/WhisperCppModels/ggml-nb-whisper-large-verbatim-q5_0.bin \
+  https://huggingface.co/NbAiLab/nb-whisper-large-verbatim/resolve/main/ggml-model-q5_0.bin
+```
+
+`WhisperCppEngine.swift` looks these up via
+`Bundle.main.url(forResource:withExtension:subdirectory:"WhisperCppModels")`.
+
+**`whisper.xcframework`** — built from `ggml-org/whisper.cpp` source; see
+`Frameworks/README.md` for the exact build recipe (cmake configure/build,
+manual dylib link, `xcodebuild -create-xcframework`, including how the
+dSYM is generated so App Store Connect symbol upload doesn't warn).
 
 ## 2. NbAiLab/nb-bert-base-ner (anonymization — BERT NER)
 

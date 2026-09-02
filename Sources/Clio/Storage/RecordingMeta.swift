@@ -70,10 +70,16 @@ struct TranscriptMeta: Codable, Equatable {
     /// When the researcher last edited the transcript in the transcript editor.
     /// `nil` if the transcript has never been edited (raw NB-Whisper output).
     var lastEditedAt: Date?
-    /// Number of beams used during transcription (1 = raskest, 5 = best).
-    var numBeams: Int?
     /// Wall-clock seconds navt.py spent transcribing.
     var processingTimeSeconds: Double?
+    /// Denormalized copy of `TranscriptionResult.validation?.score` and
+    /// `.issueCount`, cached here so `LibraryScreen`'s list view can show
+    /// a validation badge without parsing the full transcript JSON for
+    /// every row. `nil` when `transcription.validateMode` was `"none"` at
+    /// transcription time, or for recordings transcribed before this
+    /// existed.
+    var validationScore: Int?
+    var validationIssueCount: Int?
 
     init(
         filename: String = "transcript.txt",
@@ -81,16 +87,18 @@ struct TranscriptMeta: Codable, Equatable {
         engine: String? = nil,
         completedAt: Date? = nil,
         lastEditedAt: Date? = nil,
-        numBeams: Int? = nil,
-        processingTimeSeconds: Double? = nil
+        processingTimeSeconds: Double? = nil,
+        validationScore: Int? = nil,
+        validationIssueCount: Int? = nil
     ) {
         self.filename = filename
         self.status = status
         self.engine = engine
         self.completedAt = completedAt
         self.lastEditedAt = lastEditedAt
-        self.numBeams = numBeams
         self.processingTimeSeconds = processingTimeSeconds
+        self.validationScore = validationScore
+        self.validationIssueCount = validationIssueCount
     }
 }
 
@@ -125,6 +133,27 @@ struct AnonymizationMeta: Codable, Equatable {
         self.filename = filename
         self.stats = stats
         self.researcherConfirmedAt = researcherConfirmedAt
+    }
+
+    /// Human-readable Norwegian summary of redaction counts by category,
+    /// e.g. "3 navn, 1 stedsnavn fjernet". Shared between the de-identification
+    /// sheet's status line and the anonymized-transcript export (RTF) stats line.
+    static func statsSummary(_ stats: [String: Int]) -> String {
+        let parts = stats.compactMap { (key, count) -> String? in
+            guard count > 0 else { return nil }
+            switch key {
+            case "NAVN": return "\(count) navn"
+            case "TELEFON": return "\(count) telefonnummer"
+            case "FØDSELSNUMMER": return "\(count) fødselsnummer"
+            case "D-NUMMER": return "\(count) d-nummer"
+            case "EPOST": return "\(count) e-postadresse"
+            case "ORG": return "\(count) organisasjon"
+            case "STED": return "\(count) stedsnavn"
+            default: return "\(count) \(key.lowercased())"
+            }
+        }
+        if parts.isEmpty { return "ingen identifiserende informasjon funnet" }
+        return parts.joined(separator: ", ") + " fjernet"
     }
 }
 

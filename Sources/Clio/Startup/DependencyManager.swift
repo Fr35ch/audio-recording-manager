@@ -74,7 +74,7 @@ class DependencyManager: ObservableObject {
     private func runCheck(_ check: DependencyCheck) async throws {
         switch check {
         case .transcriptionModel:
-            guard NativeTranscriptionEngine.isBundled else {
+            guard WhisperCppEngine.isBundled else {
                 throw DependencyError.checkFailed("Innebygd NB-Whisper-modell mangler i appbunten.")
             }
 

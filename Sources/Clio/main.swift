@@ -1,6 +1,7 @@
 import AVFAudio
 import AVFoundation
 import Accelerate
+import Combine
 import CoreAudio
 import CoreMedia
 import DiskArbitration
@@ -47,6 +48,13 @@ struct ClioApp: App {
                     NotificationCenter.default.post(name: .init("ClioShowSettings"), object: nil)
                 }
                 .keyboardShortcut(",", modifiers: .command)
+
+                Divider()
+
+                Button(AppCopy.AppLock.lockNowMenuItem) {
+                    AppLockManager.shared.lockNow()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .control])
             }
         }
 
@@ -76,6 +84,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindow: NSWindow?
     private var splashShown = false   // fix 4 — guard against multiple splash windows
 
+    /// Secondary (transcript-editor) windows ordered out while locked, so
+    /// they can be restored on unlock instead of staying hidden forever.
+    private var hiddenSecondaryWindows: [NSWindow] = []
+    private var appLockSubscription: AnyCancellable?
+
     func applicationWillFinishLaunching(_ notification: Notification) {}
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -100,7 +113,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "transcription.verbatim":        false,
             "transcription.language":        "no",
             "transcription.validateMode":    "warn",
-            "transcription.numBeams":        3,
+            "transcription.accuracyLevel":   TranscriptionAccuracyLevel.default.rawValue,
             "beta.enabled":                  false,
         ])
 
@@ -137,6 +150,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // by revealMainWindow() after the splash completes.
         mainWindow = mainWindows().first
         mainWindow?.orderOut(nil)
+
+        // App lock: mandatory, always-on. Registers sleep/screen-lock
+        // observers and immediately attempts the first unlock — the app
+        // starts locked on every launch (see AppLockManager for why).
+        // Wired up only now that `mainWindow` is captured, so the lock
+        // subscription's first (synchronous, at-subscribe-time) event
+        // never mistakes the not-yet-assigned main window for a
+        // secondary window to hide.
+        observeAppLockState()
+        AppLockManager.shared.start()
 
         // Show the chromeless splash and kick off startup checks.
         splashController.onDismiss = { [weak self] in self?.revealMainWindow() }
@@ -213,6 +236,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Frees whisper.cpp's cached Metal-backed contexts before the process
+    /// actually exits — see `WhisperCppEngine.shutdown()` for the full
+    /// crash this fixes (a real `GGML_ASSERT` abort on normal quit,
+    /// confirmed from a live user report and traced to whisper.cpp's own
+    /// Metal residency-set cleanup). `WhisperCppEngine` is an actor, so
+    /// this can't run synchronously here; `.terminateLater` plus
+    /// `NSApp.reply(toApplicationShouldTerminate:)` is the standard macOS
+    /// pattern for async cleanup before quit — the app genuinely does not
+    /// quit until that reply is sent.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task {
+            await WhisperCppEngine.shared.shutdown()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
+    /// Starts the 5-minute idle-lock countdown. Fires whenever the app
+    /// loses focus, including brief switches (e.g. a Finder dialog) —
+    /// `AppLockManager` only locks if the app is *still* inactive when
+    /// the timer elapses, not immediately.
+    func applicationWillResignActive(_ notification: Notification) {
+        AppLockManager.shared.handleWillResignActive()
+    }
+
+    /// Cancels the pending idle-lock countdown if the user returned
+    /// before it fired.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        AppLockManager.shared.handleDidBecomeActive()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
             sender.windows.first?.makeKeyAndOrderFront(nil)
@@ -233,6 +287,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func mainWindows() -> [NSWindow] {
         // Fix 3 — filter by identity, not by window level (level can be reset by system)
         NSApp.windows.filter { $0 !== splashController.window && !($0 is NSPanel) }
+    }
+
+    // MARK: - App lock window handling
+
+    /// While locked, the main window stays visible (it hosts the
+    /// `LockScreenView` overlay itself) but is excluded from screen
+    /// recording / Cmd+Tab / Mission Control previews via `sharingType`.
+    /// Secondary transcript-editor windows have no lock overlay of their
+    /// own, so they're ordered out entirely and restored on unlock.
+    private func observeAppLockState() {
+        appLockSubscription = AppLockManager.shared.$isLocked
+            .removeDuplicates()
+            .sink { [weak self] isLocked in
+                self?.handleAppLockStateChanged(isLocked)
+            }
+    }
+
+    private func handleAppLockStateChanged(_ isLocked: Bool) {
+        if isLocked {
+            mainWindow?.sharingType = .none
+            hiddenSecondaryWindows = mainWindows().filter { $0 !== mainWindow && $0.isVisible }
+            hiddenSecondaryWindows.forEach { $0.orderOut(nil) }
+        } else {
+            mainWindow?.sharingType = .readOnly
+            hiddenSecondaryWindows.forEach { $0.makeKeyAndOrderFront(nil) }
+            hiddenSecondaryWindows.removeAll()
+        }
     }
 }
 

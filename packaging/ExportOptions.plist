@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
+<!--
+  CORRECTED 2026-09-01: this file previously specified `method: developer-id`
+  (direct notarized DMG distribution, no App Sandbox) — that described the
+  pre-WhisperKit-port era, when Clio embedded a Python interpreter and
+  subprocess-spawned it, which is fundamentally incompatible with the App
+  Sandbox. Clio actually targets the Mac App Store / TestFlight, which
+  requires App Sandbox unconditionally (Apple does not offer an exception).
+  The current app has `ENABLE_APP_SANDBOX = YES` in both build
+  configurations and ships via TestFlight — this file now matches that.
+-->
 <dict>
-    <!-- Export method: Developer ID distributes outside the Mac App Store -->
+    <!-- Export method: submits to App Store Connect for TestFlight/App
+         Store distribution (`app-store` is Apple's older, now-deprecated
+         name for this same method). -->
     <key>method</key>
-    <string>developer-id</string>
+    <string>app-store-connect</string>
 
     <!-- Your 10-character Apple Developer Team ID -->
     <key>teamID</key>
     <string>XXXXXXXXXX</string>
-
-    <!-- Hardened Runtime is required for notarization -->
-    <key>hardRuntime</key>
-    <true/>
-
-    <!-- Do NOT enable App Sandbox — Clio spawns subprocesses and accesses
-         arbitrary file paths. Sandbox would break both. -->
 
     <!-- Strip Swift symbols to reduce binary size -->
     <key>stripSwiftSymbols</key>

@@ -120,16 +120,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Ensure storage directories exist
         try? StorageLayout.ensureDirectoriesExist()
 
-        // Start the Bonjour confirmation server so iOS devices can query
-        // whether a transferred file has been received and indexed.
-        BonjourConfirmationServer.shared.start()
+        // Bonjour confirmation server + Nearby-Mac (MultipeerConnectivity)
+        // advertiser: paused, not deleted. Both require the
+        // com.apple.security.network.server entitlement (currently absent —
+        // confirmed via codesign -d --entitlements-), and iOS's "Send to
+        // Mac" nearby-transfer picker (the only client of either) has been
+        // removed for now since its confirmation handshake was never
+        // finished. The real, actively-used transfer path is
+        // MobileTransferBrowser/MobileTransferClient below, which only
+        // needs an outgoing (client) connection. Re-enable these two if the
+        // Nearby-Mac flow is revived — see Clio Recorder's
+        // NearbyMacTransferService.swift (also currently unused).
+        // BonjourConfirmationServer.shared.start()
 
         // Watch ~/Downloads for recordings AirDropped from Clio Recorder iOS
         // and import them into the library automatically.
         AirDropImportWatcher.shared.start()
 
-        // Advertise as a Clio receiver for Clio Recorder iOS direct transfer.
-        NearbyTransferAdvertiser.shared.start()
+        // NearbyTransferAdvertiser.shared.start()
 
         // 30-day retention: DISABLED until grace period logic is added.
         // Enabling this without a grace period would retroactively delete

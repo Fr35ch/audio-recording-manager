@@ -51,6 +51,63 @@ enum MobileTransferError: LocalizedError {
     }
 }
 
+// MARK: - Download progress delegate
+
+/// Bridges `URLSessionDownloadTask`'s delegate-based progress/completion
+/// callbacks to a single async call, since the convenience
+/// `URLSession.data(for:)`/`download(for:)` APIs give no way to observe
+/// incremental progress mid-transfer.
+private final class DownloadProgressDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+    private let continuation: CheckedContinuation<URL, Error>
+    private let progressHandler: (@Sendable (Double) -> Void)?
+    private let lock = NSLock()
+    private var resolved = false
+
+    init(continuation: CheckedContinuation<URL, Error>, progressHandler: (@Sendable (Double) -> Void)?) {
+        self.continuation = continuation
+        self.progressHandler = progressHandler
+    }
+
+    private func resolveOnce(_ body: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !resolved else { return }
+        resolved = true
+        body()
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        progressHandler?(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // The file at `location` is deleted the instant this method returns,
+        // so it must be moved to a stable location before resuming.
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        do {
+            try FileManager.default.moveItem(at: location, to: dest)
+            resolveOnce { continuation.resume(returning: dest) }
+        } catch {
+            resolveOnce { continuation.resume(throwing: error) }
+        }
+        session.finishTasksAndInvalidate()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error {
+            resolveOnce { continuation.resume(throwing: error) }
+        }
+        session.finishTasksAndInvalidate()
+    }
+}
+
 // MARK: - Client
 
 actor MobileTransferClient {
@@ -86,9 +143,25 @@ actor MobileTransferClient {
 
     /// Downloads the WAV to a staging URL and returns it.
     /// Caller is responsible for moving/importing and deleting the staging file.
-    func downloadRecording(id: String) async throws -> URL {
+    ///
+    /// Uses a delegate-based `URLSessionDownloadTask` (streaming straight to
+    /// disk, not loaded into memory) with real byte-progress reporting and a
+    /// generous 300s idle-timeout — previously this shared the same 10-second
+    /// timeout used for small metadata requests, which made a genuinely slow
+    /// (but still progressing) transfer of a 50-70MB recording over weak
+    /// Wi-Fi indistinguishable from a truly stalled one, and gave the UI no
+    /// way to show real progress instead of an indefinite spinner.
+    func downloadRecording(id: String, progress: (@Sendable (Double) -> Void)? = nil) async throws -> URL {
         let url = try await baseURL().appendingPathComponent("recordings/\(id)")
-        let data = try await perform(request: authenticatedRequest(url: url))
+        var request = authenticatedRequest(url: url)
+        request.timeoutInterval = 300
+
+        let tempURL: URL = try await withCheckedThrowingContinuation { continuation in
+            let delegate = DownloadProgressDelegate(continuation: continuation, progressHandler: progress)
+            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+            let task = session.downloadTask(with: request)
+            task.resume()
+        }
 
         let stagingURL = StorageLayout.mobileInboxURL
             .appendingPathComponent("\(id).wav")
@@ -96,7 +169,10 @@ actor MobileTransferClient {
             at: StorageLayout.mobileInboxURL,
             withIntermediateDirectories: true
         )
-        try data.write(to: stagingURL)
+        if FileManager.default.fileExists(atPath: stagingURL.path) {
+            try FileManager.default.removeItem(at: stagingURL)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: stagingURL)
         return stagingURL
     }
 

@@ -22,6 +22,7 @@ struct MobileTransferScreen: View {
     @State private var recordings: [MobileRecordingInfo] = []
     @State private var isFetchingList = false
     @State private var importingId: String?
+    @State private var importProgress: Double = 0
     @State private var errorMessage: String?
     @State private var disconnectedDeviceName: String?
     @State private var importedIOSIds: Set<String> = []
@@ -174,8 +175,13 @@ struct MobileTransferScreen: View {
             Spacer()
 
             if importingId == recording.id {
-                ProgressView()
-                    .scaleEffect(0.8)
+                if importProgress > 0 {
+                    ProgressView(value: importProgress)
+                        .frame(width: 60)
+                } else {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
             } else if alreadyImported {
                 Label(AppCopy.MobileTransfer.alreadyImported, systemImage: "checkmark.circle.fill")
                     .labelStyle(.titleAndIcon)
@@ -292,10 +298,18 @@ struct MobileTransferScreen: View {
         guard let device = selectedDevice else { return }
         let client = MobileTransferClient(deviceId: device.id, endpoint: device.endpoint, token: device.advertisedToken)
         importingId = recording.id
-        defer { importingId = nil }
+        importProgress = 0
+        defer {
+            importingId = nil
+            importProgress = 0
+        }
 
         do {
-            let stagingURL = try await client.downloadRecording(id: recording.id)
+            let stagingURL = try await client.downloadRecording(id: recording.id) { fraction in
+                Task { @MainActor in
+                    importProgress = fraction
+                }
+            }
             let sidecarData = await client.downloadSidecar(id: recording.id)
             _ = try await importer.importRecording(
                 stagingURL: stagingURL,
